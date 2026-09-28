@@ -15,15 +15,14 @@ import psutil
 
 from config import config
 from .auth import auth_manager
-from brain.nlu import NLUEngine
-from brain.planner import ActionPlanner
+from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
 from executor.permissions import PermissionManager
 from voice.speaker import VoiceSpeaker
 
 logger = logging.getLogger("VoiceAgent.Server")
 
-app = FastAPI(title="Voice Agent Remote Control", version="1.0.0")
+app = FastAPI(title="ZENO Remote Control", version="2.0.0")
 
 # Enable CORS
 app.add_middleware(
@@ -35,9 +34,9 @@ app.add_middleware(
 )
 
 # Core subsystems
-nlu_engine = NLUEngine()
 task_executor = TaskExecutor()
 action_planner = ActionPlanner(executor=task_executor)
+zeno_brain = ZenoBrain(executor=task_executor)
 permission_manager = PermissionManager()
 host_speaker = VoiceSpeaker()
 
@@ -141,10 +140,19 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
                 logger.info(f"Remote command received: '{user_text}'")
 
-                # Parse via NLU
-                nlu_result = await nlu_engine.understand(user_text)
-                plan = action_planner.plan(nlu_result)
+                # Process via ZENO Cognitive Brain
+                brain_resp = await zeno_brain.think(user_text)
 
+                if brain_resp.kind in ("chat", "vision", "memory"):
+                    host_speaker.speak(brain_resp.message)
+                    await send_to_client({
+                        "type": "response",
+                        "message": brain_resp.message,
+                        "kind": brain_resp.kind
+                    })
+                    continue
+
+                plan = brain_resp.actions
                 for action in plan:
                     if action.action_type in ("unhandled", "unknown"):
                         reply_msg = action.confirmation_message or "I didn't understand that command."

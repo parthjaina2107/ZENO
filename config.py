@@ -18,9 +18,13 @@ load_dotenv(dotenv_path=ENV_PATH)
 class Config:
     BASE_DIR: Path = BASE_DIR
 
+    # Assistant Persona
+    ASSISTANT_NAME: str = os.getenv("ASSISTANT_NAME", "ZENO").strip()
+    MEMORY_FILE: str = os.getenv("MEMORY_FILE", str(BASE_DIR / "zeno_memory.json")).strip()
+
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
     ACCESS_TOKEN: str = os.getenv("ACCESS_TOKEN", "voiceagent-secret-passphrase").strip()
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "voiceagent-jwt-super-secret-key").strip()

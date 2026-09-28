@@ -39,4 +39,4 @@ def test_auth_success():
 def test_home_page():
     response = client.get("/")
     assert response.status_code == 200
-    assert "Voice Agent" in response.text
+    assert "ZENO" in response.text

@@ -18,9 +18,12 @@
    - **Remote Mobile Control**: Modern web app accessible from any smartphone browser with Web Speech API for voice input and browser speech output.
    - **Simultaneous Operation**: Local and remote control can run at the same time.
 
-3. **AI Brain (Gemini + Offline Fallback)**:
-   - Powered by Google Gemini 2.5 (`google-genai` SDK) to understand complex natural language instructions.
-   - Built-in offline rule/keyword parser ensures common system queries work even when offline or without an API key.
+3. **ZENO Cognitive Brain (Conversational AI + Memory + Multimodal Vision)**:
+   - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds with spoken answers powered by Google Gemini 2.5 (`google-genai`).
+   - **👁️ Multimodal Screen Vision**: Ask *"Look at my screen, what's wrong?"* or *"Explain what is open on my screen"*. ZENO captures your display and uses multimodal AI vision to inspect and explain it.
+   - **💾 Short-Term Context**: Multi-turn conversational memory allows follow-ups without repeating context.
+   - **🗃️ Persistent Long-Term Memory**: Teach ZENO facts (*"Remember that my project path is C:\Projects"*), recall them (*"What is my project path?"*), or forget them (*"Forget my project path"*).
+   - **Offline Local Fallback**: Built-in rule parser ensures common system queries work even when offline or without an API key.
 
 4. **Extensive System Automation**:
    - **Applications**: Open and close software safely, list active apps, process termination safeguards.

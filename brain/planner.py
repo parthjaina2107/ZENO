@@ -59,7 +59,7 @@ class ActionPlanner:
                 step_params = step.get("parameters", {})
                 desc = step.get("description", f"Step {i+1}: {step_action}")
                 risk = step.get("risk_level", "medium").lower()
-                needs_perm = risk in ("medium", "high")
+                needs_perm = risk in ("low", "medium", "high")
                 confirm_msg = step.get("confirmation_message", f"Proceed with step {i+1}: {desc}?")
                 actions.append(
                     PlannedAction(
@@ -74,7 +74,7 @@ class ActionPlanner:
             return actions
 
         # Single action
-        needs_perm = raw_risk in ("medium", "high")
+        needs_perm = raw_risk in ("low", "medium", "high")
         return [
             PlannedAction(
                 action_type=action_type,

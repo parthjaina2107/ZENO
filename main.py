@@ -25,8 +25,7 @@ if sys.platform == "win32":
 from config import config
 from voice.speaker import VoiceSpeaker
 from voice.listener import VoiceListener
-from brain.nlu import NLUEngine
-from brain.planner import ActionPlanner
+from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
 from executor.permissions import PermissionManager
 from tunnel.tunnel_manager import TunnelManager
@@ -52,28 +51,32 @@ class VoiceAgentApp:
         # Initialize subsystems
         self.speaker = VoiceSpeaker()
         self.listener = VoiceListener(model_size=config.WHISPER_MODEL)
-        self.nlu = NLUEngine()
         self.executor = TaskExecutor()
-        self.planner = ActionPlanner(executor=self.executor)
+        self.brain = ZenoBrain(executor=self.executor)
+        self.planner = self.brain.planner
+        self.nlu = self.brain.nlu
         self.permissions = PermissionManager(listener=self.listener, speaker=self.speaker)
         self.tunnel_manager = TunnelManager(port=self.port)
         self.server_thread = None
 
     def print_banner(self):
         banner = r"""
-  __      __  _             ___                     _   
-  \ \    / / (_)           /   \   __ _   ___  _ _  | |_ 
-   \ \/\/ /  | |  _ _     / /_\ \ / _` | / -_)| ' \ |  _|
-    \_/\_/   |_| (_)     /_/   \_\\__, | \___||_||_| \__|
-                                  |___/                   
+  ███████╗███████╗███╗   ██╗ ██████╗ 
+  ╚══███╔╝██╔════╝████╗  ██║██╔═══██╗
+    ███╔╝ █████╗  ██╔██╗ ██║██║   ██║
+   ███╔╝  ██╔══╝  ██║╚██╗██║██║   ██║
+  ███████╗███████╗██║ ╚████║╚██████╔╝
+  ╚══════╝╚══════╝╚═╝  ╚═══╝ ╚═════╝ 
         """
         print(banner)
         print("=" * 64)
-        print("  🎙️ VOICE AGENT — SECURE FULL-CONTROL AUTOMATION")
+        print(f"  🎙️ {config.ASSISTANT_NAME} — COGNITIVE AUTONOMOUS ASSISTANT")
         print("=" * 64)
         print(f"  • Operating Mode     : {self.mode.upper()}")
         print(f"  • Microphone Ready   : {'YES' if self.listener.is_mic_available() else 'NO (Console Fallback)'}")
-        print(f"  • Gemini AI Key      : {'Configured' if config.GEMINI_API_KEY else 'Missing (Local Rules Fallback)'}")
+        print(f"  • Gemini AI Brain    : {'Online' if config.GEMINI_API_KEY else 'Offline (Local Rules Fallback)'}")
+        print(f"  • Cognitive Memory   : Online (Short-term context + Long-term facts)")
+        print(f"  • Multimodal Vision  : {'Active' if config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
         print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None (LAN Only)'}")
         print(f"  • Access Token       : {'*' * len(config.ACCESS_TOKEN)}")
         print("=" * 64)
@@ -113,16 +116,21 @@ class VoiceAgentApp:
         """End-to-end processing pipeline for a spoken or typed command."""
         print(f"\n👤 [User]: \"{user_text}\"")
 
-        # Step 1: NLU understanding
-        nlu_result = await self.nlu.understand(user_text)
+        # Step 1: Cognitive Processing via ZENO Brain
+        brain_resp = await self.brain.think(user_text)
 
-        # Step 2: Planning
-        actions = self.planner.plan(nlu_result)
+        # Handle Conversational, Vision, or Memory responses directly
+        if brain_resp.kind in ("chat", "vision", "memory"):
+            print(f"🧠 [{config.ASSISTANT_NAME}]: {brain_resp.message}")
+            self.speaker.speak(brain_resp.message)
+            return
 
+        # Step 2: OS Automation Action Execution
+        actions = brain_resp.actions
         for i, action in enumerate(actions):
             if action.action_type in ("unhandled", "unknown"):
                 msg = action.confirmation_message or "I could not understand that command."
-                print(f"🤖 [Agent]: {msg}")
+                print(f"🤖 [{config.ASSISTANT_NAME}]: {msg}")
                 self.speaker.speak(msg)
                 return
 
@@ -156,8 +164,8 @@ class VoiceAgentApp:
 
     async def run_local_loop(self):
         """Continuous local voice/keyboard control loop."""
-        self.speaker.speak("Voice Agent is active and standing by.")
-        print("\n🎧 Agent is listening. Speak clearly or type a command below.")
+        self.speaker.speak(f"{config.ASSISTANT_NAME} is active and standing by.")
+        print(f"\n🎧 {config.ASSISTANT_NAME} is listening. Speak clearly or type a command below.")
         print("   (Press Ctrl+C at any time to exit)\n")
 
         while self.running:
