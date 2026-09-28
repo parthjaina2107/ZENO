@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🎙️ Voice Agent — Remote Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-card: rgba(18, 24, 38, 0.85);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background: radial-gradient(circle at top center, #111827 0%, #030712 100%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      overflow-x: hidden;
+      padding: 12px;
+    }
+
+    /* Container */
+    .app-container {
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 12px;
+    }
+
+    /* Header */
+    header {
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      font-size: 22px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      padding: 6px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--bg-card-border);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-red);
+      transition: background 0.3s ease;
+    }
+
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    /* Telemetry Bar */
+    .telemetry-bar {
+      display: flex;
+      justify-content: space-between;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 12px;
+      padding: 8px 14px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .telemetry-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .telemetry-val {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    /* Chat Log Window */
+    .chat-container {
+      flex: 1;
+      min-height: 320px;
+      max-height: 48vh;
+      overflow-y: auto;
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .message {
+      max-width: 86%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      animation: fadeIn 0.25s ease-out forwards;
+      word-break: break-word;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.agent {
+      align-self: flex-start;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.system {
+      align-self: center;
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      border-radius: 20px;
+      padding: 4px 12px;
+    }
+
+    /* Screenshot Embed */
+    .screenshot-preview {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 8px;
+      border: 1px solid var(--bg-card-border);
+      cursor: pointer;
+    }
+
+    /* Permission Card Modal */
+    .permission-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 99;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .permission-overlay.active {
+      display: flex;
+    }
+
+    .permission-card {
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 24px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      text-align: center;
+      animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .perm-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+
+    .perm-badge.low { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .perm-badge.medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .perm-badge.high { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+    .permission-card h3 {
+      font-size: 1.15rem;
+      margin-bottom: 8px;
+    }
+
+    .permission-card p {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+
+    .perm-btn-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .perm-btn {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    .perm-btn:active {
+      transform: scale(0.97);
+    }
+
+    .perm-btn.approve {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+    }
+
+    .perm-btn.deny {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    /* Controls: Hold to speak & input */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .voice-control {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mic-button {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      border: none;
+      color: #fff;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 25px rgba(59, 130, 246, 0.45);
+      transition: all 0.2s ease;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .mic-button:active, .mic-button.recording {
+      transform: scale(1.1);
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 0 35px rgba(239, 68, 68, 0.8);
+      animation: pulse 1s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { transform: scale(1.05); }
+      to { transform: scale(1.15); }
+    }
+
+    .mic-hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .text-input-row {
+      display: flex;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 14px;
+      padding: 4px;
+    }
+
+    .text-input-row input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-size: 0.92rem;
+      font-family: inherit;
+    }
+
+    .text-input-row button {
+      background: var(--accent-blue);
+      border: none;
+      color: #fff;
+      padding: 0 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 500;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .text-input-row button:active {
+      background: #2563eb;
+    }
+
+    /* Auth Modal */
+    #authModal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(3, 7, 18, 0.95);
+      backdrop-filter: blur(20px);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .auth-box {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 20px;
+      padding: 28px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+    }
+
+    .auth-box h2 {
+      font-size: 1.3rem;
+      margin-bottom: 6px;
+    }
+
+    .auth-box p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .auth-input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--bg-card-border);
+      color: #fff;
+      font-size: 1rem;
+      font-family: inherit;
+      margin-bottom: 14px;
+      outline: none;
+      text-align: center;
+      letter-spacing: 1px;
+    }
+
+    .auth-btn {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+      border: none;
+      color: #fff;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- App Wrapper -->
+  <div class="app-container">
+
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">🎙️</div>
+        <div>
+          <h1>Voice Agent</h1>
+          <p style="font-size: 0.72rem; color: var(--text-muted);">Remote Control Hub</p>
+        </div>
+      </div>
+      <div class="status-badge" id="statusBadge">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </header>
+
+    <!-- Telemetry Bar -->
+    <div class="telemetry-bar">
+      <div class="telemetry-item">
+        <span>🔋</span>
+        <span class="telemetry-val" id="telemetryBattery">--%</span>
+      </div>
+      <div class="telemetry-item">
+        <span>💻 CPU:</span>
+        <span class="telemetry-val" id="telemetryCpu">--%</span>
+      </div>
+      <div class="telemetry-item">
+        <span>🧠 RAM:</span>
+        <span class="telemetry-val" id="telemetryRam">--%</span>
+      </div>
+    </div>
+
+    <!-- Chat / Execution History -->
+    <div class="chat-container" id="chatContainer">
+      <div class="message system">🤖 Connected to Voice Agent session. Ready for commands.</div>
+    </div>
+
+    <!-- Input Controls -->
+    <div class="controls">
+      <div class="voice-control">
+        <button class="mic-button" id="micBtn" title="Hold to speak">🎤</button>
+        <span class="mic-hint" id="micHint">Hold to Speak • Release to Send</span>
+      </div>
+
+      <div class="text-input-row">
+        <input type="text" id="cmdInput" placeholder="Or type a command here..." autocomplete="off">
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Remote Permission Modal -->
+  <div class="permission-overlay" id="permOverlay">
+    <div class="permission-card">
+      <span class="perm-badge medium" id="permBadge">Medium Risk</span>
+      <h3 id="permTitle">Approval Required</h3>
+      <p id="permDesc">The agent wants to execute an action on your system.</p>
+      <div class="perm-btn-row">
+        <button class="perm-btn deny" id="permDenyBtn">❌ Deny</button>
+        <button class="perm-btn approve" id="permApproveBtn">✅ Approve</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Passphrase Login Modal -->
+  <div id="authModal">
+    <div class="auth-box">
+      <div style="font-size: 32px; margin-bottom: 12px;">🔒</div>
+      <h2>Voice Agent Access</h2>
+      <p>Enter the secret access token configured on your computer.</p>
+      <input type="password" id="passphraseInput" class="auth-input" placeholder="Secret Access Token">
+      <button class="auth-btn" id="loginBtn">Authorize Session</button>
+      <p id="authError" style="color: var(--accent-red); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let socket = null;
+    let currentRequestId = null;
+    let recognition = null;
+    let isRecording = false;
+
+    // DOM Elements
+    const chatContainer = document.getElementById("chatContainer");
+    const cmdInput = document.getElementById("cmdInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const micBtn = document.getElementById("micBtn");
+    const micHint = document.getElementById("micHint");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const permOverlay = document.getElementById("permOverlay");
+    const permBadge = document.getElementById("permBadge");
+    const permTitle = document.getElementById("permTitle");
+    const permDesc = document.getElementById("permDesc");
+    const permApproveBtn = document.getElementById("permApproveBtn");
+    const permDenyBtn = document.getElementById("permDenyBtn");
+    const authModal = document.getElementById("authModal");
+    const passphraseInput = document.getElementById("passphraseInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const authError = document.getElementById("authError");
+
+    // Telemetry Elements
+    const telemetryBattery = document.getElementById("telemetryBattery");
+    const telemetryCpu = document.getElementById("telemetryCpu");
+    const telemetryRam = document.getElementById("telemetryRam");
+
+    // Mobile Audio Unlock
+    let audioUnlocked = false;
+    function unlockAudio() {
+      if (!audioUnlocked && 'speechSynthesis' in window) {
+        const dummy = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(dummy);
+        audioUnlocked = true;
+      }
+    }
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('click', unlockAudio, { once: true });
+
+    // Helper: Browser Text-to-Speech (Speaks responses out loud on mobile)
+    function speak(text) {
+      if ('speechSynthesis' in window && text) {
+        // Strip markdown, URLs, and non-ASCII emojis so speech is smooth & natural
+        let clean = text.replace(/https?:\/\/\S+/g, 'link');
+        clean = clean.replace(/[*_`#~]/g, '');
+        // Remove emoji glyphs
+        clean = clean.replace(/[\u{1F600}-\u{1F6FF}|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
+        clean = clean.replace(/[✅❌⚠️🔒🎤🤖💻🔋🧠]/g, '');
+        clean = clean.trim();
+
+        if (!clean) return;
+
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.lang = 'en-US';
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // Helper: Add message to chat log
+    function appendMessage(text, sender = "agent", extraContent = null) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `message ${sender}`;
+      msgDiv.textContent = text;
+
+      if (extraContent) {
+        msgDiv.appendChild(extraContent);
+      }
+
+      chatContainer.appendChild(msgDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // WebSocket Management
+    function initWebSocket() {
+      const token = localStorage.getItem("voice_agent_jwt");
+      if (!token) {
+        showAuthModal();
+        return;
+      }
+
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        statusDot.classList.add("connected");
+        statusText.textContent = "Online";
+        appendMessage("🟢 Connected to host machine.", "system");
+        // Request telemetry
+        sendWsMessage({ type: "get_telemetry" });
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleIncomingMessage(data);
+        } catch (e) {
+          console.error("Failed to parse WS message:", e);
+        }
+      };
+
+      socket.onclose = (event) => {
+        statusDot.classList.remove("connected");
+        statusText.textContent = "Offline";
+        if (event.code === 4001 || event.code === 4003) {
+          // Auth failed
+          localStorage.removeItem("voice_agent_jwt");
+          showAuthModal("Authentication expired or invalid. Please sign in again.");
+        } else {
+          appendMessage("⚠️ Connection lost. Retrying in 3 seconds...", "system");
+          setTimeout(initWebSocket, 3000);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.warn("WebSocket error:", err);
+      };
+    }
+
+    function sendWsMessage(obj) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(obj));
+      } else {
+        appendMessage("❌ Cannot send message: Not connected to host.", "system");
+      }
+    }
+
+    // Handle incoming messages from Agent
+    function handleIncomingMessage(data) {
+      switch (data.type) {
+        case "response":
+          appendMessage(data.message, "agent");
+          speak(data.message);
+          break;
+
+        case "telemetry":
+          if (data.battery) telemetryBattery.textContent = `${data.battery}%`;
+          if (data.cpu !== undefined) telemetryCpu.textContent = `${data.cpu}%`;
+          if (data.ram !== undefined) telemetryRam.textContent = `${data.ram}%`;
+          break;
+
+        case "screenshot":
+          const img = document.createElement("img");
+          img.className = "screenshot-preview";
+          img.src = data.data;
+          appendMessage(data.message || "Desktop Screenshot captured:", "agent", img);
+          speak("Here is the latest screenshot of your computer.");
+          break;
+
+        case "permission_request":
+          currentRequestId = data.request_id;
+          permBadge.textContent = `${data.risk_level} Risk`;
+          permBadge.className = `perm-badge ${data.risk_level.toLowerCase()}`;
+          permTitle.textContent = data.action_type.replace(/_/g, " ").toUpperCase();
+          permDesc.textContent = data.message || data.description;
+          permOverlay.classList.add("active");
+          speak(data.message || "Permission required to execute action. Approve or deny?");
+          break;
+
+        default:
+          console.log("Unhandled event:", data);
+      }
+    }
+
+    // Permission Handlers
+    permApproveBtn.addEventListener("click", () => {
+      if (currentRequestId) {
+        sendWsMessage({
+          type: "permission_response",
+          request_id: currentRequestId,
+          approved: true
+        });
+        appendMessage("✅ You APPROVED the action.", "user");
+        permOverlay.classList.remove("active");
+        currentRequestId = null;
+      }
+    });
+
+    permDenyBtn.addEventListener("click", () => {
+      if (currentRequestId) {
+        sendWsMessage({
+          type: "permission_response",
+          request_id: currentRequestId,
+          approved: false
+        });
+        appendMessage("❌ You DENIED the action.", "user");
+        permOverlay.classList.remove("active");
+        currentRequestId = null;
+      }
+    });
+
+    // Send text command
+    function sendCommand() {
+      const text = cmdInput.value.trim();
+      if (!text) return;
+
+      appendMessage(text, "user");
+      sendWsMessage({ type: "command", text: text });
+      cmdInput.value = "";
+    }
+
+    sendBtn.addEventListener("click", sendCommand);
+    cmdInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendCommand();
+    });
+
+    // Web Speech API Setup
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRec) {
+      recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        isRecording = true;
+        micBtn.classList.add("recording");
+        micHint.textContent = "Listening... Speak now";
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          appendMessage(transcript, "user");
+          sendWsMessage({ type: "command", text: transcript });
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        stopRecording();
+      };
+
+      recognition.onend = () => {
+        stopRecording();
+      };
+    } else {
+      micHint.textContent = "Web Speech not supported in browser. Use typing.";
+    }
+
+    function startRecording() {
+      if (recognition && !isRecording) {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn("Recognition already active", e);
+        }
+      }
+    }
+
+    function stopRecording() {
+      isRecording = false;
+      micBtn.classList.remove("recording");
+      micHint.textContent = "Hold to Speak • Release to Send";
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+    }
+
+    // Touch & Mouse bindings for Hold to Speak
+    micBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
+    micBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopRecording(); });
+    micBtn.addEventListener("mousedown", startRecording);
+    micBtn.addEventListener("mouseup", stopRecording);
+
+    // Auth Modal Management
+    function showAuthModal(errorMsg = null) {
+      authModal.style.display = "flex";
+      if (errorMsg) {
+        authError.textContent = errorMsg;
+        authError.style.display = "block";
+      } else {
+        authError.style.display = "none";
+      }
+    }
+
+    loginBtn.addEventListener("click", async () => {
+      const code = passphraseInput.value.trim();
+      if (!code) return;
+
+      try {
+        const res = await fetch("/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `token=${encodeURIComponent(code)}`
+        });
+
+        const data = await res.json();
+        if (res.ok && data.jwt_token) {
+          localStorage.setItem("voice_agent_jwt", data.jwt_token);
+          authModal.style.display = "none";
+          initWebSocket();
+        } else {
+          authError.textContent = data.detail || "Authentication failed.";
+          authError.style.display = "block";
+        }
+      } catch (e) {
+        authError.textContent = "Error connecting to server.";
+        authError.style.display = "block";
+      }
+    });
+
+    // Start Telemetry Poller every 30s
+    setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        sendWsMessage({ type: "get_telemetry" });
+      }
+    }, 30000);
+
+    // On Load
+    window.addEventListener("DOMContentLoaded", () => {
+      initWebSocket();
+    });
+  </script>
+</body>
+</html>
