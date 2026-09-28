@@ -24,7 +24,7 @@ class Config:
 
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
     ACCESS_TOKEN: str = os.getenv("ACCESS_TOKEN", "voiceagent-secret-passphrase").strip()
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "voiceagent-jwt-super-secret-key").strip()
