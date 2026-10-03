@@ -35,3 +35,22 @@ def test_parse_confirmation_removed_ambiguous_words():
     assert parse_confirmation("correct") is None
     assert parse_confirmation("please") is None
     assert parse_confirmation("ha") is None
+
+
+def test_whisper_lazy_load(monkeypatch):
+    import sys
+    from unittest.mock import MagicMock
+    from voice.listener import VoiceListener
+
+    mock_whisper = MagicMock()
+    mock_model = MagicMock()
+    mock_whisper.load_model.return_value = mock_model
+    monkeypatch.setitem(sys.modules, "whisper", mock_whisper)
+
+    listener = VoiceListener()
+    assert listener._whisper_model is None
+    # Trigger lazy load
+    loaded = listener._get_whisper_model()
+    assert loaded is mock_model
+    mock_whisper.load_model.assert_called_once()
+

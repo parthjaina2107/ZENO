@@ -10,6 +10,8 @@ import time
 import re
 from typing import Optional, Callable
 
+from config import config
+
 logger = logging.getLogger("VoiceAgent.Listener")
 
 APPROVE_TOKENS = {
@@ -112,10 +114,27 @@ class VoiceListener:
         except Exception as e:
             logger.warning(f"Calibration failed: {e}")
 
+    def _get_whisper_model(self):
+        """Lazy-load Whisper model when configured."""
+        if self._whisper_model is None:
+            model_name = getattr(config, "WHISPER_MODEL", self.model_size or "base").strip()
+            if model_name:
+                try:
+                    import whisper
+                    logger.info(f"Loading Whisper model '{model_name}'...")
+                    self._whisper_model = whisper.load_model(model_name)
+                    logger.info("Whisper model loaded successfully.")
+                except ImportError:
+                    logger.info("OpenAI Whisper package not installed; using Google speech recognition.")
+                except Exception as e:
+                    logger.warning(f"Failed to load Whisper model '{model_name}': {e}; using Google speech recognition.")
+        return self._whisper_model
+
     def _transcribe_audio(self, audio_data) -> Optional[str]:
         """Transcribe captured audio using SpeechRecognition or Whisper."""
-        # 1. Try local whisper if loaded
-        if self._whisper_model is not None:
+        # 1. Try local whisper if loaded or available
+        whisper_model = self._get_whisper_model()
+        if whisper_model is not None:
             try:
                 import io
                 import tempfile
@@ -125,7 +144,7 @@ class VoiceListener:
                     f.write(wav_bytes)
                     tmp_name = f.name
                 try:
-                    result = self._whisper_model.transcribe(tmp_name)
+                    result = whisper_model.transcribe(tmp_name)
                     text = result.get("text", "").strip()
                     return text if text else None
                 finally:
@@ -133,6 +152,7 @@ class VoiceListener:
                         os.remove(tmp_name)
             except Exception as e:
                 logger.warning(f"Whisper transcription failed, falling back: {e}")
+
 
         # 2. Try SpeechRecognition's Google STT (free, high quality, requires internet)
         try:
