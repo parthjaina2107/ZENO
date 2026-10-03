@@ -25,6 +25,10 @@ class Config:
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    GEMINI_FALLBACK_MODELS: list = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    ]
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
     ACCESS_TOKEN: str = os.getenv("ACCESS_TOKEN", "voiceagent-secret-passphrase").strip()
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "voiceagent-jwt-super-secret-key").strip()
@@ -35,8 +39,15 @@ class Config:
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base").strip()
     LISTEN_TIMEOUT: int = int(os.getenv("LISTEN_TIMEOUT", "5"))
     PHRASE_TIMEOUT: int = int(os.getenv("PHRASE_TIMEOUT", "10"))
-    CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "15"))
+    CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
+
+    # Auto-Approve Policy (safe read-only actions skip confirmation)
+    AUTO_APPROVE_ACTIONS: set = {
+        "system_info",      # Battery, CPU, RAM, disk, IP, time — read-only
+        "screenshot",       # Captures screen — no system modification
+        "list_apps",        # Lists running apps — read-only
+    }
 
     # Server Settings
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0").strip()

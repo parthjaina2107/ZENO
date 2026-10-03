@@ -33,12 +33,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Core subsystems
-task_executor = TaskExecutor()
-action_planner = ActionPlanner(executor=task_executor)
-zeno_brain = ZenoBrain(executor=task_executor)
-permission_manager = PermissionManager()
-host_speaker = VoiceSpeaker()
+# Shared subsystems (initialized from main.py or initialized lazily on-demand)
+task_executor = None
+action_planner = None
+zeno_brain = None
+permission_manager = None
+host_speaker = None
+
+
+def init_shared_subsystems(executor=None, brain=None, permissions=None, speaker=None, planner=None):
+    """Called from main.py to share existing subsystem instances across local and remote server."""
+    global task_executor, action_planner, zeno_brain, permission_manager, host_speaker
+    if executor is not None:
+        task_executor = executor
+    if brain is not None:
+        zeno_brain = brain
+    if permissions is not None:
+        permission_manager = permissions
+    if speaker is not None:
+        host_speaker = speaker
+    if planner is not None:
+        action_planner = planner
+    elif zeno_brain is not None:
+        action_planner = zeno_brain.planner
+    logger.info("Shared subsystems successfully initialized in server.")
+
+
+def get_subsystems():
+    """Ensure subsystems are initialized before handling requests."""
+    global task_executor, action_planner, zeno_brain, permission_manager, host_speaker
+    if task_executor is None:
+        task_executor = TaskExecutor()
+    if zeno_brain is None:
+        zeno_brain = ZenoBrain(executor=task_executor)
+    if action_planner is None:
+        action_planner = zeno_brain.planner if hasattr(zeno_brain, "planner") else ActionPlanner(executor=task_executor)
+    if permission_manager is None:
+        permission_manager = PermissionManager()
+    if host_speaker is None:
+        host_speaker = VoiceSpeaker()
+    return task_executor, action_planner, zeno_brain, permission_manager, host_speaker
+
 
 # HTML template path
 TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "index.html"
@@ -96,6 +131,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     await websocket.accept()
     logger.info("Remote client connected via WebSocket.")
 
+    task_exec, planner, brain, perms, speaker = get_subsystems()
+
     async def send_to_client(data: Dict[str, Any]):
         try:
             await websocket.send_text(json.dumps(data))
@@ -129,7 +166,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             if msg_type == "permission_response":
                 req_id = msg.get("request_id")
                 approved = bool(msg.get("approved", False))
-                permission_manager.resolve_remote_permission(req_id, approved)
+                perms.resolve_remote_permission(req_id, approved)
                 continue
 
             # Voice or text command
@@ -141,10 +178,10 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 logger.info(f"Remote command received: '{user_text}'")
 
                 # Process via ZENO Cognitive Brain
-                brain_resp = await zeno_brain.think(user_text)
+                brain_resp = await brain.think(user_text)
 
                 if brain_resp.kind in ("chat", "vision", "memory"):
-                    host_speaker.speak(brain_resp.message)
+                    speaker.speak(brain_resp.message)
                     await send_to_client({
                         "type": "response",
                         "message": brain_resp.message,
@@ -156,7 +193,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 for action in plan:
                     if action.action_type in ("unhandled", "unknown"):
                         reply_msg = action.confirmation_message or "I didn't understand that command."
-                        host_speaker.speak(reply_msg)
+                        speaker.speak(reply_msg)
                         await send_to_client({
                             "type": "response",
                             "message": reply_msg
@@ -164,42 +201,46 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                         break
 
                     if action.requires_permission:
-                        # Announce permission requirement
-                        perm_msg = action.confirmation_message or f"Approval required to {action.description}."
-                        host_speaker.speak(perm_msg)
+                        # Auto-approve safe read-only actions
+                        if action.action_type in getattr(config, "AUTO_APPROVE_ACTIONS", set()) and action.risk_level == "low":
+                            perms.log_decision(action, True, source="auto", reason="Auto-approved safe read-only action")
+                        else:
+                            # Announce permission requirement
+                            perm_msg = action.confirmation_message or f"Approval required to {action.description}."
+                            speaker.speak(perm_msg)
 
-                        # Request permission from phone
-                        approved = await permission_manager.request_permission_remote(
-                            action=action,
-                            send_func=send_to_client,
-                            timeout=config.REMOTE_CONFIRMATION_TIMEOUT
-                        )
+                            # Request permission from phone
+                            approved = await perms.request_permission_remote(
+                                action=action,
+                                send_func=send_to_client,
+                                timeout=config.REMOTE_CONFIRMATION_TIMEOUT
+                            )
 
-                        if not approved:
-                            cancel_msg = f"Action cancelled: '{action.description}' was denied or timed out."
-                            host_speaker.speak(cancel_msg)
-                            await send_to_client({
-                                "type": "response",
-                                "message": cancel_msg
-                            })
-                            break
+                            if not approved:
+                                cancel_msg = f"Action cancelled: '{action.description}' was denied or timed out."
+                                speaker.speak(cancel_msg)
+                                await send_to_client({
+                                    "type": "response",
+                                    "message": cancel_msg
+                                })
+                                break
                     else:
                         if action.confirmation_message:
-                            host_speaker.speak(action.confirmation_message)
+                            speaker.speak(action.confirmation_message)
 
                     # Execute action
-                    result = action_planner.execute_action(action)
+                    result = planner.execute_action(action)
 
                     if action.action_type == "screenshot" and result.success and isinstance(result.output, dict):
                         # Send screenshot base64 preview
-                        host_speaker.speak(result.message)
+                        speaker.speak(result.message)
                         await send_to_client({
                             "type": "screenshot",
                             "data": result.output.get("base64"),
                             "message": result.message
                         })
                     else:
-                        host_speaker.speak(result.message)
+                        speaker.speak(result.message)
                         status_prefix = "✅ " if result.success else "❌ "
                         await send_to_client({
                             "type": "response",

@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Optional, Dict, Any
 from config import config
+from .api_utils import call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.Vision")
 
@@ -109,18 +110,20 @@ class ScreenVision:
                     ratio = 1920 / w
                     image = image.resize((1920, int(h * ratio)))
 
-                response = self.client.models.generate_content(
-                    model=model_to_use,
-                    contents=[image, prompt]
+                response = await call_gemini_with_fallback(
+                    client=self.client,
+                    contents=[image, prompt],
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
                 )
 
-                analysis_text = (response.text or "").strip()
-                if analysis_text:
-                    return {
-                        "success": True,
-                        "message": analysis_text,
-                        "analysis": analysis_text
-                    }
+                if response and hasattr(response, "text") and response.text:
+                    analysis_text = response.text.strip()
+                    if analysis_text:
+                        return {
+                            "success": True,
+                            "message": analysis_text,
+                            "analysis": analysis_text
+                        }
             except Exception as e:
                 logger.error(f"Gemini multimodal vision call failed: {e}")
 

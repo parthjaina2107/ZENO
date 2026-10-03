@@ -40,3 +40,26 @@ def test_home_page():
     response = client.get("/")
     assert response.status_code == 200
     assert "ZENO" in response.text
+
+
+def test_shared_subsystems():
+    from server.app import init_shared_subsystems, get_subsystems
+    from unittest.mock import MagicMock
+
+    dummy_exec = MagicMock()
+    dummy_brain = MagicMock()
+    dummy_perms = MagicMock()
+    dummy_speaker = MagicMock()
+
+    init_shared_subsystems(
+        executor=dummy_exec,
+        brain=dummy_brain,
+        permissions=dummy_perms,
+        speaker=dummy_speaker
+    )
+
+    t_exec, t_plan, t_brain, t_perms, t_speaker = get_subsystems()
+    assert t_exec is dummy_exec
+    assert t_brain is dummy_brain
+    assert t_perms is dummy_perms
+    assert t_speaker is dummy_speaker

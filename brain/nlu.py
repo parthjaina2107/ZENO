@@ -10,8 +10,31 @@ import re
 import os
 from typing import Dict, Any, Optional
 from config import config
+from .api_utils import call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.NLU")
+
+# Known popular websites for instant browser resolution
+KNOWN_WEBSITES = {
+    "youtube": "https://www.youtube.com",
+    "gmail": "https://mail.google.com",
+    "google": "https://www.google.com",
+    "github": "https://github.com",
+    "twitter": "https://twitter.com",
+    "x": "https://x.com",
+    "reddit": "https://www.reddit.com",
+    "instagram": "https://www.instagram.com",
+    "facebook": "https://www.facebook.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "linkedin": "https://www.linkedin.com",
+    "netflix": "https://www.netflix.com",
+    "spotify": "https://open.spotify.com",
+    "amazon": "https://www.amazon.com",
+    "chatgpt": "https://chatgpt.com",
+    "maps": "https://maps.google.com",
+    "drive": "https://drive.google.com",
+    "docs": "https://docs.google.com",
+}
 
 SYSTEM_PROMPT = """You are a computer control assistant. The user will give you voice commands.
 Your job is to understand the intent and return a structured JSON response.
@@ -248,17 +271,35 @@ class NLUEngine:
                 "confirmation_message": f"Open {url}?"
             }
 
-        # Open App
-        open_match = re.search(r"(?:open|launch|start)\s+([a-zA-Z0-9_\- ]+)", lowered)
+        # Open App or Known Website
+        open_match = re.search(r"(?:open|launch|start|go to)\s+([a-zA-Z0-9_\- ]+)", lowered)
         if open_match:
-            app = open_match.group(1).strip()
+            app_raw = open_match.group(1).strip()
+            # Strip browser context words: "in chrome", "in browser", "in edge", etc.
+            app_clean = re.sub(
+                r"\s+(?:in|on|using|with)\s+(?:chrome|edge|firefox|browser|brave).*",
+                "",
+                app_raw,
+                flags=re.IGNORECASE
+            ).strip().lower()
+
+            if app_clean in KNOWN_WEBSITES:
+                return {
+                    "understood": True,
+                    "action": "open_url",
+                    "parameters": {"url": KNOWN_WEBSITES[app_clean]},
+                    "description": f"Open {app_clean.title()} in browser",
+                    "risk_level": "low",
+                    "confirmation_message": f"Open {app_clean.title()}?"
+                }
+
             return {
                 "understood": True,
                 "action": "open_app",
-                "parameters": {"app_name": app},
-                "description": f"Open application '{app}'",
+                "parameters": {"app_name": app_raw},
+                "description": f"Open application '{app_raw}'",
                 "risk_level": "low",
-                "confirmation_message": f"Open application '{app}'?"
+                "confirmation_message": f"Open application '{app_raw}'?"
             }
 
         # Close App
@@ -316,6 +357,30 @@ class NLUEngine:
                 "confirmation_message": f"Type '{typed}'?"
             }
 
+        # Terminal / Shell commands
+        cmd_match = re.search(r"(?:run command|execute command|run in terminal|terminal)\s+(.+)", lowered)
+        if cmd_match:
+            cmd = cmd_match.group(1).strip()
+            return {
+                "understood": True,
+                "action": "run_command",
+                "parameters": {"command": cmd},
+                "description": f"Run command: '{cmd}'",
+                "risk_level": "high",
+                "confirmation_message": f"Run command '{cmd}' in terminal?"
+            }
+
+        # Quick bypass for conversational questions (lets ZenoBrain jump straight to conversational chat)
+        if lowered.startswith(("what is ", "what are ", "who is ", "who was ", "why is ", "why do ", "how do ", "how does ", "how can ", "tell me ", "explain ", "can you explain ")) and not any(w in lowered for w in ["battery", "cpu", "ram", "disk", "time", "ip"]):
+            return {
+                "understood": False,
+                "action": "none",
+                "parameters": {"raw_text": text},
+                "description": f"Conversational query: '{text}'",
+                "risk_level": "low",
+                "confirmation_message": ""
+            }
+
         return {
             "understood": False,
             "action": "unknown",
@@ -328,7 +393,8 @@ class NLUEngine:
     async def understand(self, user_text: str) -> Dict[str, Any]:
         """
         Analyze user text and return parsed action dictionary.
-        Tries Gemini API first if configured; falls back to local parser.
+        FAST PATH: Tries local parser first for instant (<1ms) response on common commands.
+        SLOW PATH: Falls back to Gemini API with retry and model fallback for complex/unhandled queries.
         """
         if not user_text or not user_text.strip():
             return {
@@ -342,25 +408,34 @@ class NLUEngine:
 
         text = user_text.strip()
 
-        # If Gemini client is active, attempt Gemini call
+        # FAST PATH: Try local parser first — handles ~80% of OS commands in <1ms
+        local_result = self._local_fallback_understand(text)
+        if local_result.get("understood", False):
+            return self._sanitize_command(local_result)
+
+        # If detected as purely conversational, skip LLM NLU round-trip (ZenoBrain will handle via chat)
+        if local_result.get("action") == "none":
+            return self._sanitize_command(local_result)
+
+        # SLOW PATH: If Gemini client is active, attempt Gemini call with fallback chain & retries
         if self.client:
-            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
+            prompt = f"{SYSTEM_PROMPT}\n\nUser command: \"{text}\"\nJSON:"
             try:
-                prompt = f"{SYSTEM_PROMPT}\n\nUser command: \"{text}\"\nJSON:"
-                response = self.client.models.generate_content(
-                    model=model_to_use,
-                    contents=prompt
+                response = await call_gemini_with_fallback(
+                    client=self.client,
+                    contents=prompt,
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
                 )
-                raw_json = response.text or ""
-                cleaned = self._clean_json_string(raw_json)
-                parsed = json.loads(cleaned)
+                if response and hasattr(response, "text") and response.text:
+                    raw_json = response.text
+                    cleaned = self._clean_json_string(raw_json)
+                    parsed = json.loads(cleaned)
 
-                # Check required fields
-                if "understood" in parsed and "action" in parsed:
-                    return self._sanitize_command(parsed)
+                    # Check required fields
+                    if "understood" in parsed and "action" in parsed:
+                        return self._sanitize_command(parsed)
             except Exception as e:
-                logger.warning(f"Gemini API request failed ({e}); falling back to local NLU.")
+                logger.warning(f"Gemini API request failed ({e}); using local NLU fallback.")
 
-        # Fast local fallback
-        result = self._local_fallback_understand(text)
-        return self._sanitize_command(result)
+        # Return sanitized local fallback
+        return self._sanitize_command(local_result)

@@ -43,6 +43,7 @@ zeno_memory.json
 .pytest_cache/
 .coverage
 htmlcov/
+scratch/
 
 # IDE and OS
 .vscode/

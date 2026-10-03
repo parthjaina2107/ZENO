@@ -68,13 +68,11 @@ class PermissionManager:
 
         print(f"\n[Permission Required - {risk.upper()} RISK]: {full_prompt}")
 
-        # Speak the prompt SYNCHRONOUSLY first so mic doesn't pick up the agent's own voice
+        # Speak the prompt asynchronously so it doesn't block the event loop
         if self.speaker:
-            self.speaker.speak_sync(full_prompt)
+            self.speaker.speak(full_prompt)
 
-        # Small delay after speaking so mic doesn't catch echo
-        import time
-        time.sleep(0.3)
+        await asyncio.sleep(0.5)
 
         # Try voice confirmation first
         approved = None
@@ -108,9 +106,9 @@ class PermissionManager:
             double_prompt = "Final confirmation required. This may be irreversible. Say YES or type yes to proceed."
             print(f"[Double Confirmation]: {double_prompt}")
             if self.speaker:
-                self.speaker.speak_sync(double_prompt)
+                self.speaker.speak(double_prompt)
 
-            time.sleep(0.3)
+            await asyncio.sleep(0.5)
 
             double_approved = None
             if self.listener and self.listener.is_mic_available():

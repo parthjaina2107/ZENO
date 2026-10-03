@@ -18,6 +18,7 @@ from .nlu import NLUEngine
 from .planner import ActionPlanner, PlannedAction
 from .memory import ZenoMemory
 from .vision import ScreenVision
+from .api_utils import call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.ZenoBrain")
 
@@ -83,13 +84,15 @@ class ZenoBrain:
             full_prompt = "\n\n".join(prompt_parts)
 
             try:
-                response = self.client.models.generate_content(
-                    model=model_to_use,
-                    contents=full_prompt
+                response = await call_gemini_with_fallback(
+                    client=self.client,
+                    contents=full_prompt,
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
                 )
-                answer = (response.text or "").strip()
-                if answer:
-                    return answer
+                if response and hasattr(response, "text") and response.text:
+                    answer = response.text.strip()
+                    if answer:
+                        return answer
             except Exception as e:
                 logger.error(f"Conversational generation error: {e}")
 

@@ -98,6 +98,16 @@ class VoiceAgentApp:
             print("   Public Tunnel   : Disabled (set NGROK_AUTH_TOKEN in .env to enable)")
         print(f"   Passphrase      : {config.ACCESS_TOKEN}\n")
 
+        # Share existing subsystem singletons with web server
+        from server.app import init_shared_subsystems
+        init_shared_subsystems(
+            executor=self.executor,
+            brain=self.brain,
+            permissions=self.permissions,
+            speaker=self.speaker,
+            planner=self.planner
+        )
+
         uv_config = uvicorn.Config(
             "server.app:app",
             host=config.SERVER_HOST,
@@ -136,12 +146,16 @@ class VoiceAgentApp:
 
             # Step 3: Permission Gate (only for actions requiring approval)
             if action.requires_permission:
-                approved = await self.permissions.request_permission_local(action)
-                if not approved:
-                    cancel_msg = f"Cancelled: '{action.description}' was not approved."
-                    print(f"❌ {cancel_msg}")
-                    self.speaker.speak(cancel_msg)
-                    return
+                # Auto-approve safe read-only actions
+                if action.action_type in getattr(config, "AUTO_APPROVE_ACTIONS", set()) and action.risk_level == "low":
+                    self.permissions.log_decision(action, True, source="auto", reason="Auto-approved safe read-only action")
+                else:
+                    approved = await self.permissions.request_permission_local(action)
+                    if not approved:
+                        cancel_msg = f"Cancelled: '{action.description}' was not approved."
+                        print(f"❌ {cancel_msg}")
+                        self.speaker.speak(cancel_msg)
+                        return
             else:
                 # Direct announcement for smooth assistant experience
                 if action.confirmation_message:

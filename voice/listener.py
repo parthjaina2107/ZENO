@@ -13,12 +13,15 @@ logger = logging.getLogger("VoiceAgent.Listener")
 
 APPROVE_WORDS = {
     "yes", "yeah", "yep", "approve", "approved", "do it", "go ahead",
-    "proceed", "confirm", "confirmed", "ok", "okay", "sure", "execute", "accept"
+    "proceed", "confirm", "confirmed", "ok", "okay", "sure", "execute", "accept",
+    "yea", "right", "correct", "allow", "please", "ha", "haan", "kar do",
+    "chalo", "thik hai", "theek hai"
 }
 
 DENY_WORDS = {
     "no", "nope", "cancel", "cancelled", "stop", "don't", "dont", "deny",
-    "denied", "abort", "never", "negative", "reject"
+    "denied", "abort", "never", "negative", "reject",
+    "nahi", "naa", "mat karo", "ruk", "band karo"
 }
 
 
@@ -131,7 +134,7 @@ class VoiceListener:
             logger.debug(f"Audio capture issue: {e}")
             return None
 
-    def listen_for_confirmation(self, timeout: int = 15) -> Optional[bool]:
+    def listen_for_confirmation(self, timeout: int = 8) -> Optional[bool]:
         """
         Listen specifically for approval or denial.
         Returns:
@@ -144,18 +147,18 @@ class VoiceListener:
             remaining = int(timeout - (time.time() - start_time))
             if remaining <= 0:
                 break
-            text = self.listen_once(timeout=min(5, remaining), phrase_time_limit=4)
+            text = self.listen_once(timeout=min(3, remaining), phrase_time_limit=3)
             if not text:
                 continue
 
             cleaned = text.lower().strip()
             words = set(cleaned.split())
 
-            # Check approve
-            if any(word in APPROVE_WORDS for word in words) or cleaned in APPROVE_WORDS:
+            # Check approve (word set, exact phrase, or substring)
+            if any(word in APPROVE_WORDS for word in words) or cleaned in APPROVE_WORDS or any(aw in cleaned for aw in APPROVE_WORDS):
                 return True
-            # Check deny
-            if any(word in DENY_WORDS for word in words) or cleaned in DENY_WORDS:
+            # Check deny (word set, exact phrase, or substring)
+            if any(word in DENY_WORDS for word in words) or cleaned in DENY_WORDS or any(dw in cleaned for dw in DENY_WORDS):
                 return False
 
         return None
