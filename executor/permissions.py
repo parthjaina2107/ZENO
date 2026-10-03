@@ -12,7 +12,7 @@ import logging
 import uuid
 from pathlib import Path
 from typing import Optional, Dict, Any
-from brain.planner import PlannedAction
+from brain.planner import PlannedAction, describe_action
 from config import config
 
 logger = logging.getLogger("VoiceAgent.Permissions")
@@ -58,8 +58,11 @@ class PermissionManager:
         Ask user locally via voice (speaker + listener) or console prompt.
         Always falls back to console input if voice confirmation is unclear/times out.
         """
-        prompt_text = action.confirmation_message or f"Execute {action.description}?"
         risk = action.risk_level.lower()
+        if risk in ("medium", "high"):
+            prompt_text = describe_action(action)
+        else:
+            prompt_text = action.confirmation_message or f"Execute {action.description}?"
 
         # Build prompt
         full_prompt = f"{prompt_text} Say YES to approve or NO to cancel."
@@ -152,7 +155,7 @@ class PermissionManager:
             "description": action.description,
             "parameters": action.parameters,
             "risk_level": action.risk_level,
-            "message": action.confirmation_message or f"Approve {action.description}?"
+            "message": describe_action(action) if action.risk_level.lower() in ("medium", "high") else (action.confirmation_message or f"Approve {action.description}?")
         }
         return request_id, payload, future
 

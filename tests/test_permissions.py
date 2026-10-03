@@ -47,6 +47,7 @@ async def test_remote_permission_resolution():
     # Give time for future creation
     await asyncio.sleep(0.05)
     assert len(sent_payloads) == 1
+    assert sent_payloads[0]["message"] == 'Run command: "dir"'
     req_id = sent_payloads[0]["request_id"]
 
     # Client approves
@@ -55,3 +56,4 @@ async def test_remote_permission_resolution():
 
     result = await req_task
     assert result is True
+

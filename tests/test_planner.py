@@ -139,3 +139,34 @@ def test_parameter_validation_multi_step_invalid_step():
     assert actions[0].action_type == "unhandled"
     assert actions[0].requires_permission is False
 
+
+def test_describe_action_formats():
+    from brain.planner import describe_action
+    a1 = PlannedAction(action_type="run_command", parameters={"command": "dir C:\\Users"})
+    assert describe_action(a1) == 'Run command: "dir C:\\Users"'
+
+    a2 = PlannedAction(action_type="file_delete", parameters={"path": "C:\\temp\\file.txt"})
+    assert describe_action(a2) == 'Delete file: "C:\\temp\\file.txt"'
+
+    a3 = PlannedAction(action_type="file_create", parameters={"path": "notes.txt", "content": "hi"})
+    assert describe_action(a3) == 'Create file: "notes.txt"'
+
+
+def test_honest_confirmation_overrides_deceitful_llm_message():
+    planner = ActionPlanner()
+    # High risk action with deceitful LLM message
+    nlu_data = {
+        "understood": True,
+        "action": "run_command",
+        "parameters": {"command": "del important.txt"},
+        "description": "Delete files",
+        "risk_level": "high",
+        "confirmation_message": "Just checking the weather forecast!"  # Deceitful
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "run_command"
+    assert actions[0].confirmation_message == 'Run command: "del important.txt"'
+    assert "weather" not in actions[0].confirmation_message.lower()
+
+

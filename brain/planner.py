@@ -135,6 +135,77 @@ class PlannedAction:
     confirmation_message: str = ""
 
 
+def describe_action(action: PlannedAction) -> str:
+    """Build a deterministic, human-readable description from the action's real parameters."""
+    act_type = action.action_type
+    params = action.parameters or {}
+
+    if act_type == "run_command":
+        cmd = params.get("command", "")
+        return f'Run command: "{cmd}"'
+    elif act_type == "file_delete":
+        path = params.get("path", "")
+        return f'Delete file: "{path}"'
+    elif act_type == "file_create":
+        path = params.get("path", "")
+        return f'Create file: "{path}"'
+    elif act_type == "file_move":
+        src = params.get("source", "")
+        dst = params.get("destination", "")
+        return f'Move file: from "{src}" to "{dst}"'
+    elif act_type == "file_copy":
+        src = params.get("source", "")
+        dst = params.get("destination", "")
+        return f'Copy file: from "{src}" to "{dst}"'
+    elif act_type == "file_read":
+        path = params.get("path", "")
+        return f'Read file: "{path}"'
+    elif act_type == "file_search":
+        directory = params.get("directory", "Desktop")
+        pattern = params.get("pattern", "*")
+        return f'Search files in "{directory}" matching "{pattern}"'
+    elif act_type == "type_text":
+        txt = params.get("text", "")
+        return f'Type text: "{txt}"'
+    elif act_type == "keyboard_shortcut":
+        keys = params.get("keys", [])
+        return f'Press shortcut: {", ".join(keys)}'
+    elif act_type == "mouse_click":
+        x = params.get("x", 0)
+        y = params.get("y", 0)
+        btn = params.get("button", "left")
+        return f'Click {btn} mouse button at ({x}, {y})'
+    elif act_type == "open_app":
+        app = params.get("app_name", "")
+        return f'Open application: "{app}"'
+    elif act_type == "close_app":
+        proc = params.get("process_name", "")
+        return f'Close application: "{proc}"'
+    elif act_type == "open_url":
+        url = params.get("url", "")
+        return f'Open URL: "{url}"'
+    elif act_type == "web_search":
+        query = params.get("query", "")
+        return f'Search web for: "{query}"'
+    elif act_type == "volume_set":
+        lvl = params.get("level", 50)
+        return f'Set volume to {lvl}%'
+    elif act_type == "system_info":
+        info_type = params.get("type", "battery")
+        return f'Get system info: {info_type}'
+    elif act_type == "screenshot":
+        return "Take screenshot"
+    elif act_type == "list_apps":
+        return "List running applications"
+    elif act_type == "shutdown":
+        mode = params.get("mode", "lock")
+        return f'System {mode}'
+    elif act_type == "unhandled":
+        return action.description or "Unhandled action"
+    else:
+        return f'{act_type.replace("_", " ").capitalize()}: {params}'
+
+
 @dataclass
 class ActionResult:
     success: bool
@@ -204,16 +275,17 @@ class ActionPlanner:
                 step_risk = max_risk(step_table_risk, step_llm_risk)
                 needs_perm = step_risk in ("low", "medium", "high")
                 confirm_msg = step.get("confirmation_message", f"Proceed with step {i+1}: {desc}?")
-                actions.append(
-                    PlannedAction(
-                        action_type=step_action,
-                        parameters=validated_params,
-                        description=desc,
-                        risk_level=step_risk,
-                        requires_permission=needs_perm,
-                        confirmation_message=confirm_msg
-                    )
+                step_obj = PlannedAction(
+                    action_type=step_action,
+                    parameters=validated_params,
+                    description=desc,
+                    risk_level=step_risk,
+                    requires_permission=needs_perm,
+                    confirmation_message=confirm_msg
                 )
+                if step_risk in ("medium", "high"):
+                    step_obj.confirmation_message = describe_action(step_obj)
+                actions.append(step_obj)
             return actions
 
         # Reject unknown action types as unhandled
@@ -248,16 +320,18 @@ class ActionPlanner:
         computed_risk = max_risk(table_risk, raw_risk)
         needs_perm = computed_risk in ("low", "medium", "high")
 
-        return [
-            PlannedAction(
-                action_type=action_type,
-                parameters=validated_params,
-                description=nlu_response.get("description", action_type),
-                risk_level=computed_risk,
-                requires_permission=needs_perm,
-                confirmation_message=nlu_response.get("confirmation_message", f"Execute {action_type}?")
-            )
-        ]
+        act_obj = PlannedAction(
+            action_type=action_type,
+            parameters=validated_params,
+            description=nlu_response.get("description", action_type),
+            risk_level=computed_risk,
+            requires_permission=needs_perm,
+            confirmation_message=nlu_response.get("confirmation_message", f"Execute {action_type}?")
+        )
+        if computed_risk in ("medium", "high"):
+            act_obj.confirmation_message = describe_action(act_obj)
+
+        return [act_obj]
 
     def execute_action(self, action: PlannedAction) -> ActionResult:
         """Dispatch a single action to the executor."""
