@@ -533,6 +533,7 @@
     // State
     let socket = null;
     let currentRequestId = null;
+    let currentActionId = null;
     let recognition = null;
     let isRecording = false;
 
@@ -688,6 +689,7 @@
 
         case "permission_request":
           currentRequestId = data.request_id;
+          currentActionId = data.action_id || null;
           permBadge.textContent = `${data.risk_level} Risk`;
           permBadge.className = `perm-badge ${data.risk_level.toLowerCase()}`;
           permTitle.textContent = data.action_type.replace(/_/g, " ").toUpperCase();
@@ -707,11 +709,13 @@
         sendWsMessage({
           type: "permission_response",
           request_id: currentRequestId,
+          action_id: currentActionId,
           approved: true
         });
         appendMessage("✅ You APPROVED the action.", "user");
         permOverlay.classList.remove("active");
         currentRequestId = null;
+        currentActionId = null;
       }
     });
 
@@ -720,11 +724,13 @@
         sendWsMessage({
           type: "permission_response",
           request_id: currentRequestId,
+          action_id: currentActionId,
           approved: false
         });
         appendMessage("❌ You DENIED the action.", "user");
         permOverlay.classList.remove("active");
         currentRequestId = null;
+        currentActionId = null;
       }
     });
 

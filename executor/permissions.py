@@ -146,11 +146,17 @@ class PermissionManager:
         request_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
-        self._pending_remote_requests[request_id] = future
+        act_id = getattr(action, "action_id", "")
+        self._pending_remote_requests[request_id] = {
+            "future": future,
+            "action_id": act_id,
+            "action": action
+        }
 
         payload = {
             "type": "permission_request",
             "request_id": request_id,
+            "action_id": act_id,
             "action_type": action.action_type,
             "description": action.description,
             "parameters": action.parameters,
@@ -159,13 +165,33 @@ class PermissionManager:
         }
         return request_id, payload, future
 
-    def resolve_remote_permission(self, request_id: str, approved: bool) -> bool:
+    def resolve_remote_permission(self, request_id: str, approved: bool, action_id: Optional[str] = None) -> bool:
         """Called when a remote client sends permission_response."""
-        future = self._pending_remote_requests.pop(request_id, None)
+        entry = self._pending_remote_requests.pop(request_id, None)
+        if not entry:
+            return False
+
+        if isinstance(entry, dict):
+            future = entry.get("future")
+            expected_action_id = entry.get("action_id")
+        else:
+            future = entry
+            expected_action_id = None
+
+        if action_id is not None and expected_action_id:
+            if action_id != expected_action_id:
+                logger.warning(
+                    f"Action ID mismatch for request '{request_id}': expected '{expected_action_id}', got '{action_id}'"
+                )
+                if future and not future.done():
+                    future.set_result(False)
+                return False
+
         if future and not future.done():
             future.set_result(approved)
             return True
         return False
+
 
     async def request_permission_remote(
         self,

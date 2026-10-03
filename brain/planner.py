@@ -4,6 +4,8 @@ Converts structured NLU response dictionaries into strongly-typed PlannedAction 
 and orchestrates execution against the TaskExecutor.
 """
 
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Type
@@ -11,6 +13,12 @@ from pydantic import BaseModel, Field, conint, ValidationError
 from config import config
 
 logger = logging.getLogger("VoiceAgent.Planner")
+
+
+def compute_action_id(action_type: str, parameters: Dict[str, Any]) -> str:
+    """Deterministic hash of action type and parameters."""
+    serialized = json.dumps({"action_type": action_type, "parameters": parameters or {}}, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()[:16]
 
 
 # === Parameter Validation Models ===
@@ -133,6 +141,12 @@ class PlannedAction:
     risk_level: str = "medium"  # "low", "medium", "high"
     requires_permission: bool = True  # Always requires user approval
     confirmation_message: str = ""
+    action_id: str = ""
+
+    def __post_init__(self):
+        if not self.action_id:
+            self.action_id = compute_action_id(self.action_type, self.parameters)
+
 
 
 def describe_action(action: PlannedAction) -> str:

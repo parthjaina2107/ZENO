@@ -57,3 +57,45 @@ async def test_remote_permission_resolution():
     result = await req_task
     assert result is True
 
+
+def test_action_id_hash_deterministic():
+    a1 = PlannedAction(action_type="run_command", parameters={"command": "dir"})
+    a2 = PlannedAction(action_type="run_command", parameters={"command": "dir"})
+    a3 = PlannedAction(action_type="run_command", parameters={"command": "whoami"})
+
+    assert hasattr(a1, "action_id")
+    assert a1.action_id
+    assert a1.action_id == a2.action_id
+    assert a1.action_id != a3.action_id
+
+
+@pytest.mark.asyncio
+async def test_remote_permission_binding_mismatch_rejected():
+    pm = PermissionManager()
+    action = PlannedAction(
+        action_type="run_command",
+        parameters={"command": "dir"},
+        description="List files",
+        risk_level="high"
+    )
+
+    sent_payloads = []
+    async def mock_send(payload):
+        sent_payloads.append(payload)
+
+    import asyncio
+    req_task = asyncio.create_task(pm.request_permission_remote(action, mock_send, timeout=5))
+    await asyncio.sleep(0.05)
+
+    assert len(sent_payloads) == 1
+    assert "action_id" in sent_payloads[0]
+    assert sent_payloads[0]["action_id"] == action.action_id
+    req_id = sent_payloads[0]["request_id"]
+
+    # Attempt to approve with mismatched action_id
+    resolved = pm.resolve_remote_permission(req_id, approved=True, action_id="wrong_tampered_action_id")
+    assert resolved is False
+
+    result = await req_task
+    assert result is False
+

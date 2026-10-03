@@ -249,7 +249,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             if msg_type == "permission_response":
                 req_id = msg.get("request_id")
                 approved = bool(msg.get("approved", False))
-                perms.resolve_remote_permission(req_id, approved)
+                action_id = msg.get("action_id")
+                perms.resolve_remote_permission(req_id, approved, action_id=action_id)
                 continue
 
             # Voice or text command - processed in background task so receive loop never blocks
