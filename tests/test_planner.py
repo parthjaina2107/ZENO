@@ -53,3 +53,89 @@ def test_unknown_action_rejected_as_unhandled():
     actions = planner.plan(nlu_data)
     assert len(actions) == 1
     assert actions[0].action_type == "unhandled"
+    assert actions[0].requires_permission is False
+
+
+def test_parameter_validation_volume_valid():
+    planner = ActionPlanner()
+    nlu_data = {
+        "understood": True,
+        "action": "volume_set",
+        "parameters": {"level": 75},
+        "description": "Set volume to 75",
+        "risk_level": "low"
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "volume_set"
+    assert actions[0].parameters["level"] == 75
+
+
+def test_parameter_validation_volume_invalid():
+    planner = ActionPlanner()
+    # level > 100 is invalid
+    nlu_data = {
+        "understood": True,
+        "action": "volume_set",
+        "parameters": {"level": 150},
+        "description": "Set volume to 150",
+        "risk_level": "low"
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "unhandled"
+    assert actions[0].requires_permission is False
+
+
+def test_parameter_validation_run_command_invalid():
+    planner = ActionPlanner()
+    # missing command
+    nlu_data = {
+        "understood": True,
+        "action": "run_command",
+        "parameters": {},
+        "description": "Run empty command",
+        "risk_level": "high"
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "unhandled"
+    assert actions[0].requires_permission is False
+
+
+def test_parameter_validation_open_app_invalid():
+    planner = ActionPlanner()
+    # empty app_name
+    nlu_data = {
+        "understood": True,
+        "action": "open_app",
+        "parameters": {"app_name": ""},
+        "description": "Open empty app",
+        "risk_level": "low"
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "unhandled"
+    assert actions[0].requires_permission is False
+
+
+def test_parameter_validation_multi_step_invalid_step():
+    planner = ActionPlanner()
+    nlu_data = {
+        "understood": True,
+        "action": "multi_step",
+        "parameters": {
+            "steps": [
+                {
+                    "action": "volume_set",
+                    "parameters": {"level": 200},  # Invalid
+                    "description": "Volume 200"
+                }
+            ]
+        }
+    }
+    actions = planner.plan(nlu_data)
+    assert len(actions) == 1
+    assert actions[0].action_type == "unhandled"
+    assert actions[0].requires_permission is False
+

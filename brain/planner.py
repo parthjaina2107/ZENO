@@ -6,10 +6,114 @@ and orchestrates execution against the TaskExecutor.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Type
+from pydantic import BaseModel, Field, conint, ValidationError
 from config import config
 
 logger = logging.getLogger("VoiceAgent.Planner")
+
+
+# === Parameter Validation Models ===
+
+class SystemInfoParams(BaseModel):
+    type: str = "battery"
+
+class ScreenshotParams(BaseModel):
+    pass
+
+class ListAppsParams(BaseModel):
+    pass
+
+class OpenAppParams(BaseModel):
+    app_name: str = Field(..., min_length=1)
+
+class CloseAppParams(BaseModel):
+    process_name: str = Field(..., min_length=1)
+
+class OpenUrlParams(BaseModel):
+    url: str = Field(..., min_length=1)
+
+class WebSearchParams(BaseModel):
+    query: str = Field(..., min_length=1)
+
+class VolumeParams(BaseModel):
+    level: conint(ge=0, le=100)
+
+class TypeTextParams(BaseModel):
+    text: str = Field(..., min_length=1)
+
+class KeyboardShortcutParams(BaseModel):
+    keys: List[str] = Field(..., min_length=1)
+
+class MouseClickParams(BaseModel):
+    x: int = 0
+    y: int = 0
+    button: str = "left"
+
+class FileCreateParams(BaseModel):
+    path: str = Field(..., min_length=1)
+    content: str = ""
+
+class FileDeleteParams(BaseModel):
+    path: str = Field(..., min_length=1)
+
+class FileMoveParams(BaseModel):
+    source: str = Field(..., min_length=1)
+    destination: str = Field(..., min_length=1)
+
+class FileCopyParams(BaseModel):
+    source: str = Field(..., min_length=1)
+    destination: str = Field(..., min_length=1)
+
+class FileSearchParams(BaseModel):
+    directory: str = "Desktop"
+    pattern: str = "*"
+
+class FileReadParams(BaseModel):
+    path: str = Field(..., min_length=1)
+
+class RunCommandParams(BaseModel):
+    command: str = Field(..., min_length=1)
+
+class ShutdownParams(BaseModel):
+    mode: str = "lock"
+
+
+ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
+    "system_info": SystemInfoParams,
+    "screenshot": ScreenshotParams,
+    "list_apps": ListAppsParams,
+    "open_app": OpenAppParams,
+    "close_app": CloseAppParams,
+    "open_url": OpenUrlParams,
+    "web_search": WebSearchParams,
+    "volume_set": VolumeParams,
+    "type_text": TypeTextParams,
+    "keyboard_shortcut": KeyboardShortcutParams,
+    "mouse_click": MouseClickParams,
+    "file_create": FileCreateParams,
+    "file_delete": FileDeleteParams,
+    "file_move": FileMoveParams,
+    "file_copy": FileCopyParams,
+    "file_search": FileSearchParams,
+    "file_read": FileReadParams,
+    "run_command": RunCommandParams,
+    "shutdown": ShutdownParams,
+}
+
+
+def validate_action_params(action_type: str, raw_params: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Validate parameters using Pydantic model. Returns (validated_dict, error_string)."""
+    model_cls = ACTION_PARAM_MODELS.get(action_type)
+    if not model_cls:
+        return raw_params, None
+    try:
+        instance = model_cls(**(raw_params or {}))
+        return instance.model_dump(), None
+    except ValidationError as e:
+        return None, str(e)
+    except Exception as e:
+        return None, str(e)
 
 
 def max_risk(table_risk: str, llm_risk: str) -> str:
@@ -80,6 +184,20 @@ class ActionPlanner:
                     continue
 
                 step_params = step.get("parameters", {})
+                validated_params, val_err = validate_action_params(step_action, step_params)
+                if val_err:
+                    actions.append(
+                        PlannedAction(
+                            action_type="unhandled",
+                            parameters=step_params,
+                            description=f"Step {i+1}: Invalid parameters for '{step_action}': {val_err}",
+                            risk_level="high",
+                            requires_permission=False,
+                            confirmation_message=f"Step {i+1} action '{step_action}' has invalid parameters."
+                        )
+                    )
+                    continue
+
                 desc = step.get("description", f"Step {i+1}: {step_action}")
                 step_llm_risk = step.get("risk_level", "medium").lower()
                 step_table_risk = config.ACTION_RISK.get(step_action, "high")
@@ -89,7 +207,7 @@ class ActionPlanner:
                 actions.append(
                     PlannedAction(
                         action_type=step_action,
-                        parameters=step_params,
+                        parameters=validated_params,
                         description=desc,
                         risk_level=step_risk,
                         requires_permission=needs_perm,
@@ -111,6 +229,20 @@ class ActionPlanner:
                 )
             ]
 
+        raw_params = nlu_response.get("parameters", {})
+        validated_params, val_err = validate_action_params(action_type, raw_params)
+        if val_err:
+            return [
+                PlannedAction(
+                    action_type="unhandled",
+                    parameters=raw_params,
+                    description=f"Invalid parameters for '{action_type}': {val_err}",
+                    risk_level="high",
+                    requires_permission=False,
+                    confirmation_message=f"Invalid parameters for action '{action_type}'."
+                )
+            ]
+
         # Single action: enforce baseline table risk
         table_risk = config.ACTION_RISK.get(action_type, "high")
         computed_risk = max_risk(table_risk, raw_risk)
@@ -119,7 +251,7 @@ class ActionPlanner:
         return [
             PlannedAction(
                 action_type=action_type,
-                parameters=nlu_response.get("parameters", {}),
+                parameters=validated_params,
                 description=nlu_response.get("description", action_type),
                 risk_level=computed_risk,
                 requires_permission=needs_perm,
