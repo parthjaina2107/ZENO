@@ -63,3 +63,49 @@ def test_shared_subsystems():
     assert t_brain is dummy_brain
     assert t_perms is dummy_perms
     assert t_speaker is dummy_speaker
+
+
+def test_websocket_command_approval_no_deadlock():
+    from unittest.mock import MagicMock
+    from server.app import init_shared_subsystems
+    from executor.task_executor import ActionResult
+
+    valid_token = auth_manager.access_token
+    auth_resp = client.post("/auth", data={"token": valid_token})
+    jwt_token = auth_resp.json()["jwt_token"]
+
+    # Mock executor to succeed quickly without actually opening notepad
+    mock_exec = MagicMock()
+    mock_exec.execute.return_value = ActionResult(True, "Opened notepad", {"pid": 1234})
+    from brain import ZenoBrain
+    from executor.permissions import PermissionManager
+    from voice.speaker import VoiceSpeaker
+    mock_brain = ZenoBrain(executor=mock_exec)
+    mock_perms = PermissionManager()
+    mock_speaker = VoiceSpeaker()
+
+    init_shared_subsystems(
+        executor=mock_exec,
+        brain=mock_brain,
+        permissions=mock_perms,
+        speaker=mock_speaker
+    )
+
+    with client.websocket_connect(f"/ws?token={jwt_token}") as ws:
+        # Send command that requires permission
+        ws.send_json({"type": "command", "text": "open notepad"})
+
+        # First message should be permission request
+        msg1 = ws.receive_json()
+        assert msg1.get("type") == "permission_request"
+        req_id = msg1.get("request_id")
+        assert req_id is not None
+
+        # Client sends approval
+        ws.send_json({"type": "permission_response", "request_id": req_id, "approved": True})
+
+        # Server must process approval and send success response without deadlocking
+        msg2 = ws.receive_json()
+        assert msg2.get("type") == "response"
+        assert "notepad" in msg2.get("message", "").lower()
+
