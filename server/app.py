@@ -210,6 +210,16 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 })
                 return
 
+            if brain_resp.kind == "abort":
+                perms.cancel_all_pending("Aborted by user command")
+                speaker.speak(brain_resp.message)
+                await send_to_client({
+                    "type": "response",
+                    "message": f"🛑 {brain_resp.message}",
+                    "kind": "abort"
+                })
+                return
+
             plan = brain_resp.actions
             for action in plan:
                 if action.action_type in ("unhandled", "unknown"):
@@ -291,6 +301,22 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                     "cpu": cpu,
                     "ram": ram,
                     "battery": battery.percent if battery else None
+                })
+                continue
+
+            # Abort / Emergency stop
+            if msg_type == "abort":
+                logger.warning("Emergency abort received over WebSocket.")
+                for t in list(active_tasks):
+                    if not t.done():
+                        t.cancel()
+                active_tasks.clear()
+                perms.cancel_all_pending("Emergency abort via WebSocket")
+                speaker.speak("Emergency stop. All actions aborted.")
+                await send_to_client({
+                    "type": "response",
+                    "message": "🛑 Emergency stop: All actions aborted.",
+                    "kind": "abort"
                 })
                 continue
 

@@ -129,11 +129,18 @@ class VoiceAgentApp:
         # Step 1: Cognitive Processing via ZENO Brain
         brain_resp = await self.brain.think(user_text)
 
+        if brain_resp.kind == "abort":
+            self.permissions.cancel_all_pending("Aborted by user command")
+            print(f"🛑 [{config.ASSISTANT_NAME}]: {brain_resp.message}")
+            self.speaker.speak(brain_resp.message)
+            return
+
         # Handle Conversational, Vision, or Memory responses directly
         if brain_resp.kind in ("chat", "vision", "memory"):
             print(f"🧠 [{config.ASSISTANT_NAME}]: {brain_resp.message}")
             self.speaker.speak(brain_resp.message)
             return
+
 
         # Step 2: OS Automation Action Execution
         actions = brain_resp.actions

@@ -192,6 +192,16 @@ class PermissionManager:
             return True
         return False
 
+    def cancel_all_pending(self, reason: str = "Aborted by user"):
+        """Cancel and resolve all pending permission futures with False."""
+        for req_id, entry in list(self._pending_remote_requests.items()):
+            future = entry.get("future") if isinstance(entry, dict) else entry
+            if future and not future.done():
+                future.set_result(False)
+        self._pending_remote_requests.clear()
+        logger.info(f"Cancelled all pending permission requests: {reason}")
+
+
 
     async def request_permission_remote(
         self,

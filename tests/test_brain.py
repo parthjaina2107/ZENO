@@ -123,3 +123,13 @@ async def test_zeno_brain_routing(temp_memory_file):
     assert act_resp.kind == "action"
     assert len(act_resp.actions) >= 1
     assert act_resp.actions[0].action_type == "system_info"
+
+
+@pytest.mark.asyncio
+async def test_zeno_brain_kill_switch():
+    brain = ZenoBrain(api_key="")
+    for cmd in ["stop", "cancel everything", "abort", "HALT"]:
+        resp = await brain.think(cmd)
+        assert resp.kind == "abort"
+        assert "stop" in resp.message.lower() or "stopping" in resp.message.lower()
+

@@ -152,3 +152,21 @@ def test_websocket_first_message_auth():
         ack = ws.receive_json()
         assert ack.get("type") == "auth_ok"
 
+
+def test_websocket_abort_kill_switch():
+    valid_token = auth_manager.access_token
+    auth_resp = client.post("/auth", data={"token": valid_token})
+    jwt_token = auth_resp.json()["jwt_token"]
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "auth", "token": jwt_token})
+        ack = ws.receive_json()
+        assert ack.get("type") == "auth_ok"
+
+        # Send abort signal
+        ws.send_json({"type": "abort"})
+        resp = ws.receive_json()
+        assert resp.get("type") == "response"
+        assert "aborted" in resp.get("message", "").lower()
+
+

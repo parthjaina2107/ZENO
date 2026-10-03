@@ -120,16 +120,26 @@ class ZenoBrain:
             )
 
         clean_text = self.strip_wake_prefix(raw_text)
+        lowered = clean_text.lower().strip(".!?,")
+
+        # ----------------------------------------------------------------------
+        # 0. Emergency Stop / Abort intent (Pre-NLU kill switch)
+        # ----------------------------------------------------------------------
+        if lowered in ("stop", "cancel", "cancel everything", "abort", "halt", "kill", "emergency stop"):
+            reply = "Emergency stop acknowledged. Stopping all actions."
+            self.memory.add_turn("user", clean_text)
+            self.memory.add_turn("zeno", reply)
+            return BrainResponse(kind="abort", message=reply)
 
         # ----------------------------------------------------------------------
         # 1. Identity / Greeting queries
         # ----------------------------------------------------------------------
-        lowered = clean_text.lower()
         if lowered in ("who are you", "what is your name", "who are you?", "what's your name"):
             reply = f"I am {self.assistant_name}, your autonomous voice and remote automation assistant."
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply)
             return BrainResponse(kind="chat", message=reply)
+
 
         # ----------------------------------------------------------------------
         # 2. Long-term memory intent
