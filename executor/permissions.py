@@ -71,11 +71,15 @@ class PermissionManager:
 
         print(f"\n[Permission Required - {risk.upper()} RISK]: {full_prompt}")
 
-        # Speak the prompt asynchronously so it doesn't block the event loop
+        # Speak prompt synchronously so mic never hears the prompt
         if self.speaker:
-            self.speaker.speak(full_prompt)
+            loop = asyncio.get_running_loop()
+            if hasattr(self.speaker, "speak_sync"):
+                await loop.run_in_executor(None, self.speaker.speak_sync, full_prompt)
+            else:
+                self.speaker.speak(full_prompt)
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.2)
 
         # Try voice confirmation first
         approved = None
@@ -109,9 +113,13 @@ class PermissionManager:
             double_prompt = "Final confirmation required. This may be irreversible. Say YES or type yes to proceed."
             print(f"[Double Confirmation]: {double_prompt}")
             if self.speaker:
-                self.speaker.speak(double_prompt)
+                loop = asyncio.get_running_loop()
+                if hasattr(self.speaker, "speak_sync"):
+                    await loop.run_in_executor(None, self.speaker.speak_sync, double_prompt)
+                else:
+                    self.speaker.speak(double_prompt)
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.2)
 
             double_approved = None
             if self.listener and self.listener.is_mic_available():

@@ -99,3 +99,20 @@ async def test_remote_permission_binding_mismatch_rejected():
     result = await req_task
     assert result is False
 
+
+@pytest.mark.asyncio
+async def test_tts_echo_speaks_sync_before_listen():
+    from unittest.mock import MagicMock
+    speaker = MagicMock()
+    listener = MagicMock()
+    listener.is_mic_available.return_value = True
+    listener.listen_for_confirmation.return_value = True
+
+    pm = PermissionManager(listener=listener, speaker=speaker)
+    action = PlannedAction(action_type="open_app", parameters={"app_name": "notepad"}, risk_level="low")
+
+    res = await pm.request_permission_local(action)
+    assert res is True
+    assert speaker.speak_sync.called
+
+
