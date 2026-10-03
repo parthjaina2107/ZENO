@@ -7,22 +7,58 @@ and confirmation parsing.
 import logging
 import threading
 import time
+import re
 from typing import Optional, Callable
 
 logger = logging.getLogger("VoiceAgent.Listener")
 
-APPROVE_WORDS = {
-    "yes", "yeah", "yep", "approve", "approved", "do it", "go ahead",
+APPROVE_TOKENS = {
+    "yes", "yeah", "yep", "approve", "approved",
     "proceed", "confirm", "confirmed", "ok", "okay", "sure", "execute", "accept",
-    "yea", "right", "correct", "allow", "please", "ha", "haan", "kar do",
-    "chalo", "thik hai", "theek hai"
+    "yea", "haan", "chalo", "allow"
+}
+APPROVE_PHRASES = {
+    "go ahead", "do it", "kar do", "thik hai", "theek hai"
 }
 
-DENY_WORDS = {
+DENY_TOKENS = {
     "no", "nope", "cancel", "cancelled", "stop", "don't", "dont", "deny",
     "denied", "abort", "never", "negative", "reject",
-    "nahi", "naa", "mat karo", "ruk", "band karo"
+    "nahi", "naa", "ruk"
 }
+DENY_PHRASES = {
+    "mat karo", "band karo"
+}
+
+
+def parse_confirmation(text: Optional[str]) -> Optional[bool]:
+    """
+    Pure function to parse confirmation responses.
+    Tokenizes using [a-z']+, checks whole words and multi-word phrases.
+    Returns:
+        False if denial detected and no approval detected
+        True if approval detected and no denial detected
+        None if both or neither detected
+    """
+    if not text or not text.strip():
+        return None
+
+    cleaned = text.lower().strip()
+    tokens = set(re.findall(r"[a-z']+", cleaned))
+
+    has_deny = any(token in DENY_TOKENS for token in tokens) or any(phrase in cleaned for phrase in DENY_PHRASES)
+    has_approve = any(token in APPROVE_TOKENS for token in tokens) or any(phrase in cleaned for phrase in APPROVE_PHRASES)
+
+    if has_deny and has_approve:
+        return None  # Conflicting signals, ask again
+
+    if has_deny:
+        return False
+
+    if has_approve:
+        return True
+
+    return None
 
 
 class VoiceListener:
@@ -151,15 +187,9 @@ class VoiceListener:
             if not text:
                 continue
 
-            cleaned = text.lower().strip()
-            words = set(cleaned.split())
-
-            # Check approve (word set, exact phrase, or substring)
-            if any(word in APPROVE_WORDS for word in words) or cleaned in APPROVE_WORDS or any(aw in cleaned for aw in APPROVE_WORDS):
-                return True
-            # Check deny (word set, exact phrase, or substring)
-            if any(word in DENY_WORDS for word in words) or cleaned in DENY_WORDS or any(dw in cleaned for dw in DENY_WORDS):
-                return False
+            decision = parse_confirmation(text)
+            if decision is not None:
+                return decision
 
         return None
 
