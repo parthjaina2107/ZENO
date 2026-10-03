@@ -78,7 +78,7 @@ class VoiceAgentApp:
         print(f"  • Cognitive Memory   : Online (Short-term context + Long-term facts)")
         print(f"  • Multimodal Vision  : {'Active' if config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
         print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None (LAN Only)'}")
-        print(f"  • Access Token       : {'*' * len(config.ACCESS_TOKEN)}")
+        print("  • Access Token       : [Configured in .env]")
         print("=" * 64)
 
     def start_web_server(self):
@@ -96,7 +96,7 @@ class VoiceAgentApp:
             self.speaker.speak("Remote control tunnel is live. Check your console for the link.")
         else:
             print("   Public Tunnel   : Disabled (set NGROK_AUTH_TOKEN in .env to enable)")
-        print(f"   Passphrase      : {config.ACCESS_TOKEN}\n")
+        print("   Passphrase      : Passphrase is in .env\n")
 
         # Share existing subsystem singletons with web server
         from server.app import init_shared_subsystems

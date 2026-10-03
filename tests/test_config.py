@@ -35,3 +35,28 @@ def test_auto_approve_actions():
     assert "system_info" in config.AUTO_APPROVE_ACTIONS
     assert "screenshot" in config.AUTO_APPROVE_ACTIONS
     assert "list_apps" in config.AUTO_APPROVE_ACTIONS
+
+
+def test_ensure_secrets_creates_random_values(tmp_path):
+    from config import ensure_secrets
+    env_file = tmp_path / ".env"
+    access_token, jwt_secret = ensure_secrets(env_path=env_file)
+    assert env_file.exists()
+    assert len(access_token) >= 32
+    assert len(jwt_secret) >= 32
+    assert access_token not in ("voiceagent-secret-passphrase", "change_me_to_a_secure_passphrase")
+    assert jwt_secret not in ("voiceagent-jwt-super-secret-key", "change_me_to_a_random_secret_key")
+
+    content = env_file.read_text(encoding="utf-8")
+    assert f"ACCESS_TOKEN={access_token}" in content
+    assert f"JWT_SECRET_KEY={jwt_secret}" in content
+
+
+def test_token_forged_with_old_default_secret_rejected():
+    from jose import jwt
+    from server.auth import AuthManager
+    am = AuthManager()
+    am.secret_key = "new-random-secret-key-123456789012"
+    old_default_secret = "voiceagent-jwt-super-secret-key"
+    forged = jwt.encode({"sub": "mobile_client", "role": "controller"}, old_default_secret, algorithm="HS256")
+    assert am.verify_session_token(forged) is None

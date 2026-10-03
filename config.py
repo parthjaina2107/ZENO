@@ -5,6 +5,7 @@ Loads settings from .env file, sets defaults, and validates required parameters.
 
 import os
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 
 # Base Directory
@@ -13,6 +14,85 @@ BASE_DIR = Path(__file__).resolve().parent
 # Load environment variables from .env file if it exists
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
+
+
+# Known insecure default secret values
+KNOWN_DEFAULT_ACCESS_TOKENS = {
+    "voiceagent-secret-passphrase",
+    "change_me_to_a_secure_passphrase",
+}
+KNOWN_DEFAULT_JWT_SECRETS = {
+    "voiceagent-jwt-super-secret-key",
+    "change_me_to_a_random_secret_key",
+}
+
+
+def ensure_secrets(env_path: Optional[Path] = None) -> tuple[str, str]:
+    """
+    Ensure ACCESS_TOKEN and JWT_SECRET_KEY are set and non-default.
+    Generates cryptographically random 32-byte urlsafe tokens and saves to .env if needed.
+    Returns (access_token, jwt_secret_key).
+    """
+    import secrets
+    target_env = Path(env_path) if env_path else BASE_DIR / ".env"
+
+    env_values = {}
+    if target_env.exists():
+        try:
+            for line in target_env.read_text(encoding="utf-8").splitlines():
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.split("=", 1)
+                    env_values[k.strip()] = v.strip()
+        except Exception:
+            pass
+
+    current_access = env_values.get("ACCESS_TOKEN") or (os.getenv("ACCESS_TOKEN", "").strip() if not env_path else "")
+    current_jwt = env_values.get("JWT_SECRET_KEY") or (os.getenv("JWT_SECRET_KEY", "").strip() if not env_path else "")
+
+    needs_access = not current_access or current_access in KNOWN_DEFAULT_ACCESS_TOKENS
+    needs_jwt = not current_jwt or current_jwt in KNOWN_DEFAULT_JWT_SECRETS
+
+    new_access = secrets.token_urlsafe(32) if needs_access else current_access
+    new_jwt = secrets.token_urlsafe(32) if needs_jwt else current_jwt
+
+    if needs_access or needs_jwt or not target_env.exists():
+        existing_lines = []
+        if target_env.exists():
+            try:
+                existing_lines = target_env.read_text(encoding="utf-8").splitlines()
+            except Exception:
+                existing_lines = []
+
+        updated_lines = []
+        found_access = False
+        found_jwt = False
+
+        for line in existing_lines:
+            if line.startswith("ACCESS_TOKEN="):
+                updated_lines.append(f"ACCESS_TOKEN={new_access}")
+                found_access = True
+            elif line.startswith("JWT_SECRET_KEY="):
+                updated_lines.append(f"JWT_SECRET_KEY={new_jwt}")
+                found_jwt = True
+            else:
+                updated_lines.append(line)
+
+        if not found_access:
+            updated_lines.append(f"ACCESS_TOKEN={new_access}")
+        if not found_jwt:
+            updated_lines.append(f"JWT_SECRET_KEY={new_jwt}")
+
+        target_env.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+
+    os.environ["ACCESS_TOKEN"] = new_access
+    os.environ["JWT_SECRET_KEY"] = new_jwt
+    Config.ACCESS_TOKEN = new_access
+    Config.JWT_SECRET_KEY = new_jwt
+    if "config" in globals():
+        config.ACCESS_TOKEN = new_access
+        config.JWT_SECRET_KEY = new_jwt
+
+    return new_access, new_jwt
 
 
 class Config:
@@ -30,8 +110,8 @@ class Config:
         "gemini-2.0-flash",
     ]
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
-    ACCESS_TOKEN: str = os.getenv("ACCESS_TOKEN", "voiceagent-secret-passphrase").strip()
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "voiceagent-jwt-super-secret-key").strip()
+    ACCESS_TOKEN: str = os.getenv("ACCESS_TOKEN", "").strip()
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "").strip()
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_HOURS: int = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
 

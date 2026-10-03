@@ -36,6 +36,14 @@ class TunnelManager:
             logger.info("NGROK_AUTH_TOKEN not configured. Remote public tunnel will not be started.")
             return None
 
+        from config import KNOWN_DEFAULT_ACCESS_TOKENS, KNOWN_DEFAULT_JWT_SECRETS
+        if not config.ACCESS_TOKEN or config.ACCESS_TOKEN in KNOWN_DEFAULT_ACCESS_TOKENS:
+            logger.error("Refusing to expose public tunnel: ACCESS_TOKEN is insecure default or empty.")
+            return None
+        if not config.JWT_SECRET_KEY or config.JWT_SECRET_KEY in KNOWN_DEFAULT_JWT_SECRETS:
+            logger.error("Refusing to expose public tunnel: JWT_SECRET_KEY is insecure default or empty.")
+            return None
+
         try:
             from pyngrok import ngrok
             ngrok.set_auth_token(config.NGROK_AUTH_TOKEN)
