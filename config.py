@@ -136,6 +136,29 @@ class Config:
     # Logging
     LOG_FILE: str = os.getenv("LOG_FILE", str(BASE_DIR / "voiceagent.log"))
 
+    # Canonical Action Risk Mapping
+    ACTION_RISK: dict = {
+        "system_info": "low",
+        "screenshot": "low",
+        "list_apps": "low",
+        "open_app": "low",
+        "close_app": "medium",
+        "open_url": "low",
+        "web_search": "low",
+        "volume_set": "low",
+        "type_text": "medium",
+        "keyboard_shortcut": "medium",
+        "mouse_click": "medium",
+        "file_create": "medium",
+        "file_move": "medium",
+        "file_copy": "medium",
+        "file_search": "low",
+        "file_read": "low",
+        "run_command": "high",
+        "file_delete": "high",
+        "shutdown": "high",
+    }
+
     # Risk Levels and Action Policies
     RISK_LEVELS: dict = {
         "low": "single_confirm",       # Info queries, screenshot, opening apps

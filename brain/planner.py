@@ -7,8 +7,18 @@ and orchestrates execution against the TaskExecutor.
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
+from config import config
 
 logger = logging.getLogger("VoiceAgent.Planner")
+
+
+def max_risk(table_risk: str, llm_risk: str) -> str:
+    """The LLM can raise risk but never lower it below the table baseline."""
+    order = {"low": 1, "medium": 2, "high": 3}
+    t_val = order.get(table_risk.lower(), 2)
+    l_val = order.get(llm_risk.lower(), 1)
+    rev_order = {1: "low", 2: "medium", 3: "high"}
+    return rev_order[max(t_val, l_val)]
 
 
 @dataclass
@@ -56,31 +66,62 @@ class ActionPlanner:
             actions = []
             for i, step in enumerate(steps):
                 step_action = step.get("action", "unknown")
+                if step_action not in getattr(config, "ACTION_RISK", {}):
+                    actions.append(
+                        PlannedAction(
+                            action_type="unhandled",
+                            parameters=step.get("parameters", {}),
+                            description=f"Step {i+1}: Unsupported action '{step_action}'",
+                            risk_level="high",
+                            requires_permission=False,
+                            confirmation_message=f"Step {i+1} action '{step_action}' is not supported."
+                        )
+                    )
+                    continue
+
                 step_params = step.get("parameters", {})
                 desc = step.get("description", f"Step {i+1}: {step_action}")
-                risk = step.get("risk_level", "medium").lower()
-                needs_perm = risk in ("low", "medium", "high")
+                step_llm_risk = step.get("risk_level", "medium").lower()
+                step_table_risk = config.ACTION_RISK.get(step_action, "high")
+                step_risk = max_risk(step_table_risk, step_llm_risk)
+                needs_perm = step_risk in ("low", "medium", "high")
                 confirm_msg = step.get("confirmation_message", f"Proceed with step {i+1}: {desc}?")
                 actions.append(
                     PlannedAction(
                         action_type=step_action,
                         parameters=step_params,
                         description=desc,
-                        risk_level=risk,
+                        risk_level=step_risk,
                         requires_permission=needs_perm,
                         confirmation_message=confirm_msg
                     )
                 )
             return actions
 
-        # Single action
-        needs_perm = raw_risk in ("low", "medium", "high")
+        # Reject unknown action types as unhandled
+        if action_type not in getattr(config, "ACTION_RISK", {}):
+            return [
+                PlannedAction(
+                    action_type="unhandled",
+                    parameters=nlu_response.get("parameters", {}),
+                    description=f"Unsupported action: '{action_type}'",
+                    risk_level="high",
+                    requires_permission=False,
+                    confirmation_message=f"Action '{action_type}' is not recognized."
+                )
+            ]
+
+        # Single action: enforce baseline table risk
+        table_risk = config.ACTION_RISK.get(action_type, "high")
+        computed_risk = max_risk(table_risk, raw_risk)
+        needs_perm = computed_risk in ("low", "medium", "high")
+
         return [
             PlannedAction(
                 action_type=action_type,
                 parameters=nlu_response.get("parameters", {}),
                 description=nlu_response.get("description", action_type),
-                risk_level=raw_risk,
+                risk_level=computed_risk,
                 requires_permission=needs_perm,
                 confirmation_message=nlu_response.get("confirmation_message", f"Execute {action_type}?")
             )
