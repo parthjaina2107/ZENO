@@ -9,7 +9,7 @@ import logging
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException, status, Request, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import psutil
@@ -28,14 +28,30 @@ logger = logging.getLogger("VoiceAgent.Server")
 
 app = FastAPI(title="ZENO Remote Control", version="2.0.0")
 
-# Enable CORS
+# Restrict CORS to own origins and ngrok proxy domains
+ALLOWED_ORIGINS = [
+    f"http://localhost:{config.SERVER_PORT}",
+    f"http://127.0.0.1:{config.SERVER_PORT}",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)?ngrok(-free)?\.(app|io)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP, trusting X-Forwarded-For only when behind local proxy / ngrok."""
+    direct_ip = request.client.host if request.client else "127.0.0.1"
+    is_proxy = direct_ip in ("127.0.0.1", "::1", "localhost", "testclient") or "ngrok-trace-id" in request.headers or "x-forwarded-proto" in request.headers
+    if is_proxy:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+    return direct_ip
 
 # Shared subsystems (initialized from main.py or initialized lazily on-demand)
 task_executor = None
@@ -93,13 +109,14 @@ async def serve_home():
 
 
 @app.post("/auth")
-async def authenticate(token: str = Form(...)):
+async def authenticate(request: Request, token: str = Form(...)):
     """Authenticate with secret passphrase and receive a 24-hour JWT token."""
-    if auth_manager.verify_passphrase(token):
-        jwt_token = auth_manager.create_session_token()
+    client_ip = get_client_ip(request)
+    if auth_manager.verify_passphrase(token, client_id=client_ip):
+        jwt_token = auth_manager.create_session_token(client_id=client_ip)
         return JSONResponse(content={"status": "authenticated", "jwt_token": jwt_token})
     else:
-        locked, remaining = auth_manager.is_locked_out("default")
+        locked, remaining = auth_manager.is_locked_out(client_ip)
         if locked:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -112,8 +129,20 @@ async def authenticate(token: str = Form(...)):
 
 
 @app.get("/health")
-async def health_check():
-    """Health status and telemetry endpoint."""
+async def health_check(authorization: Optional[str] = Header(None), token: Optional[str] = None):
+    """Health status and telemetry endpoint, protected by JWT."""
+    jwt_val = None
+    if authorization and authorization.startswith("Bearer "):
+        jwt_val = authorization[len("Bearer "):].strip()
+    elif token:
+        jwt_val = token.strip()
+
+    if not jwt_val or not auth_manager.verify_session_token(jwt_val):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for health endpoint."
+        )
+
     battery = psutil.sensors_battery()
     return {
         "status": "healthy",
@@ -126,17 +155,37 @@ async def health_check():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     """Real-time bi-directional channel for remote voice/text control."""
-    # Step 1: Verify token
-    if not token or not auth_manager.verify_session_token(token):
-        logger.warning("Rejected unauthorized WebSocket connection attempt.")
-        await websocket.close(code=4001, reason="Unauthorized")
-        return
-
     await websocket.accept()
-    logger.info("Remote client connected via WebSocket.")
+
+    auth_payload = None
+    if token:
+        auth_payload = auth_manager.verify_session_token(token)
+
+    if not auth_payload:
+        # Await first WebSocket message containing {"type": "auth", "token": "..."}
+        try:
+            raw_first = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+            msg_first = json.loads(raw_first)
+            cand_token = msg_first.get("token") or (msg_first.get("text") if msg_first.get("type") == "auth" else None)
+            if cand_token:
+                auth_payload = auth_manager.verify_session_token(cand_token)
+            if not auth_payload:
+                logger.warning("Rejected unauthorized WebSocket: invalid first message auth.")
+                await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized"}))
+                await websocket.close(code=4001, reason="Unauthorized")
+                return
+            else:
+                await websocket.send_text(json.dumps({"type": "auth_ok"}))
+        except Exception as e:
+            logger.warning(f"WebSocket auth handshake timed out or failed: {e}")
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+
+    logger.info(f"Remote client connected via WebSocket (user: {auth_payload.get('sub', 'unknown')}).")
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
     active_tasks = set()
+
 
     async def send_to_client(data: Dict[str, Any]):
         try:

@@ -10,9 +10,18 @@ client = TestClient(app)
 
 
 def test_health_endpoint():
-    response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
+    # Health endpoint is protected by JWT
+    unauth_resp = client.get("/health")
+    assert unauth_resp.status_code == 401
+
+    # With valid JWT
+    valid_pass = auth_manager.access_token
+    auth_resp = client.post("/auth", data={"token": valid_pass})
+    jwt_token = auth_resp.json()["jwt_token"]
+
+    auth_health = client.get("/health", headers={"Authorization": f"Bearer {jwt_token}"})
+    assert auth_health.status_code == 200
+    data = auth_health.json()
     assert data["status"] == "healthy"
     assert "cpu_percent" in data
 
@@ -20,6 +29,26 @@ def test_health_endpoint():
 def test_auth_failure():
     response = client.post("/auth", data={"token": "wrong_password_xyz"})
     assert response.status_code == 401
+
+
+def test_auth_lockout_keyed_by_client_ip():
+    # Reset attempts for testing
+    auth_manager._attempts.clear()
+
+    # 10 failed attempts from IP 198.51.100.1 via proxy header
+    headers_ip1 = {"X-Forwarded-For": "198.51.100.1"}
+    for _ in range(10):
+        resp = client.post("/auth", data={"token": "bad_password"}, headers=headers_ip1)
+
+    # 11th attempt from IP 1 is locked out (429)
+    resp_locked = client.post("/auth", data={"token": "bad_password"}, headers=headers_ip1)
+    assert resp_locked.status_code == 429
+    assert "Locked out" in resp_locked.json()["detail"]
+
+    # Attempt from IP 2 (198.51.100.2) is NOT locked out (returns 401, not 429)
+    headers_ip2 = {"X-Forwarded-For": "198.51.100.2"}
+    resp_ip2 = client.post("/auth", data={"token": "bad_password"}, headers=headers_ip2)
+    assert resp_ip2.status_code == 401
 
 
 def test_auth_success():
@@ -34,6 +63,7 @@ def test_auth_success():
     payload = auth_manager.verify_session_token(token)
     assert payload is not None
     assert payload.get("role") == "controller"
+
 
 
 def test_home_page():
@@ -108,4 +138,17 @@ def test_websocket_command_approval_no_deadlock():
         msg2 = ws.receive_json()
         assert msg2.get("type") == "response"
         assert "notepad" in msg2.get("message", "").lower()
+
+
+def test_websocket_first_message_auth():
+    valid_token = auth_manager.access_token
+    auth_resp = client.post("/auth", data={"token": valid_token})
+    jwt_token = auth_resp.json()["jwt_token"]
+
+    # Connect to /ws without token in URL
+    with client.websocket_connect("/ws") as ws:
+        # Send JWT as first message
+        ws.send_json({"type": "auth", "token": jwt_token})
+        ack = ws.receive_json()
+        assert ack.get("type") == "auth_ok"
 

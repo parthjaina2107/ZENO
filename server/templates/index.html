@@ -618,11 +618,13 @@
       }
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
 
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
+        // Send JWT token as first message
+        sendWsMessage({ type: "auth", token: token });
         statusDot.classList.add("connected");
         statusText.textContent = "Online";
         appendMessage("🟢 Connected to host machine.", "system");
