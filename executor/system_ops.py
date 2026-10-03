@@ -357,11 +357,25 @@ class SystemOps:
     # ==================== TERMINAL COMMANDS ====================
 
     def run_command(self, command: str) -> ActionResult:
-        """Execute safe shell command with 30s timeout and output capture."""
+        """Execute safe shell command with allowlist, shell=False, 30s timeout and output capture."""
+        import shlex
         clean_cmd = command.strip()
-        lowered = clean_cmd.lower()
+        if not clean_cmd:
+            return ActionResult(success=False, message="Empty command provided.", error="EMPTY_COMMAND")
 
-        # Security check
+        # Parse command tokens
+        try:
+            tokens = shlex.split(clean_cmd, posix=False)
+        except Exception:
+            tokens = clean_cmd.split()
+
+        if not tokens:
+            return ActionResult(success=False, message="Empty command provided.", error="EMPTY_COMMAND")
+
+        first_token = tokens[0].lower().rstrip(".exe")
+
+        # Security Layer: Blocked commands blacklist
+        lowered = clean_cmd.lower()
         for blocked in config.BLOCKED_COMMANDS:
             if blocked in lowered:
                 return ActionResult(
@@ -370,17 +384,38 @@ class SystemOps:
                     error="BLOCKED_COMMAND"
                 )
 
+        # Security Layer: Allowlist of first tokens
+        allowed = getattr(config, "ALLOWED_COMMANDS", {
+            "dir", "ipconfig", "whoami", "ping", "hostname", "netstat",
+            "systeminfo", "tasklist", "route", "tracert", "nslookup",
+            "arp", "getmac", "curl", "echo"
+        })
+        if first_token not in allowed:
+            return ActionResult(
+                success=False,
+                message=f"Command '{first_token}' is not in the allowed list of safe commands.",
+                error="COMMAND_NOT_ALLOWED"
+            )
+
+
+        # Prepare arguments for execution with shell=False
+        cmd_builtins = {"dir", "echo", "type", "cls", "ver", "copy", "mkdir", "md"}
+        if first_token in cmd_builtins:
+            exec_args = ["cmd.exe", "/c"] + tokens
+        else:
+            exec_args = tokens
+
         try:
             res = subprocess.run(
-                clean_cmd,
-                shell=True,
+                exec_args,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             output = res.stdout if res.returncode == 0 else (res.stderr or res.stdout)
             # Truncate long output
-            if len(output) > 2000:
+            if output and len(output) > 2000:
                 output = output[:2000] + "\n...[output truncated]"
 
             success = res.returncode == 0
@@ -390,3 +425,4 @@ class SystemOps:
             return ActionResult(success=False, message="Command timed out after 30 seconds.", error="TIMEOUT")
         except Exception as e:
             return ActionResult(success=False, message=f"Command execution error: {e}", error=str(e))
+

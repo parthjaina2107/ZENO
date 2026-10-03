@@ -36,6 +36,21 @@ def test_run_command_safety():
     assert res_blocked.error == "BLOCKED_COMMAND"
 
 
+def test_run_command_allowlist_enforced():
+    sys_ops = SystemOps()
+    # Disallowed command (not in allowlist)
+    res_disallowed = sys_ops.run_command("calc.exe")
+    assert res_disallowed.success is False
+    assert res_disallowed.error == "COMMAND_NOT_ALLOWED"
+    assert "not in the allowed list" in res_disallowed.message
+
+    # Allowlisted command whoami
+    res_whoami = sys_ops.run_command("whoami")
+    assert res_whoami.success is True
+    assert len(res_whoami.output.strip()) > 0
+
+
+
 def test_file_operations_temp(tmp_path):
     # Allow tmp_path in FileOps
     f_ops = FileOps(allowed_dirs=[str(tmp_path)])

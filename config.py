@@ -185,6 +185,25 @@ class Config:
         "System Volume Information",
     ]
 
+    # Safe terminal commands allowlist (first token)
+    ALLOWED_COMMANDS: set = {
+        "dir",
+        "ipconfig",
+        "whoami",
+        "ping",
+        "hostname",
+        "netstat",
+        "systeminfo",
+        "tasklist",
+        "route",
+        "tracert",
+        "nslookup",
+        "arp",
+        "getmac",
+        "curl",
+        "echo",
+    }
+
     # Security: Disallowed Shell Commands
     BLOCKED_COMMANDS = [
         "format",
