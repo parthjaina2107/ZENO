@@ -115,3 +115,33 @@ async def test_api_utils_fallback_retry():
     assert resp is not None
     assert resp.text == '{"understood": true, "action": "system_info"}'
     assert call_counts["attempts"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_nlu_misroutes_prevented():
+    engine = NLUEngine(api_key="")
+    # 1. "open instagram" -> not RAM usage
+    r1 = await engine.understand("open instagram")
+    assert not (r1["understood"] and r1.get("action") == "system_info" and r1.get("parameters", {}).get("type") == "ram")
+    assert r1.get("action") in ("open_url", "open_app")
+
+    # 2. "open telegram" -> not RAM usage
+    r2 = await engine.understand("open telegram")
+    assert not (r2["understood"] and r2.get("action") == "system_info" and r2.get("parameters", {}).get("type") == "ram")
+    assert r2.get("action") in ("open_url", "open_app")
+
+    # 3. "update my resume" -> not time
+    r3 = await engine.understand("update my resume")
+    assert not (r3["understood"] and r3.get("action") == "system_info" and r3.get("parameters", {}).get("type") == "time")
+
+    # 4. "skip this song" -> not IP address
+    r4 = await engine.understand("skip this song")
+    assert not (r4["understood"] and r4.get("action") == "system_info" and r4.get("parameters", {}).get("type") == "ip")
+
+    # 5. "open program files" -> not RAM usage
+    r5 = await engine.understand("open program files")
+    assert not (r5["understood"] and r5.get("action") == "system_info" and r5.get("parameters", {}).get("type") == "ram")
+
+    # 6. "block my screen" -> not lock workstation
+    r6 = await engine.understand("block my screen")
+    assert not (r6["understood"] and r6.get("action") == "shutdown" and r6.get("parameters", {}).get("mode") == "lock")

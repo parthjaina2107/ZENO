@@ -36,6 +36,29 @@ KNOWN_WEBSITES = {
     "docs": "https://docs.google.com",
 }
 
+# Compiled regex patterns with word boundaries for precision NLU matching
+RE_URL = re.compile(r"^(?:open|go to|visit)\s+(https?://\S+|www\.\S+|\S+\.(?:com|org|io|net|edu|dev))\b", re.IGNORECASE)
+RE_OPEN_APP = re.compile(r"^(?:open|launch|start|go to)\s+([a-zA-Z0-9_\- ]+)", re.IGNORECASE)
+RE_CLOSE_APP = re.compile(r"^(?:close|kill|exit|stop)\s+([a-zA-Z0-9_\- ]+)", re.IGNORECASE)
+
+RE_BATTERY = re.compile(r"\b(battery|charge|power percentage|battery percentage|battery level)\b", re.IGNORECASE)
+RE_CPU = re.compile(r"\b(cpu|processor usage|processor load|cpu usage)\b", re.IGNORECASE)
+RE_RAM = re.compile(r"\b(ram|memory usage|ram usage)\b", re.IGNORECASE)
+RE_DISK = re.compile(r"\b(disk|storage|drive space|hard drive|free space)\b", re.IGNORECASE)
+RE_IP = re.compile(r"\b(ip address|network address|my ip|\bip\b)\b", re.IGNORECASE)
+RE_TIME = re.compile(r"\b(what time|system time|current time|clock|\btime\b)\b", re.IGNORECASE)
+
+RE_SCREENSHOT = re.compile(r"\b(screenshot|capture screen|snap screen)\b", re.IGNORECASE)
+RE_VOLUME_SET = re.compile(r"\bvolume\s+(?:to\s+)?(\d+)\b", re.IGNORECASE)
+RE_VOLUME_MUTE = re.compile(r"\b(mute|unmute)\b", re.IGNORECASE)
+RE_SEARCH = re.compile(r"^(?:search|google|look up)\s+(?:for\s+)?(.+)", re.IGNORECASE)
+RE_SHUTDOWN = re.compile(r"\b(shutdown|shut down)\b", re.IGNORECASE)
+RE_RESTART = re.compile(r"\b(restart|reboot)\b", re.IGNORECASE)
+RE_LOCK = re.compile(r"\b(lock computer|lock screen|lock workstation|lock pc|\block\b)\b", re.IGNORECASE)
+RE_TYPE = re.compile(r"^(?:type|write)\s+(.+)", re.IGNORECASE)
+RE_CMD = re.compile(r"^(?:run command|execute command|run in terminal|terminal)\s+(.+)", re.IGNORECASE)
+RE_CONVERSATIONAL = re.compile(r"^(what is|what are|who is|who was|why is|why do|how do|how does|how can|tell me|explain|can you explain)\b", re.IGNORECASE)
+
 SYSTEM_PROMPT = """You are a computer control assistant. The user will give you voice commands.
 Your job is to understand the intent and return a structured JSON response.
 
@@ -83,7 +106,7 @@ If you don't understand the command, set "understood": false and suggest what th
 
 class NLUEngine:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or config.GEMINI_API_KEY
+        self.api_key = config.GEMINI_API_KEY if api_key is None else api_key
         self.client = None
         self._init_client()
 
@@ -153,113 +176,11 @@ class NLUEngine:
         return response
 
     def _local_fallback_understand(self, text: str) -> Dict[str, Any]:
-        """Built-in regex/keyword parser for reliable offline operation."""
+        """Built-in regex/keyword parser for reliable offline operation with word-boundary precision."""
         lowered = text.lower().strip()
 
-        # System Info queries
-        if any(w in lowered for w in ["battery", "charge", "power percentage", "battery percentage", "battery level"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "battery"},
-                "description": "Check device battery level and charging status",
-                "risk_level": "low",
-                "confirmation_message": "Checking battery level."
-            }
-        if any(w in lowered for w in ["cpu", "processor usage", "processor load", "cpu usage"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "cpu"},
-                "description": "Check current CPU utilization percentage",
-                "risk_level": "low",
-                "confirmation_message": "Checking CPU usage."
-            }
-        if any(w in lowered for w in ["ram", "memory usage", "memory", "ram usage"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "ram"},
-                "description": "Check RAM memory usage",
-                "risk_level": "low",
-                "confirmation_message": "Checking RAM usage."
-            }
-        if any(w in lowered for w in ["disk", "storage", "drive space", "hard drive", "free space"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "disk"},
-                "description": "Check hard drive storage space",
-                "risk_level": "low",
-                "confirmation_message": "Checking disk storage."
-            }
-        if any(w in lowered for w in ["ip", "ip address", "network address", "my ip"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "ip"},
-                "description": "Check local IP address",
-                "risk_level": "low",
-                "confirmation_message": "Checking IP address."
-            }
-        if any(w in lowered for w in ["time", "clock", "date"]):
-            return {
-                "understood": True,
-                "action": "system_info",
-                "parameters": {"type": "time"},
-                "description": "Get current system time",
-                "risk_level": "low",
-                "confirmation_message": "Checking current time."
-            }
-
-        # Screenshot
-        if "screenshot" in lowered or "capture screen" in lowered or "snap screen" in lowered:
-            return {
-                "understood": True,
-                "action": "screenshot",
-                "parameters": {},
-                "description": "Capture current desktop screenshot",
-                "risk_level": "low",
-                "confirmation_message": "Take a screenshot now?"
-            }
-
-        # Volume
-        volume_match = re.search(r"volume\s+(?:to\s+)?(\d+)", lowered)
-        if volume_match:
-            level = int(volume_match.group(1))
-            return {
-                "understood": True,
-                "action": "volume_set",
-                "parameters": {"level": level},
-                "description": f"Set system volume to {level}%",
-                "risk_level": "low",
-                "confirmation_message": f"Set volume to {level}%?"
-            }
-        if "mute" in lowered:
-            return {
-                "understood": True,
-                "action": "volume_set",
-                "parameters": {"level": 0},
-                "description": "Mute system volume",
-                "risk_level": "low",
-                "confirmation_message": "Mute system volume?"
-            }
-
-        # Web Search
-        search_match = re.search(r"(?:search|google|look up)\s+(?:for\s+)?(.+)", lowered)
-        if search_match:
-            query = search_match.group(1).strip()
-            return {
-                "understood": True,
-                "action": "web_search",
-                "parameters": {"query": query},
-                "description": f"Search Google for '{query}'",
-                "risk_level": "low",
-                "confirmation_message": f"Search Google for '{query}'?"
-            }
-
-        # Open URL
-        url_match = re.search(r"(?:open|go to|visit)\s+(https?://\S+|www\.\S+|\S+\.(?:com|org|io|net|edu|dev))", lowered)
+        # 1. URL pattern
+        url_match = RE_URL.search(lowered)
         if url_match:
             url = url_match.group(1).strip()
             return {
@@ -271,8 +192,8 @@ class NLUEngine:
                 "confirmation_message": f"Open {url}?"
             }
 
-        # Open App or Known Website
-        open_match = re.search(r"(?:open|launch|start|go to)\s+([a-zA-Z0-9_\- ]+)", lowered)
+        # 2. Open App or Known Website (Checked BEFORE system info so 'open instagram' is not read as 'ram')
+        open_match = RE_OPEN_APP.search(lowered)
         if open_match:
             app_raw = open_match.group(1).strip()
             # Strip browser context words: "in chrome", "in browser", "in edge", etc.
@@ -302,8 +223,8 @@ class NLUEngine:
                 "confirmation_message": f"Open application '{app_raw}'?"
             }
 
-        # Close App
-        close_match = re.search(r"(?:close|kill|exit|stop)\s+([a-zA-Z0-9_\- ]+)", lowered)
+        # 3. Close App
+        close_match = RE_CLOSE_APP.search(lowered)
         if close_match:
             app = close_match.group(1).strip()
             return {
@@ -315,50 +236,8 @@ class NLUEngine:
                 "confirmation_message": f"Close application '{app}'?"
             }
 
-        # Shutdown / Restart / Lock
-        if "shutdown" in lowered:
-            return {
-                "understood": True,
-                "action": "shutdown",
-                "parameters": {"mode": "shutdown"},
-                "description": "Shutdown the computer in 5 seconds",
-                "risk_level": "high",
-                "confirmation_message": "Are you sure you want to SHUT DOWN your computer?"
-            }
-        if "restart" in lowered or "reboot" in lowered:
-            return {
-                "understood": True,
-                "action": "shutdown",
-                "parameters": {"mode": "restart"},
-                "description": "Restart the computer in 5 seconds",
-                "risk_level": "high",
-                "confirmation_message": "Are you sure you want to RESTART your computer?"
-            }
-        if "lock" in lowered or "lock screen" in lowered:
-            return {
-                "understood": True,
-                "action": "shutdown",
-                "parameters": {"mode": "lock"},
-                "description": "Lock the Windows session",
-                "risk_level": "medium",
-                "confirmation_message": "Lock computer workstation?"
-            }
-
-        # Typing text
-        type_match = re.search(r"(?:type|write)\s+(.+)", lowered)
-        if type_match:
-            typed = type_match.group(1).strip()
-            return {
-                "understood": True,
-                "action": "type_text",
-                "parameters": {"text": typed},
-                "description": f"Type text: '{typed}'",
-                "risk_level": "medium",
-                "confirmation_message": f"Type '{typed}'?"
-            }
-
-        # Terminal / Shell commands
-        cmd_match = re.search(r"(?:run command|execute command|run in terminal|terminal)\s+(.+)", lowered)
+        # 4. Terminal / Shell command
+        cmd_match = RE_CMD.search(lowered)
         if cmd_match:
             cmd = cmd_match.group(1).strip()
             return {
@@ -370,8 +249,152 @@ class NLUEngine:
                 "confirmation_message": f"Run command '{cmd}' in terminal?"
             }
 
-        # Quick bypass for conversational questions (lets ZenoBrain jump straight to conversational chat)
-        if lowered.startswith(("what is ", "what are ", "who is ", "who was ", "why is ", "why do ", "how do ", "how does ", "how can ", "tell me ", "explain ", "can you explain ")) and not any(w in lowered for w in ["battery", "cpu", "ram", "disk", "time", "ip"]):
+        # 5. Volume controls
+        vol_match = RE_VOLUME_SET.search(lowered)
+        if vol_match:
+            level = int(vol_match.group(1))
+            return {
+                "understood": True,
+                "action": "volume_set",
+                "parameters": {"level": level},
+                "description": f"Set system volume to {level}%",
+                "risk_level": "low",
+                "confirmation_message": f"Set volume to {level}%?"
+            }
+        if RE_VOLUME_MUTE.search(lowered):
+            return {
+                "understood": True,
+                "action": "volume_set",
+                "parameters": {"level": 0},
+                "description": "Mute system volume",
+                "risk_level": "low",
+                "confirmation_message": "Mute system volume?"
+            }
+
+        # 6. Screenshot
+        if RE_SCREENSHOT.search(lowered):
+            return {
+                "understood": True,
+                "action": "screenshot",
+                "parameters": {},
+                "description": "Capture current desktop screenshot",
+                "risk_level": "low",
+                "confirmation_message": "Take a screenshot now?"
+            }
+
+        # 7. Web search
+        search_match = RE_SEARCH.search(lowered)
+        if search_match:
+            query = search_match.group(1).strip()
+            return {
+                "understood": True,
+                "action": "web_search",
+                "parameters": {"query": query},
+                "description": f"Search Google for '{query}'",
+                "risk_level": "low",
+                "confirmation_message": f"Search Google for '{query}'?"
+            }
+
+        # 8. Typing text
+        type_match = RE_TYPE.search(lowered)
+        if type_match:
+            typed = type_match.group(1).strip()
+            return {
+                "understood": True,
+                "action": "type_text",
+                "parameters": {"text": typed},
+                "description": f"Type text: '{typed}'",
+                "risk_level": "medium",
+                "confirmation_message": f"Type '{typed}'?"
+            }
+
+        # 9. System Info queries with strict word boundaries
+        if RE_BATTERY.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "battery"},
+                "description": "Check device battery level and charging status",
+                "risk_level": "low",
+                "confirmation_message": "Checking battery level."
+            }
+        if RE_CPU.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "cpu"},
+                "description": "Check current CPU utilization percentage",
+                "risk_level": "low",
+                "confirmation_message": "Checking CPU usage."
+            }
+        if RE_RAM.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "ram"},
+                "description": "Check RAM memory usage",
+                "risk_level": "low",
+                "confirmation_message": "Checking RAM usage."
+            }
+        if RE_DISK.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "disk"},
+                "description": "Check hard drive storage space",
+                "risk_level": "low",
+                "confirmation_message": "Checking disk storage."
+            }
+        if RE_IP.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "ip"},
+                "description": "Check local IP address",
+                "risk_level": "low",
+                "confirmation_message": "Checking IP address."
+            }
+        if RE_TIME.search(lowered):
+            return {
+                "understood": True,
+                "action": "system_info",
+                "parameters": {"type": "time"},
+                "description": "Get current system time",
+                "risk_level": "low",
+                "confirmation_message": "Checking current time."
+            }
+
+        # 10. Shutdown / Restart / Lock with word boundaries
+        if RE_SHUTDOWN.search(lowered):
+            return {
+                "understood": True,
+                "action": "shutdown",
+                "parameters": {"mode": "shutdown"},
+                "description": "Shutdown the computer in 5 seconds",
+                "risk_level": "high",
+                "confirmation_message": "Are you sure you want to SHUT DOWN your computer?"
+            }
+        if RE_RESTART.search(lowered):
+            return {
+                "understood": True,
+                "action": "shutdown",
+                "parameters": {"mode": "restart"},
+                "description": "Restart the computer in 5 seconds",
+                "risk_level": "high",
+                "confirmation_message": "Are you sure you want to RESTART your computer?"
+            }
+        if RE_LOCK.search(lowered):
+            return {
+                "understood": True,
+                "action": "shutdown",
+                "parameters": {"mode": "lock"},
+                "description": "Lock the Windows session",
+                "risk_level": "medium",
+                "confirmation_message": "Lock computer workstation?"
+            }
+
+        # 11. Conversational query bypass (falls through to chat)
+        if RE_CONVERSATIONAL.search(lowered) and not any(r.search(lowered) for r in (RE_BATTERY, RE_CPU, RE_RAM, RE_DISK, RE_IP, RE_TIME)):
             return {
                 "understood": False,
                 "action": "none",
