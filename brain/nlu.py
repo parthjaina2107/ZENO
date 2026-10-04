@@ -447,8 +447,10 @@ class NLUEngine:
                 response = await call_gemini_with_fallback(
                     client=self.client,
                     contents=prompt,
-                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    generation_config={"response_mime_type": "application/json"}
                 )
+
                 if response and hasattr(response, "text") and response.text:
                     raw_json = response.text
                     cleaned = self._clean_json_string(raw_json)

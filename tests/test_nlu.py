@@ -94,12 +94,12 @@ async def test_api_utils_fallback_retry():
     mock_resp = MagicMock()
     mock_resp.text = '{"understood": true, "action": "system_info"}'
 
-    # First call on gemini-3.8-flash raises 503, second call succeeds on fallback model
+    # First call on gemini-2.5-flash raises 503, second call succeeds on fallback model
     call_counts = {"attempts": 0}
 
-    def fake_generate(model, contents):
+    def fake_generate(model, contents, **kwargs):
         call_counts["attempts"] += 1
-        if model == "gemini-3.8-flash":
+        if model == "gemini-2.5-flash":
             raise Exception("503 Service Unavailable")
         return mock_resp
 
@@ -108,7 +108,7 @@ async def test_api_utils_fallback_retry():
     resp = await call_gemini_with_fallback(
         client=mock_client,
         contents="test prompt",
-        primary_model="gemini-3.8-flash",
+        primary_model="gemini-2.5-flash",
         max_retries=1
     )
 
@@ -145,3 +145,55 @@ async def test_nlu_misroutes_prevented():
     # 6. "block my screen" -> not lock workstation
     r6 = await engine.understand("block my screen")
     assert not (r6["understood"] and r6.get("action") == "shutdown" and r6.get("parameters", {}).get("mode") == "lock")
+
+
+def test_default_gemini_model_is_valid():
+    from config import config
+    assert config.GEMINI_MODEL == "gemini-2.5-flash"
+
+
+@pytest.mark.asyncio
+async def test_call_gemini_timeout():
+    import time
+    from unittest.mock import MagicMock
+    from brain.api_utils import call_gemini_with_fallback
+
+    mock_client = MagicMock()
+    def slow_generate(*args, **kwargs):
+        time.sleep(0.3)
+        return MagicMock(text="ok")
+
+    mock_client.models.generate_content.side_effect = slow_generate
+
+    resp = await call_gemini_with_fallback(
+        client=mock_client,
+        contents="prompt",
+        primary_model="test-model",
+        max_retries=1,
+        timeout=0.05
+    )
+    assert resp is None
+
+
+@pytest.mark.asyncio
+async def test_nlu_requests_json_mime_type():
+    from unittest.mock import MagicMock
+    engine = NLUEngine(api_key="fake-key")
+    mock_client = MagicMock()
+    captured_kwargs = {}
+
+    def fake_generate(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        res = MagicMock()
+        res.text = '{"understood": true, "action": "system_info", "parameters": {"type": "battery"}}'
+        return res
+
+    mock_client.models.generate_content.side_effect = fake_generate
+    engine.client = mock_client
+
+    # Use a query that the local fallback parser cannot handle,
+    # forcing the NLU to call Gemini API
+    await engine.understand("compress all my photos into a zip file")
+    assert "config" in captured_kwargs
+    assert captured_kwargs["config"].get("response_mime_type") == "application/json"
+

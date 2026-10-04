@@ -92,7 +92,7 @@ class ScreenVision:
 
         # 2. If Gemini client is active, run multimodal analysis
         if self.client:
-            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
+            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
             system_instruction = (
                 "You are ZENO, an autonomous AI computer assistant. "
                 "The user is asking you a question about their current computer screen. "
@@ -113,7 +113,7 @@ class ScreenVision:
                 response = await call_gemini_with_fallback(
                     client=self.client,
                     contents=[image, prompt],
-                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
                 )
 
                 if response and hasattr(response, "text") and response.text:

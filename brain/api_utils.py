@@ -16,18 +16,20 @@ async def call_gemini_with_fallback(
     primary_model: Optional[str] = None,
     max_retries: int = 2,
     initial_backoff: float = 1.0,
+    generation_config: Optional[Any] = None,
+    timeout: float = 15.0,
 ) -> Optional[Any]:
     """
-    Try primary model, then each fallback model, with retry and exponential backoff.
-    Executes synchronous SDK generate_content calls via asyncio.to_thread
-    so the asyncio event loop is never blocked.
+    Try primary model, then each fallback model, with retry, backoff, and 15s timeout.
+    Executes synchronous SDK generate_content calls via asyncio.to_thread wrapped
+    in asyncio.wait_for so neither the thread pool nor the asyncio event loop can hang.
     Returns the response object, or None if all models/retries fail.
     """
     if client is None:
         return None
 
-    primary = primary_model or getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
-    fallbacks = getattr(config, "GEMINI_FALLBACK_MODELS", ["gemini-2.5-flash", "gemini-2.0-flash"])
+    primary = primary_model or getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
+    fallbacks = getattr(config, "GEMINI_FALLBACK_MODELS", ["gemini-2.0-flash"])
     
     # Maintain order without duplicates
     models_to_try = [primary]
@@ -35,17 +37,34 @@ async def call_gemini_with_fallback(
         if fb not in models_to_try:
             models_to_try.append(fb)
 
+    gen_kwargs = {}
+    if generation_config is not None:
+        gen_kwargs["config"] = generation_config
+
     for model in models_to_try:
         for attempt in range(max_retries):
             try:
-                # Run synchronous GenAI call in thread pool to prevent blocking event loop
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model,
-                    contents=contents,
+                # Run synchronous GenAI call in thread pool wrapped with timeout
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model,
+                        contents=contents,
+                        **gen_kwargs
+                    ),
+                    timeout=timeout
                 )
                 if response:
                     return response
+            except (asyncio.TimeoutError, TimeoutError):
+                logger.warning(
+                    f"Model '{model}' call timed out after {timeout}s (attempt {attempt + 1}/{max_retries})."
+                )
+                if attempt < max_retries - 1:
+                    wait = initial_backoff * (2 ** attempt)
+                    await asyncio.sleep(wait)
+                else:
+                    break
             except Exception as e:
                 err_str = str(e)
                 is_transient = any(
@@ -65,3 +84,4 @@ async def call_gemini_with_fallback(
 
     logger.error("All Gemini models in fallback chain failed.")
     return None
+

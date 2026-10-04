@@ -63,7 +63,7 @@ class ZenoBrain:
     async def _generate_conversational_reply(self, user_text: str) -> str:
         """Generate conversational answer using Gemini 2.5 Flash with memory & context."""
         if self.client:
-            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-3.8-flash")
+            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
             dialogue_context = self.memory.format_dialogue_context(limit=4)
             personal_memories = self.memory.format_memory_for_prompt()
 
@@ -87,8 +87,9 @@ class ZenoBrain:
                 response = await call_gemini_with_fallback(
                     client=self.client,
                     contents=full_prompt,
-                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-3.8-flash"),
+                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
                 )
+
                 if response and hasattr(response, "text") and response.text:
                     answer = response.text.strip()
                     if answer:
