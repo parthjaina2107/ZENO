@@ -189,6 +189,7 @@ class VoiceAgentApp:
             # Step 4: Execution
             print(f"⚡ [Executing]: {action.description}...")
             result = self.planner.execute_action(action)
+            self.permissions.log_result(action, result, source="local")
 
             # Step 5: Output & Speech
             if result.success:

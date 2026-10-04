@@ -261,6 +261,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
                 # Execute action
                 result = planner.execute_action(action)
+                perms.log_result(action, result, source="remote")
 
                 if action.action_type == "screenshot" and result.success and isinstance(result.output, dict):
                     # Send screenshot base64 preview

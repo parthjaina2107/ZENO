@@ -35,6 +35,8 @@ class PermissionManager:
         """Append permission decision to audit trail file."""
         entry = {
             "timestamp": datetime.datetime.now().isoformat(),
+            "event": "permission_decision",
+            "action_id": getattr(action, "action_id", None),
             "source": source,
             "action_type": action.action_type,
             "risk_level": action.risk_level,
@@ -52,6 +54,33 @@ class PermissionManager:
             logger.error(f"Failed to record audit log: {e}")
 
         logger.info(f"Audit: [{source.upper()}] Action '{action.action_type}' (Risk: {action.risk_level}) -> Approved: {approved}")
+
+    def log_result(
+        self,
+        action: PlannedAction,
+        result: Any,
+        source: str = "local"
+    ):
+        """Append action execution result to audit trail file next to its approval."""
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "event": "execution_result",
+            "action_id": getattr(action, "action_id", None),
+            "source": source,
+            "action_type": action.action_type,
+            "success": getattr(result, "success", False),
+            "message": getattr(result, "message", ""),
+            "error": getattr(result, "error", None)
+        }
+
+        try:
+            self.audit_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.audit_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to record audit log result: {e}")
+
+        logger.info(f"Audit Result: [{source.upper()}] Action '{action.action_type}' -> Success: {getattr(result, 'success', False)}")
 
     async def request_permission_local(self, action: PlannedAction) -> bool:
         """
