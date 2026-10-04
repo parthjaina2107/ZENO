@@ -11,11 +11,37 @@ import logging
 import base64
 import io
 import datetime
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from brain.planner import ActionResult
 from config import config
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+try:
+    import pyautogui
+except ImportError:
+    pyautogui = None
+
+try:
+    import pyperclip
+except ImportError:
+    pyperclip = None
+
 logger = logging.getLogger("VoiceAgent.SystemOps")
+
+def _get_pycaw_volume():
+    """Helper to get pycaw volume endpoint, isolated for testability and fallback."""
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from comtypes import CLSCTX_ALL
+    devices = AudioUtilities.GetSpeakers()
+    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    volume = interface.QueryInterface(IAudioEndpointVolume)
+    return volume
+
 
 # Critical Windows processes that must NEVER be killed
 PROTECTED_PROCESSES = {
@@ -183,31 +209,32 @@ class SystemOps:
         """Set Windows system volume (0-100)."""
         level = max(0, min(100, int(level)))
         try:
-            # PowerShell audio helper script using SoundVolumeView or SAPI/nircmd or SendKeys
-            # On Windows without 3rd party tools, we can step volume up or down or use pycaw if installed
-            # Alternatively use Windows Volume Virtual Keys or powershell WScript.Shell
-            import pyautogui
-            if level == 0:
-                pyautogui.press("volumemute")
-                return ActionResult(success=True, message="Volume muted.")
-            
-            # Approximate volume adjustment via media keys or powershell
-            ps_script = f"""
-            $obj = New-Object -ComObject WScript.Shell
-            1..50 | ForEach-Object {{ $obj.SendKeys([char]174) }}
-            1..{int(level / 2)} | ForEach-Object {{ $obj.SendKeys([char]175) }}
-            """
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], timeout=5)
-            return ActionResult(success=True, message=f"System volume adjusted to approximately {level}%.")
+            try:
+                volume = _get_pycaw_volume()
+                scalar = level / 100.0
+                volume.SetMasterVolumeLevelScalar(scalar, None)
+                return ActionResult(success=True, message=f"System volume set to {level}%.")
+            except (ImportError, Exception) as pycaw_err:
+                logger.debug(f"pycaw not available or failed ({pycaw_err}), falling back to keys")
+                if pyautogui:
+                    if level == 0:
+                        pyautogui.press("volumemute")
+                        return ActionResult(success=True, message="Volume muted.")
+                
+                # Approximate volume adjustment via media keys or powershell
+                ps_script = f"""
+                $obj = New-Object -ComObject WScript.Shell
+                1..50 | ForEach-Object {{ $obj.SendKeys([char]174) }}
+                1..{int(level / 2)} | ForEach-Object {{ $obj.SendKeys([char]175) }}
+                """
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], timeout=5)
+                return ActionResult(success=True, message=f"System volume adjusted to approximately {level}%.")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to adjust volume: {e}", error=str(e))
 
     def screenshot(self) -> ActionResult:
         """Capture screenshot, save to file, and return base64 encoded thumbnail."""
         try:
-            import pyautogui
-            from PIL import Image
-
             shot = pyautogui.screenshot()
             
             # Ensure screenshots directory
@@ -238,7 +265,6 @@ class SystemOps:
 
     def system_info(self, info_type: str = "battery") -> ActionResult:
         """Query system telemetry: battery, CPU, RAM, disk, IP, time."""
-        import psutil
         clean_type = info_type.strip().lower()
 
         try:
@@ -276,12 +302,14 @@ class SystemOps:
                 )
 
             elif clean_type in ("disk", "storage"):
-                disk = psutil.disk_usage('C:\\')
+                anchor = Path.home().anchor
+                disk = psutil.disk_usage(anchor)
                 free_gb = round(disk.free / (1024**3), 1)
                 total_gb = round(disk.total / (1024**3), 1)
+                clean_anchor = anchor.rstrip("\\")
                 return ActionResult(
                     success=True,
-                    message=f"C: Drive has {free_gb} GB free out of {total_gb} GB ({disk.percent}% used).",
+                    message=f"{clean_anchor} Drive has {free_gb} GB free out of {total_gb} GB ({disk.percent}% used).",
                     output={"percent": disk.percent, "free_gb": free_gb, "total_gb": total_gb}
                 )
 
@@ -315,16 +343,13 @@ class SystemOps:
     # ==================== KEYBOARD & MOUSE ====================
 
     def type_text(self, text: str) -> ActionResult:
-        """Type text using clipboard paste for Unicode safety, fallback to typewrite."""
+        """Type text using clipboard paste for Unicode safety, restoring clipboard in finally."""
+        old_clip = None
         try:
-            import pyperclip
-            import pyautogui
-            # Using clipboard paste preserves emoji, symbols, newlines accurately
-            old_clip = ""
             try:
                 old_clip = pyperclip.paste()
             except Exception:
-                pass
+                old_clip = None
 
             pyperclip.copy(text)
             pyautogui.hotkey("ctrl", "v")
@@ -332,6 +357,12 @@ class SystemOps:
             return ActionResult(success=True, message=f"Typed {len(text)} characters.")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to type text: {e}", error=str(e))
+        finally:
+            if old_clip is not None:
+                try:
+                    pyperclip.copy(old_clip)
+                except Exception:
+                    pass
 
     def keyboard_shortcut(self, keys: List[str]) -> ActionResult:
         """Press keyboard shortcut keys simultaneously (e.g., ['ctrl', 's'])."""
