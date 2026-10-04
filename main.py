@@ -12,6 +12,7 @@ import logging
 import signal
 import sys
 import threading
+from typing import Optional
 import uvicorn
 
 # Ensure UTF-8 output on Windows consoles
@@ -27,18 +28,35 @@ from voice.speaker import VoiceSpeaker
 from voice.listener import VoiceListener
 from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
+from logging.handlers import RotatingFileHandler
 from executor.permissions import PermissionManager
 from tunnel.tunnel_manager import TunnelManager
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler(config.LOG_FILE, encoding="utf-8")
-    ]
-)
+def setup_logging(log_file: Optional[str] = None, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 5):
+    """Configure console and rotating file logging."""
+    target_file = log_file or config.LOG_FILE
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+
+    file_handler = RotatingFileHandler(
+        target_file,
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers.clear()
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
+
+    return [stream_handler, file_handler]
+
+setup_logging()
 logger = logging.getLogger("VoiceAgent.Main")
 
 
