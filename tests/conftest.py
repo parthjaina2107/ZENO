@@ -2,9 +2,33 @@
 Pytest configuration and common test fixtures.
 """
 
+import os
+import sys
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+# Gracefully provide mock fallbacks for headless CI environments
+for mod_name in ["pyaudio", "win32com", "win32com.client"]:
+    if mod_name not in sys.modules:
+        try:
+            __import__(mod_name)
+        except Exception:
+            sys.modules[mod_name] = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def mock_headless_environment_if_ci(monkeypatch):
+    """Ensure headless CI runners (e.g. GitHub Actions) don't crash on GUI calls."""
+    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+        try:
+            import pyautogui
+            from PIL import Image
+            monkeypatch.setattr(pyautogui, "size", lambda: (1920, 1080))
+            dummy_img = Image.new("RGB", (100, 100), color="blue")
+            monkeypatch.setattr(pyautogui, "screenshot", lambda *a, **kw: dummy_img)
+        except Exception:
+            pass
 
 
 class FakeSpeaker:
