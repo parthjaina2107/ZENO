@@ -1,0 +1,2 @@
+# Optional local offline STT with OpenAI Whisper
+openai-whisper>=20231117
