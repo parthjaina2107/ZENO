@@ -44,11 +44,15 @@ class ZenoMemory:
             self._save_long_term_memory()
 
     def _save_long_term_memory(self):
-        """Persist long-term memory to disk."""
+        """Persist long-term memory to disk atomically via temp file + os.replace."""
         try:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.storage_path, "w", encoding="utf-8") as f:
+            tmp_path = str(self.storage_path) + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(self.long_term_data, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, str(self.storage_path))
         except Exception as e:
             logger.error(f"Failed to save persistent memory to {self.storage_path}: {e}")
 
