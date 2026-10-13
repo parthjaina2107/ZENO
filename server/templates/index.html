@@ -560,6 +560,7 @@
     let socket = null;
     let currentRequestId = null;
     let currentActionId = null;
+    let currentPlanActionIds = null;
     let recognition = null;
     let isRecording = false;
 
@@ -726,6 +727,20 @@
           speak(data.message || "Permission required to execute action. Approve or deny?");
           break;
 
+        case "plan_preview":
+          currentRequestId = data.request_id;
+          currentActionId = null;
+          currentPlanActionIds = data.steps.map(step => step.action_id);
+          permBadge.textContent = `${data.steps.length} Step Plan`;
+          permBadge.className = "perm-badge medium";
+          permTitle.textContent = "REVIEW EXECUTION PLAN";
+          permDesc.textContent = data.steps.map(step => `${step.number}. [${step.risk_level}] ${step.description}`).join("\n");
+          permDesc.style.whiteSpace = "pre-line";
+          permApproveBtn.textContent = "✅ Review & Continue";
+          permOverlay.classList.add("active");
+          speak("A multi-step plan is ready for your review.");
+          break;
+
         default:
           console.log("Unhandled event:", data);
       }
@@ -734,31 +749,31 @@
     // Permission Handlers
     permApproveBtn.addEventListener("click", () => {
       if (currentRequestId) {
-        sendWsMessage({
-          type: "permission_response",
-          request_id: currentRequestId,
-          action_id: currentActionId,
-          approved: true
-        });
+        sendWsMessage(currentPlanActionIds ? {
+          type: "plan_review_response", request_id: currentRequestId,
+          action_ids: currentPlanActionIds, approved: true
+        } : { type: "permission_response", request_id: currentRequestId, action_id: currentActionId, approved: true });
         appendMessage("✅ You APPROVED the action.", "user");
         permOverlay.classList.remove("active");
         currentRequestId = null;
         currentActionId = null;
+        currentPlanActionIds = null;
+        permApproveBtn.textContent = "✅ Approve";
       }
     });
 
     permDenyBtn.addEventListener("click", () => {
       if (currentRequestId) {
-        sendWsMessage({
-          type: "permission_response",
-          request_id: currentRequestId,
-          action_id: currentActionId,
-          approved: false
-        });
+        sendWsMessage(currentPlanActionIds ? {
+          type: "plan_review_response", request_id: currentRequestId,
+          action_ids: currentPlanActionIds, approved: false
+        } : { type: "permission_response", request_id: currentRequestId, action_id: currentActionId, approved: false });
         appendMessage("❌ You DENIED the action.", "user");
         permOverlay.classList.remove("active");
         currentRequestId = null;
         currentActionId = null;
+        currentPlanActionIds = null;
+        permApproveBtn.textContent = "✅ Approve";
       }
     });
 
@@ -864,10 +879,15 @@
       if (!code) return;
 
       try {
+        let deviceId = localStorage.getItem("zeno_device_id");
+        if (!deviceId) {
+          deviceId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+          localStorage.setItem("zeno_device_id", deviceId);
+        }
         const res = await fetch("/auth", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `token=${encodeURIComponent(code)}`
+          body: `token=${encodeURIComponent(code)}&device_id=${encodeURIComponent(deviceId)}&device_label=${encodeURIComponent(navigator.userAgent.slice(0, 64))}`
         });
 
         const data = await res.json();

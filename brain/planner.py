@@ -32,6 +32,9 @@ class ScreenshotParams(BaseModel):
 class ListAppsParams(BaseModel):
     pass
 
+class UIInspectParams(BaseModel):
+    pass
+
 class OpenAppParams(BaseModel):
     app_name: str = Field(..., min_length=1)
 
@@ -91,6 +94,7 @@ ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
     "system_info": SystemInfoParams,
     "screenshot": ScreenshotParams,
     "list_apps": ListAppsParams,
+    "ui_inspect": UIInspectParams,
     "open_app": OpenAppParams,
     "close_app": CloseAppParams,
     "open_url": OpenUrlParams,
@@ -211,6 +215,8 @@ def describe_action(action: PlannedAction) -> str:
         return "Take screenshot"
     elif act_type == "list_apps":
         return "List running applications"
+    elif act_type == "ui_inspect":
+        return "Inspect the focused window and its accessible controls"
     elif act_type == "shutdown":
         mode = params.get("mode", "lock")
         return f'System {mode}'

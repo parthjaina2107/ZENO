@@ -19,6 +19,7 @@ EXEC_LOCK = asyncio.Lock()
 
 from config import config
 from .auth import auth_manager
+from .pairing import device_registry
 from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
 from executor.permissions import PermissionManager
@@ -109,12 +110,18 @@ async def serve_home():
 
 
 @app.post("/auth")
-async def authenticate(request: Request, token: str = Form(...)):
-    """Authenticate with secret passphrase and receive a 24-hour JWT token."""
+async def authenticate(request: Request, token: str = Form(...), device_id: str = Form(default=""), device_label: str = Form(default="Unnamed device")):
+    """Pair an identified device after passphrase validation and issue a scoped session."""
     client_ip = get_client_ip(request)
     if auth_manager.verify_passphrase(token, client_id=client_ip):
-        jwt_token = auth_manager.create_session_token(client_id=client_ip)
-        return JSONResponse(content={"status": "authenticated", "jwt_token": jwt_token})
+        try:
+            # Kept for older clients; current UI always supplies a random stable ID.
+            device_id = device_id or f"legacy-{client_ip}"
+            device = device_registry.pair(device_id, device_label, client_ip)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        jwt_token = auth_manager.create_session_token(client_id=client_ip, device_id=device_id)
+        return JSONResponse(content={"status": "authenticated", "jwt_token": jwt_token, "device": device})
     else:
         locked, remaining = auth_manager.is_locked_out(client_ip)
         if locked:
@@ -137,7 +144,8 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
     elif token:
         jwt_val = token.strip()
 
-    if not jwt_val or not auth_manager.verify_session_token(jwt_val):
+    payload = auth_manager.verify_session_token(jwt_val) if jwt_val else None
+    if not payload or not device_registry.is_active(payload.get("device_id", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required for health endpoint."
@@ -152,6 +160,59 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
     }
 
 
+def verified_session(token: str, client_ip: str = "") -> Optional[Dict[str, Any]]:
+    payload = auth_manager.verify_session_token(token)
+    if not payload or not device_registry.is_active(payload.get("device_id", "")):
+        return None
+    if client_ip:
+        device_registry.touch(payload["device_id"], client_ip)
+    return payload
+
+
+@app.get("/api/devices")
+async def paired_devices(authorization: Optional[str] = Header(None)):
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    if not verified_session(token):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    return {"devices": device_registry.list_safe()}
+
+
+@app.delete("/api/devices/{device_id}")
+async def revoke_device(device_id: str, authorization: Optional[str] = Header(None)):
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    payload = verified_session(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    if payload.get("device_id") == device_id:
+        raise HTTPException(status_code=400, detail="Use another paired device to revoke this device.")
+    if not device_registry.revoke(device_id):
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return {"status": "revoked"}
+
+
+@app.get("/api/audit")
+async def read_audit(limit: int = 100, authorization: Optional[str] = Header(None)):
+    token = authorization.removeprefix("Bearer ").strip() if authorization else ""
+    if not verified_session(token):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    limit = max(1, min(limit, 500))
+    path = config.BASE_DIR / "audit_log.jsonl"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
+        return {"events": [json.loads(line) for line in lines if line.strip()]}
+    except FileNotFoundError:
+        return {"events": []}
+
+
+@app.get("/audit", response_class=HTMLResponse)
+async def serve_audit_dashboard():
+    """The data itself remains protected by /api/audit authentication."""
+    path = TEMPLATE_PATH.parent / "audit.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audit dashboard template not found.")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     """Real-time bi-directional channel for remote voice/text control."""
@@ -159,7 +220,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
     auth_payload = None
     if token:
-        auth_payload = auth_manager.verify_session_token(token)
+        auth_payload = verified_session(token, websocket.client.host if websocket.client else "")
 
     if not auth_payload:
         # Await first WebSocket message containing {"type": "auth", "token": "..."}
@@ -168,7 +229,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             msg_first = json.loads(raw_first)
             cand_token = msg_first.get("token") or (msg_first.get("text") if msg_first.get("type") == "auth" else None)
             if cand_token:
-                auth_payload = auth_manager.verify_session_token(cand_token)
+                auth_payload = verified_session(cand_token, websocket.client.host if websocket.client else "")
             if not auth_payload:
                 logger.warning("Rejected unauthorized WebSocket: invalid first message auth.")
                 await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized"}))
@@ -184,6 +245,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     logger.info(f"Remote client connected via WebSocket (user: {auth_payload.get('sub', 'unknown')}).")
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
+    device_id = auth_payload["device_id"]
     active_tasks = set()
 
 
@@ -221,6 +283,11 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 return
 
             plan = brain_resp.actions
+            if len(plan) > 1:
+                approved_plan = await perms.request_plan_review_remote(plan, send_to_client, device_id=device_id)
+                if not approved_plan:
+                    await send_to_client({"type": "response", "message": "Plan cancelled: review was denied or timed out."})
+                    return
             for action in plan:
                 if action.action_type in ("unhandled", "unknown"):
                     reply_msg = action.confirmation_message or "I didn't understand that command."
@@ -244,7 +311,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                         approved = await perms.request_permission_remote(
                             action=action,
                             send_func=send_to_client,
-                            timeout=config.REMOTE_CONFIRMATION_TIMEOUT
+                            timeout=config.REMOTE_CONFIRMATION_TIMEOUT,
+                            device_id=device_id,
                         )
 
                         if not approved:
@@ -326,7 +394,11 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 req_id = msg.get("request_id")
                 approved = bool(msg.get("approved", False))
                 action_id = msg.get("action_id")
-                perms.resolve_remote_permission(req_id, approved, action_id=action_id)
+                perms.resolve_remote_permission(req_id, approved, action_id=action_id, device_id=device_id)
+                continue
+
+            if msg_type == "plan_review_response":
+                perms.resolve_plan_review(msg.get("request_id"), bool(msg.get("approved", False)), msg.get("action_ids", []), device_id)
                 continue
 
             # Voice or text command - processed in background task so receive loop never blocks

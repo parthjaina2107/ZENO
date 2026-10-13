@@ -38,6 +38,7 @@ voiceagent.log
 audit_log.jsonl
 remote_url.txt
 zeno_memory.json
+paired_devices.json
 
 # Testing and coverage
 .pytest_cache/

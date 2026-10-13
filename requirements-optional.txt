@@ -1,2 +1,5 @@
 # Optional local offline STT with OpenAI Whisper
 openai-whisper>=20231117
+
+# Named Windows accessibility controls for "inspect the focused window"
+pywinauto>=0.6.8

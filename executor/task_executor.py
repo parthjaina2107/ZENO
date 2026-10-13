@@ -10,6 +10,7 @@ from brain.planner import PlannedAction, ActionResult
 from .system_ops import SystemOps
 from .browser_ops import BrowserOps
 from .file_ops import FileOps
+from .ui_inspector import UIInspector
 
 logger = logging.getLogger("VoiceAgent.TaskExecutor")
 
@@ -19,6 +20,7 @@ class TaskExecutor:
         self.system = SystemOps()
         self.browser = BrowserOps()
         self.file = FileOps()
+        self.ui = UIInspector()
 
     def execute(self, action: PlannedAction) -> ActionResult:
         """Execute a planned action and return an ActionResult."""
@@ -38,6 +40,8 @@ class TaskExecutor:
 
             elif act_type == "list_apps":
                 return self.system.list_running_apps()
+            elif act_type == "ui_inspect":
+                return self.ui.active_window()
 
             # === BROWSER OPERATIONS ===
             elif act_type == "open_url":

@@ -49,6 +49,7 @@ RE_IP = re.compile(r"\b(ip address|network address|my ip|\bip\b)\b", re.IGNORECA
 RE_TIME = re.compile(r"\b(what time|system time|current time|clock|\btime\b)\b", re.IGNORECASE)
 
 RE_SCREENSHOT = re.compile(r"\b(screenshot|capture screen|snap screen)\b", re.IGNORECASE)
+RE_UI_INSPECT = re.compile(r"\b(inspect (?:the )?(?:window|ui|interface)|what (?:buttons|controls) (?:are )?(?:on|in) (?:this|the) (?:window|screen))\b", re.IGNORECASE)
 RE_VOLUME_SET = re.compile(r"\bvolume\s+(?:to\s+)?(\d+)\b", re.IGNORECASE)
 RE_VOLUME_MUTE = re.compile(r"\b(mute|unmute)\b", re.IGNORECASE)
 RE_SEARCH = re.compile(r"^(?:search|google|look up)\s+(?:for\s+)?(.+)", re.IGNORECASE)
@@ -89,6 +90,7 @@ Available actions:
 - file_search: { "directory": "...", "pattern": "*.txt" }
 - file_read: { "path": "..." }
 - screenshot: {}
+- ui_inspect: {}
 - volume_set: { "level": 50 }
 - system_info: { "type": "battery" | "cpu" | "ram" | "disk" | "ip" | "time" }
 - shutdown: { "mode": "shutdown" | "restart" | "sleep" | "lock" }
@@ -272,6 +274,15 @@ class NLUEngine:
             }
 
         # 6. Screenshot
+        if RE_UI_INSPECT.search(lowered):
+            return {
+                "understood": True,
+                "action": "ui_inspect",
+                "parameters": {},
+                "description": "Inspect the focused window and accessible controls",
+                "risk_level": "low",
+                "confirmation_message": "Inspect the focused window?"
+            }
         if RE_SCREENSHOT.search(lowered):
             return {
                 "understood": True,

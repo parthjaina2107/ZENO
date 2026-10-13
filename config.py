@@ -141,6 +141,7 @@ class Config:
         "system_info": "low",
         "screenshot": "low",
         "list_apps": "low",
+        "ui_inspect": "low",
         "open_app": "low",
         "close_app": "medium",
         "open_url": "low",

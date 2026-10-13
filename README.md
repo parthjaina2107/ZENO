@@ -42,6 +42,12 @@
    - Header-based JWT authentication (`Authorization: Bearer <token>`) for WebSocket and REST endpoints.
    - Brute-force rate limiting with client IP tracking (10 failed attempts triggers a 1-hour lockout).
    - CORS origin isolation.
+   - Paired-device sessions: each browser receives a stable device identity, sessions are checked against a local revocation registry, and permission responses are accepted only from the device that requested the action.
+
+6. **Phase 1 Trust & Review UX**:
+   - Multi-step commands are presented as a complete, parameter-bound plan before execution; individual actions retain their existing confirmation gates.
+   - A protected local audit dashboard is available at `/audit` after mobile sign-in, backed by `/api/audit`.
+   - Ask “inspect the focused window” to report the active window and—when optional `pywinauto` is installed—discover named accessibility controls for future semantic automation.
 
 ---
 
