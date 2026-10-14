@@ -143,7 +143,7 @@ class PlannedAction:
     parameters: Dict[str, Any] = field(default_factory=dict)
     description: str = ""
     risk_level: str = "medium"  # "low", "medium", "high"
-    requires_permission: bool = True  # Always requires user approval
+    requires_permission: bool = True  # Planner sets this from the configured action policy.
     confirmation_message: str = ""
     action_id: str = ""
 
@@ -293,7 +293,7 @@ class ActionPlanner:
                 step_llm_risk = step.get("risk_level", "medium").lower()
                 step_table_risk = config.ACTION_RISK.get(step_action, "high")
                 step_risk = max_risk(step_table_risk, step_llm_risk)
-                needs_perm = step_risk in ("low", "medium", "high")
+                needs_perm = config.requires_confirmation(step_action, validated_params)
                 confirm_msg = step.get("confirmation_message", f"Proceed with step {i+1}: {desc}?")
                 step_obj = PlannedAction(
                     action_type=step_action,
@@ -338,7 +338,7 @@ class ActionPlanner:
         # Single action: enforce baseline table risk
         table_risk = config.ACTION_RISK.get(action_type, "high")
         computed_risk = max_risk(table_risk, raw_risk)
-        needs_perm = computed_risk in ("low", "medium", "high")
+        needs_perm = config.requires_confirmation(action_type, validated_params)
 
         act_obj = PlannedAction(
             action_type=action_type,
