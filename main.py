@@ -27,6 +27,9 @@ from config import config
 from voice.speaker import VoiceSpeaker
 from voice.listener import VoiceListener
 from brain import ZenoBrain, ActionPlanner, NLUEngine
+from brain.planner import describe_action
+from brain.task_runner import TaskRunner
+from brain.interaction import action_record, outcome_reply
 from executor.task_executor import TaskExecutor
 from logging.handlers import RotatingFileHandler
 from executor.permissions import PermissionManager
@@ -147,6 +150,16 @@ class VoiceAgentApp:
         # Step 1: Cognitive Processing via ZENO Brain
         brain_resp = await self.brain.think(user_text)
 
+        if brain_resp.kind == "task":
+            async def progress(message):
+                print(f"[Task] {message}")
+            report = await TaskRunner(self.brain, self.permissions).run(
+                brain_resp.message, self.permissions.request_permission_local, progress)
+            print(report.summary())
+            print(f"Task report: {report.report_path}")
+            self.speaker.speak(await outcome_reply(self.brain, user_text, report.steps, report.status, report.message))
+            return
+
         if brain_resp.kind == "abort":
             self.permissions.cancel_all_pending("Aborted by user command")
             print(f"🛑 [{config.ASSISTANT_NAME}]: {brain_resp.message}")
@@ -162,6 +175,7 @@ class VoiceAgentApp:
 
         # Step 2: OS Automation Action Execution
         actions = brain_resp.actions
+        records = []
         for i, action in enumerate(actions):
             if action.action_type in ("unhandled", "unknown"):
                 msg = action.confirmation_message or "I could not understand that command."
@@ -182,25 +196,24 @@ class VoiceAgentApp:
                         self.speaker.speak(cancel_msg)
                         return
             else:
-                # Direct announcement for smooth assistant experience
-                if action.confirmation_message:
-                    self.speaker.speak(action.confirmation_message)
+                self.permissions.log_decision(action, True, source="auto", reason="Routine action permitted by configured policy")
 
             # Step 4: Execution
             print(f"⚡ [Executing]: {action.description}...")
-            result = self.planner.execute_action(action)
+            result = await asyncio.to_thread(self.planner.execute_action, action)
             self.permissions.log_result(action, result, source="local")
+            records.append(action_record(action, result))
 
             # Step 5: Output & Speech
             if result.success:
                 success_msg = f"Done! {result.message}"
                 print(f"✅ {success_msg}")
-                self.speaker.speak(success_msg)
             else:
                 fail_msg = f"Failed to complete action: {result.message}"
                 print(f"⚠️ {fail_msg}")
-                self.speaker.speak(fail_msg)
                 break
+        if records:
+            self.speaker.speak(await outcome_reply(self.brain, user_text, records))
 
     async def run_local_loop(self):
         """Continuous local voice/keyboard control loop."""
@@ -212,12 +225,13 @@ class VoiceAgentApp:
             try:
                 # Listen for speech or console input
                 loop = asyncio.get_running_loop()
-                text = await loop.run_in_executor(
-                    None,
-                    self.listener.listen_once,
-                    config.LISTEN_TIMEOUT,
-                    config.PHRASE_TIMEOUT
-                )
+                if getattr(self, "text_mode", False):
+                    text = await loop.run_in_executor(None, input, "ZENO > ")
+                else:
+                    await loop.run_in_executor(None, self.speaker.wait_until_idle)
+                    await asyncio.sleep(0.2)
+                    text = await loop.run_in_executor(
+                        None, self.listener.listen_once, config.LISTEN_TIMEOUT, config.PHRASE_TIMEOUT)
 
                 if text and text.strip():
                     await self.process_user_command(text.strip())
@@ -292,9 +306,13 @@ def main():
         action="store_true",
         help="Run microphone noise calibration before starting"
     )
+    parser.add_argument("--text", action="store_true", help="Use console text input instead of the microphone")
     args = parser.parse_args()
 
     agent = VoiceAgentApp(mode=args.mode, port=args.port)
+    agent.text_mode = args.text
+    if args.text:
+        agent.permissions.listener = None
 
     if args.calibrate:
         print("🎤 Calibrating microphone for ambient noise...")

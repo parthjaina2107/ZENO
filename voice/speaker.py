@@ -152,6 +152,10 @@ class VoiceSpeaker:
         """Alias for speak()."""
         self.speak(text)
 
+    def wait_until_idle(self):
+        """Allow microphone capture only after queued speech has finished."""
+        self._speech_queue.join()
+
     def set_speed(self, rate: int = 0):
         self.rate = rate
 

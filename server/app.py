@@ -21,6 +21,9 @@ from config import config
 from .auth import auth_manager
 from .pairing import device_registry
 from brain import ZenoBrain, ActionPlanner, NLUEngine
+from brain.planner import describe_action
+from brain.task_runner import TaskRunner
+from brain.interaction import action_record, outcome_reply
 from executor.task_executor import TaskExecutor
 from executor.permissions import PermissionManager
 from voice.speaker import VoiceSpeaker
@@ -263,6 +266,16 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             # Process via ZENO Cognitive Brain
             brain_resp = await brain.think(user_text)
 
+            if brain_resp.kind == "task":
+                async def approve_task(action):
+                    return await perms.request_permission_remote(action, send_to_client, device_id=device_id)
+                async def task_progress(message):
+                    await send_to_client({"type": "response", "message": message, "kind": "task_progress"})
+                report = await TaskRunner(brain, perms).run(brain_resp.message, approve_task, task_progress)
+                await send_to_client({"type": "response", "message": report.summary(), "kind": "task_result", "report_path": report.report_path})
+                speaker.speak(await outcome_reply(brain, user_text, report.steps, report.status, report.message))
+                return
+
             if brain_resp.kind in ("chat", "vision", "memory"):
                 speaker.speak(brain_resp.message)
                 await send_to_client({
@@ -283,11 +296,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 return
 
             plan = brain_resp.actions
-            if len(plan) > 1:
-                approved_plan = await perms.request_plan_review_remote(plan, send_to_client, device_id=device_id)
-                if not approved_plan:
-                    await send_to_client({"type": "response", "message": "Plan cancelled: review was denied or timed out."})
-                    return
+            records = []
             for action in plan:
                 if action.action_type in ("unhandled", "unknown"):
                     reply_msg = action.confirmation_message or "I didn't understand that command."
@@ -296,7 +305,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                         "type": "response",
                         "message": reply_msg
                     })
-                    break
+                    return
 
                 if action.requires_permission:
                     # Auto-approve safe read-only actions
@@ -322,25 +331,23 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                                 "type": "response",
                                 "message": cancel_msg
                             })
-                            break
+                            return
                 else:
-                    if action.confirmation_message:
-                        speaker.speak(action.confirmation_message)
+                    perms.log_decision(action, True, source="auto", reason="Routine action permitted by configured policy")
 
                 # Execute action
-                result = planner.execute_action(action)
+                result = await asyncio.to_thread(planner.execute_action, action)
                 perms.log_result(action, result, source="remote")
+                records.append(action_record(action, result))
 
                 if action.action_type == "screenshot" and result.success and isinstance(result.output, dict):
                     # Send screenshot base64 preview
-                    speaker.speak(result.message)
                     await send_to_client({
                         "type": "screenshot",
                         "data": result.output.get("base64"),
                         "message": result.message
                     })
                 else:
-                    speaker.speak(result.message)
                     status_prefix = "✅ " if result.success else "❌ "
                     await send_to_client({
                         "type": "response",
@@ -349,6 +356,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
                 if not result.success:
                     break
+            if records:
+                speaker.speak(await outcome_reply(brain, user_text, records))
 
     try:
         while True:
