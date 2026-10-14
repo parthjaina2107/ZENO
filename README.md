@@ -1,16 +1,16 @@
 # 🎙️ ZENO — Secure Voice Automation & Remote Control
 
-> **ZENO**: Control your entire computer via voice commands—either locally using your microphone or remotely from your smartphone—always protected by explicit permission gating before any action executes.
+> **ZENO**: Control your computer via local voice commands or your smartphone, with confirmation for deletion, shutdown, and restart.
 
 ---
 
 ## 🌟 Key Features
 
 1. **Safety & Permission System**:
-   - Every action requires user confirmation before execution based on an enforceable risk hierarchy.
-   - **Low Risk**: Single confirmation ("Open Chrome? Say YES").
-   - **Medium Risk**: Parameter-bound confirmations (File manipulation, typing text, volume adjustments).
-   - **High Risk**: Double confirmation & explicit prompts (Deleting files, shutting down, terminal commands).
+   - Routine actions execute immediately: opening apps, browser commands, volume, typing, shortcuts, file creation/copy/move, and allowed utility commands.
+   - Confirmation is required only for file deletion and system shutdown/restart. Lock and sleep run immediately.
+   - Local deletion/shutdown/restart retain double confirmation with exact action parameters.
+   - Configure `CONFIRMATION_ACTIONS` and `CONFIRMATION_POWER_MODES` in `config.py` to change this policy. Existing path restrictions and command allowlists still apply.
    - Tamper-proof action binding: Remote approvals cryptographically bind to exact action IDs.
    - Detailed audit log kept in `audit_log.jsonl` recording decisions, action IDs, and execution results.
    - Emergency Kill Switch: Say *"stop"*, *"abort"*, or press the red **STOP** button in the mobile UI to immediately cancel running tasks and clear pending permissions.
@@ -21,7 +21,7 @@
    - **Simultaneous Operation**: Local and remote control can run at the same time.
 
 3. **ZENO Cognitive Brain (Conversational AI + Memory + Multimodal Vision)**:
-   - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds with spoken answers powered by `gemini-2.5-flash` (via the official `google-genai` SDK) with strict 15s timeouts and JSON response formatting.
+   - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds using the configured Gemini model via the official `google-genai` SDK, with timeouts and model fallback.
    - **👁️ Multimodal Screen Vision**: Ask *"Look at my screen, what's wrong?"* or *"Explain what is open on my screen"*.
      > **Privacy Notice**: Screen vision captures a local display screenshot and transmits the image to Google's Gemini API for multimodal comprehension.
    - **💾 Short-Term Context**: Multi-turn conversational memory allows follow-ups without repeating context.
@@ -45,13 +45,27 @@
    - Paired-device sessions: each browser receives a stable device identity, sessions are checked against a local revocation registry, and permission responses are accepted only from the device that requested the action.
 
 6. **Phase 1 Trust & Review UX**:
-   - Multi-step commands are presented as a complete, parameter-bound plan before execution; individual actions retain their existing confirmation gates.
+   - Multi-step commands execute in order without a blanket approval prompt. Deletion/shutdown/restart steps still require their own confirmation.
    - A protected local audit dashboard is available at `/audit` after mobile sign-in, backed by `/api/audit`.
    - Ask “inspect the focused window” to report the active window and—when optional `pywinauto` is installed—discover named accessibility controls for future semantic automation.
 
 ---
 
 ## 🚀 Quick Start
+
+### Goal-driven console tasks
+
+Run `.venv\Scripts\python.exe main.py --mode local --text` for keyboard input. Prefix a goal with `task:`, for example:
+
+```text
+task: Open Notepad, create Documents/zeno-demo.txt with the text Hello ZENO, then read the file back.
+```
+
+The task runner requests one validated action at a time from Gemini, uses results to plan the next step, verifies saved file contents, and saves a JSON report under `task_reports/`. It stops after 12 steps, repeated actions, invalid actions, failed tools, or denied permissions. Routine steps run immediately; deletion/shutdown/restart keep confirmation.
+
+This first task engine supports existing app/file/diagnostic operations and verified typing into Notepad after opening it. Notepad typing requires `pywinauto` from `requirements-optional.txt`; it focuses the actual editor, appends text, and reads it back before reporting success. It preserves existing outputs, and reports unverified outcomes instead of trusting the model's claim of success. App launches are checked against running process names. Browser navigation and volume changes do not yet have independent outcome verification. General task-mode keyboard/mouse automation, browser page reading, and arbitrary project test runners remain future work. Use Ctrl+C to interrupt a local task; the phone STOP control cancels remote tasks. An OS operation already started may finish.
+
+Task mode requires Gemini. The default model is `gemini-3.8-flash`, with configurable `GEMINI_MODEL` in `.env`. The optional live check `.venv\Scripts\python.exe scripts\task_smoke.py` opens Notepad and creates a new scratch file.
 
 ### 1. Requirements & Prerequisites
 - Windows 10/11
@@ -65,7 +79,7 @@ copy .env.example .env
 Settings inside `.env`:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here     # Get free at https://aistudio.google.com/
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 NGROK_AUTH_TOKEN=your_ngrok_token_here     # Get free at https://ngrok.com/
 ACCESS_TOKEN=your_secret_passphrase        # Passphrase used to log in from phone
 SERVER_PORT=8765
@@ -123,6 +137,23 @@ scripts\unregister_task.bat
 ---
 
 ## 🧪 Testing
+
+### Conversation and spoken feedback
+
+ZENO gives one brief spoken outcome per request. Execution steps, character counts,
+verification details and diagnostic errors remain in the console and task reports.
+Questions about battery, time and other observations still get an informative answer.
+Screen questions are interpreted rather than transcribed unless you ask for a readout.
+
+With a working Gemini connection, requests beyond simple literal commands are interpreted
+using recent conversation and actual execution outcomes. You do not need to say `task:`.
+For example, say "Write a short poem about rain in Notepad". Missing details can trigger
+a clarification question; answer it naturally. "Why does my laptop restart?" is a question,
+not a restart command. Simple commands such as "Open Notepad" stay local and fast.
+
+Context lasts for the current process; saved personal facts persist. Task planning still
+uses the existing bounded tools: this does not add arbitrary browser interaction or
+general GUI control. If reasoning is unavailable, complex requests stop with an explanation.
 
 Run the automated test suite with pytest:
 ```bash
