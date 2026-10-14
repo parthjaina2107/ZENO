@@ -181,6 +181,13 @@ class NLUEngine:
         """Built-in regex/keyword parser for reliable offline operation with word-boundary precision."""
         lowered = text.lower().strip()
 
+        notepad_typing = re.fullmatch(r"(?:open|launch|start)\s+notepad\s*(?:,\s*(?:and\s+)?|\s+and\s+(?:then\s+)?|\s+then\s+)(?:type|write)\s+(.+)", text.strip(), re.IGNORECASE)
+        if notepad_typing:
+            return {"understood": True, "action": "multi_step", "parameters": {"steps": [
+                {"action": "open_app", "parameters": {"app_name": "notepad"}, "description": "Open Notepad", "risk_level": "low"},
+                {"action": "type_text", "parameters": {"text": notepad_typing.group(1)}, "description": "Type into Notepad", "risk_level": "medium"},
+            ]}, "description": "Open Notepad and type the requested text", "risk_level": "medium"}
+
         # 1. URL pattern
         url_match = RE_URL.search(lowered)
         if url_match:
@@ -307,7 +314,7 @@ class NLUEngine:
             }
 
         # 8. Typing text
-        type_match = RE_TYPE.search(lowered)
+        type_match = RE_TYPE.search(text.strip())
         if type_match:
             typed = type_match.group(1).strip()
             return {
