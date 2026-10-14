@@ -14,6 +14,10 @@ BASE_DIR = Path(__file__).resolve().parent
 # Load environment variables from .env file if it exists
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
+# Preserve the key saved during the previous desktop experiment as a fallback.
+# Project .env and explicit environment values retain precedence.
+if os.getenv("LOCALAPPDATA"):
+    load_dotenv(Path(os.environ["LOCALAPPDATA"]) / "ZENO" / ".env")
 
 
 # Known insecure default secret values
@@ -104,9 +108,10 @@ class Config:
 
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     GEMINI_FALLBACK_MODELS: list = [
-        "gemini-2.0-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-flash-lite",
     ]
 
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
@@ -122,7 +127,18 @@ class Config:
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
 
-    # Auto-Approve Policy (safe read-only actions skip confirmation)
+    # Only deletion and powering off/restarting require confirmation.
+    CONFIRMATION_ACTIONS: set = {"file_delete"}
+    CONFIRMATION_POWER_MODES: set = {"shutdown", "restart"}
+
+    @classmethod
+    def requires_confirmation(cls, action_type: str, parameters: dict) -> bool:
+        return action_type in cls.CONFIRMATION_ACTIONS or (
+            action_type == "shutdown"
+            and str(parameters.get("mode", "lock")).strip().lower() in cls.CONFIRMATION_POWER_MODES
+        )
+
+    # Legacy read-only allowlist; the planner applies the confirmation policy above.
     AUTO_APPROVE_ACTIONS: set = {
         "system_info",      # Battery, CPU, RAM, disk, IP, time — read-only
         "screenshot",       # Captures screen — no system modification
