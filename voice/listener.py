@@ -69,6 +69,7 @@ class VoiceListener:
         self._recognizer = None
         self._microphone = None
         self._whisper_model = None
+        self._model_retry_at = 0.0
         self._running = False
         self._thread = None
         self._mic_available = False
@@ -81,6 +82,7 @@ class VoiceListener:
             self._recognizer = sr.Recognizer()
             self._recognizer.dynamic_energy_threshold = True
             self._recognizer.pause_threshold = 0.8
+            self._recognizer.operation_timeout = 10
             
             # Check for microphone
             try:
@@ -116,18 +118,28 @@ class VoiceListener:
 
     def _get_whisper_model(self):
         """Lazy-load Whisper model when configured."""
+        if config.STT_BACKEND == 'google':
+            return None
+        if time.monotonic() < self._model_retry_at:
+            return None
         if self._whisper_model is None:
             model_name = getattr(config, "WHISPER_MODEL", self.model_size or "base").strip()
             if model_name:
                 try:
-                    import whisper
                     logger.info(f"Loading Whisper model '{model_name}'...")
-                    self._whisper_model = whisper.load_model(model_name)
-                    logger.info("Whisper model loaded successfully.")
-                except ImportError:
-                    logger.info("OpenAI Whisper package not installed; using Google speech recognition.")
+                    if config.STT_BACKEND == 'faster-whisper':
+                        from .local_stt import load_model
+                        self._whisper_model = load_model()
+                    elif config.STT_BACKEND == 'whisper':
+                        import whisper
+                        self._whisper_model = whisper.load_model(model_name)
+                    else:
+                        raise ValueError('Unknown STT_BACKEND')
+                    logger.info("Local speech recognition ready (%s).", config.STT_BACKEND)
                 except Exception as e:
-                    logger.warning(f"Failed to load Whisper model '{model_name}': {e}; using Google speech recognition.")
+                    self._model_retry_at = time.monotonic() + 300
+                    fallback = 'Google online fallback is enabled.' if config.STT_ALLOW_ONLINE_FALLBACK else 'Online fallback is disabled; use --text for now.'
+                    logger.warning('Local speech is not ready (%s). Run python main.py --setup-speech. %s', type(e).__name__, fallback)
         return self._whisper_model
 
     def _transcribe_audio(self, audio_data) -> Optional[str]:
@@ -136,6 +148,9 @@ class VoiceListener:
         whisper_model = self._get_whisper_model()
         if whisper_model is not None:
             try:
+                if config.STT_BACKEND == 'faster-whisper':
+                    from .local_stt import transcribe
+                    return transcribe(whisper_model, audio_data)
                 import io
                 import tempfile
                 import os
@@ -154,7 +169,9 @@ class VoiceListener:
                 logger.warning(f"Whisper transcription failed, falling back: {e}")
 
 
-        # 2. Try SpeechRecognition's Google STT (free, high quality, requires internet)
+        if config.STT_BACKEND != 'google' and not config.STT_ALLOW_ONLINE_FALLBACK:
+            return None
+        # Google fallback sends captured audio online; it can be disabled in .env.
         try:
             text = self._recognizer.recognize_google(audio_data)
             return text.strip()
@@ -180,10 +197,11 @@ class VoiceListener:
             with self._microphone as source:
                 logger.debug("Listening for audio...")
                 audio = self._recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
-                text = self._transcribe_audio(audio)
-                if text:
-                    logger.info(f"Heard speech: {text}")
-                return text
+            # Release the microphone before CPU/network transcription.
+            text = self._transcribe_audio(audio)
+            if text:
+                logger.info(f"Heard speech: {text}")
+            return text
         except sr.WaitTimeoutError:
             return None
         except Exception as e:

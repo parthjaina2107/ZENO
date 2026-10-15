@@ -10,12 +10,14 @@ import sys
 import threading
 import time
 import logging
+import unicodedata
+from config import config
 
 logger = logging.getLogger("VoiceAgent.Speaker")
 
 
 class VoiceSpeaker:
-    def __init__(self, rate: int = 0, volume: int = 100):
+    def __init__(self, rate: int = -1, volume: int = 80):
         # SAPI.SpVoice rate: -10 to +10 (0 is normal)
         # SAPI.SpVoice volume: 0 to 100
         self.rate = rate
@@ -25,6 +27,7 @@ class VoiceSpeaker:
         self._running = False
         self._ready_event = threading.Event()
         self._backend = "none"
+        self._neural_retry_at = 0.0
 
         self._start_worker()
         self._ready_event.wait(timeout=3.0)
@@ -35,9 +38,17 @@ class VoiceSpeaker:
             return ""
         clean = re.sub(r"https?://\S+", "link", text)
         clean = re.sub(r"[*_`#~]", "", clean)
-        clean = clean.encode("ascii", "ignore").decode("ascii")
+        clean = ''.join(c for c in clean if unicodedata.category(c) not in ('So', 'Cs', 'Cf'))
         clean = " ".join(clean.split())
         return clean.strip()
+
+    def _configure_sapi(self, voice):
+        for token in voice.GetVoices():
+            if config.TTS_LOCAL_VOICE.lower() in token.GetDescription().lower():
+                voice.Voice = token
+                break
+        voice.Rate = self.rate
+        voice.Volume = self.volume
 
     def _worker_loop(self):
         """Worker thread: manages speech dispatch."""
@@ -51,8 +62,7 @@ class VoiceSpeaker:
                 import win32com.client
                 pythoncom.CoInitialize()
                 sapi_voice = win32com.client.Dispatch("SAPI.SpVoice")
-                sapi_voice.Rate = self.rate
-                sapi_voice.Volume = self.volume
+                self._configure_sapi(sapi_voice)
                 self._backend = "sapi"
                 logger.info("VoiceSpeaker initialized using native Windows SAPI.SpVoice.")
             except Exception as e:
@@ -64,8 +74,12 @@ class VoiceSpeaker:
             try:
                 import pyttsx3
                 pyttsx_engine = pyttsx3.init()
-                pyttsx_engine.setProperty("rate", 175)
-                pyttsx_engine.setProperty("volume", 1.0)
+                pyttsx_engine.setProperty("rate", 155)
+                pyttsx_engine.setProperty("volume", self.volume / 100)
+                for voice in pyttsx_engine.getProperty("voices"):
+                    if config.TTS_LOCAL_VOICE.lower() in voice.name.lower():
+                        pyttsx_engine.setProperty("voice", voice.id)
+                        break
                 self._backend = "pyttsx3"
                 logger.info("VoiceSpeaker initialized using pyttsx3.")
             except Exception as e:
@@ -95,6 +109,17 @@ class VoiceSpeaker:
             except Exception:
                 pass
 
+            # Neural speech is optional; a network failure falls back to local speech.
+            if config.TTS_BACKEND == "edge" and time.monotonic() >= self._neural_retry_at:
+                try:
+                    from .neural import speak_neural
+                    speak_neural(clean, lambda: self._running)
+                    self._speech_queue.task_done()
+                    continue
+                except Exception as exc:
+                    logger.warning("Neural speech unavailable (%s); using local voice for five minutes.", type(exc).__name__)
+                    self._neural_retry_at = time.monotonic() + 300
+
             # Speak via SAPI or pyttsx3
             if self._backend == "sapi" and sapi_voice:
                 try:
@@ -107,8 +132,7 @@ class VoiceSpeaker:
                         import win32com.client
                         pythoncom.CoInitialize()
                         sapi_voice = win32com.client.Dispatch("SAPI.SpVoice")
-                        sapi_voice.Rate = self.rate
-                        sapi_voice.Volume = self.volume
+                        self._configure_sapi(sapi_voice)
                         sapi_voice.Speak(clean)
                     except Exception as e2:
                         logger.error(f"SAPI re-init failed: {e2}")

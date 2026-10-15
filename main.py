@@ -33,6 +33,7 @@ from brain.interaction import action_record, outcome_reply
 from executor.task_executor import TaskExecutor
 from logging.handlers import RotatingFileHandler
 from executor.permissions import PermissionManager
+from awareness.service import AwarenessService
 from tunnel.tunnel_manager import TunnelManager
 
 def setup_logging(log_file: Optional[str] = None, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 5):
@@ -74,6 +75,8 @@ class VoiceAgentApp:
         self.listener = VoiceListener(model_size=config.WHISPER_MODEL)
         self.executor = TaskExecutor()
         self.brain = ZenoBrain(executor=self.executor)
+        self.awareness = AwarenessService() if config.AWARENESS_ENABLED else None
+        self.brain.awareness = self.awareness
         self.planner = self.brain.planner
         self.nlu = self.brain.nlu
         self.permissions = PermissionManager(listener=self.listener, speaker=self.speaker)
@@ -98,6 +101,8 @@ class VoiceAgentApp:
         print(f"  • Gemini AI Brain    : {'Online' if config.GEMINI_API_KEY else 'Offline (Local Rules Fallback)'}")
         print(f"  • Cognitive Memory   : Online (Short-term context + Long-term facts)")
         print(f"  • Multimodal Vision  : {'Active' if config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
+        print(f"  • Proactive Updates  : {'Enabled — say brief me' if self.awareness else 'Disabled'}")
+        print(f"  • Voice              : {config.TTS_VOICE if config.TTS_BACKEND == 'edge' else config.TTS_LOCAL_VOICE}")
         print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None (LAN Only)'}")
         print("  • Access Token       : [Configured in .env]")
         print("=" * 64)
@@ -157,6 +162,8 @@ class VoiceAgentApp:
                 brain_resp.message, self.permissions.request_permission_local, progress)
             print(report.summary())
             print(f"Task report: {report.report_path}")
+            if getattr(self, 'awareness', None):
+                self.awareness.record_task(report)
             self.speaker.speak(await outcome_reply(self.brain, user_text, report.steps, report.status, report.message))
             return
 
@@ -229,6 +236,12 @@ class VoiceAgentApp:
                     text = await loop.run_in_executor(None, input, "ZENO > ")
                 else:
                     await loop.run_in_executor(None, self.speaker.wait_until_idle)
+                    if getattr(self, 'awareness', None):
+                        update = self.awareness.next_announcement()
+                        if update:
+                            print('[Briefing] ' + update)
+                            self.speaker.speak(update)
+                            await loop.run_in_executor(None, self.speaker.wait_until_idle)
                     await asyncio.sleep(0.2)
                     text = await loop.run_in_executor(
                         None, self.listener.listen_once, config.LISTEN_TIMEOUT, config.PHRASE_TIMEOUT)
@@ -246,6 +259,8 @@ class VoiceAgentApp:
         """Clean shutdown of all subsystems."""
         print("\n🛑 Shutting down Voice Agent gracefully...")
         self.running = False
+        if self.awareness:
+            self.awareness.stop()
         self.listener.stop()
         self.speaker.stop()
         self.tunnel_manager.stop_tunnel()
@@ -261,6 +276,8 @@ class VoiceAgentApp:
             print(w)
 
         self.running = True
+        if self.awareness:
+            self.awareness.start()
 
         # Start web server if mode is 'all' or 'server'
         if self.mode in ("all", "server"):
@@ -272,6 +289,10 @@ class VoiceAgentApp:
             try:
                 while self.running:
                     import time
+                    if self.awareness:
+                        update = self.awareness.next_announcement()
+                        if update:
+                            self.speaker.speak(update)
                     time.sleep(1)
             except KeyboardInterrupt:
                 pass
@@ -307,7 +328,51 @@ def main():
         help="Run microphone noise calibration before starting"
     )
     parser.add_argument("--text", action="store_true", help="Use console text input instead of the microphone")
+    parser.add_argument('--briefing', action='store_true', help='Check sources and print a briefing without starting the microphone')
+    parser.add_argument('--connect', choices=['gmail', 'outlook'], help='Connect a read-only inbox account')
+    parser.add_argument('--credentials', help='Google Desktop OAuth client JSON file for --connect gmail')
+    parser.add_argument('--voice-preview', action='store_true', help='Play the configured voice without starting the assistant')
+    parser.add_argument('--voice', help='Neural voice name, for example en-IN-NeerjaNeural')
+    parser.add_argument('--doctor', action='store_true', help='Check setup without recording or reading mail')
+    parser.add_argument('--setup-speech', action='store_true', help='Download and validate the local faster-whisper model')
     args = parser.parse_args()
+
+    if args.voice:
+        config.TTS_VOICE = args.voice
+    if args.doctor:
+        from awareness.diagnostics import setup_report
+        print(setup_report())
+        return 0
+    if args.setup_speech:
+        print('Preparing local speech recognition. First setup downloads the model; this may take a few minutes.', flush=True)
+        try:
+            from voice.local_stt import load_model
+            load_model(download=True)
+        except Exception as exc:
+            print('Speech setup failed (' + type(exc).__name__ + '). Install requirements-speech.txt and check your connection.')
+            return 1
+        print('Local speech model is ready. Start with --mode local --calibrate.')
+        return 0
+    if args.connect:
+        from awareness.accounts import connect_account
+        try:
+            connect_account(args.connect, args.credentials)
+        except Exception as exc:
+            print(str(exc) if isinstance(exc, (ValueError, RuntimeError)) else 'Connection failed: ' + type(exc).__name__)
+            return 1
+        return 0
+    if args.briefing:
+        service = AwarenessService()
+        service.poll()
+        print(service.handle_command('connection status'))
+        print(service.briefing())
+        print(service.handle_command('work status'))
+        return 0
+    if args.voice_preview:
+        speaker = VoiceSpeaker()
+        speaker.speak_sync("Hi Parth. I'm Zeno. I'll keep an eye on your updates and let you focus on your work.")
+        speaker.stop()
+        return 0
 
     agent = VoiceAgentApp(mode=args.mode, port=args.port)
     agent.text_mode = args.text
@@ -322,4 +387,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -42,6 +42,7 @@ class ZenoBrain:
         self.planner = ActionPlanner(executor=executor)
         self.client = None
         self.awaiting_clarification = False
+        self.awareness = None
         self._init_chat_client()
 
     def _init_chat_client(self):
@@ -124,6 +125,16 @@ class ZenoBrain:
 
         clean_text = self.strip_wake_prefix(raw_text)
         lowered = clean_text.lower().strip(".!?,")
+
+        if self.awareness is not None:
+            import asyncio
+            from awareness.commands import normalize, SUMMARY_REQUESTS
+            if normalize(clean_text) in SUMMARY_REQUESTS:
+                return BrainResponse(kind='chat', message=await self.awareness.summarize(self.client))
+            briefing = await asyncio.to_thread(self.awareness.handle_command, clean_text)
+            if briefing is not None:
+                # Do not inject notification contents into the action planner's history.
+                return BrainResponse(kind="chat", message=briefing)
 
         # ----------------------------------------------------------------------
         # 0. Emergency Stop / Abort intent (Pre-NLU kill switch)

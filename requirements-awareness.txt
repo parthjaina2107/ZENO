@@ -1,0 +1,13 @@
+# Optional proactive updates, read-only inbox connections, and natural speech.
+# Install alongside requirements.txt in the same virtual environment.
+edge-tts==7.3.1
+pygame==2.6.1
+google-auth-oauthlib==1.5.0
+msal==1.39.0
+winrt-runtime==3.2.1; sys_platform == 'win32'
+winrt-Windows.Foundation==3.2.1; sys_platform == 'win32'
+winrt-Windows.Foundation.Collections==3.2.1; sys_platform == 'win32'
+winrt-Windows.ApplicationModel==3.2.1; sys_platform == 'win32'
+winrt-Windows.UI.Notifications==3.2.1; sys_platform == 'win32'
+winrt-Windows.UI.Notifications.Management==3.2.1; sys_platform == 'win32'
+winrt-Windows.Data.Xml.Dom==3.2.1; sys_platform == 'win32'

@@ -272,6 +272,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 async def task_progress(message):
                     await send_to_client({"type": "response", "message": message, "kind": "task_progress"})
                 report = await TaskRunner(brain, perms).run(brain_resp.message, approve_task, task_progress)
+                if getattr(brain, 'awareness', None) is not None:
+                    brain.awareness.record_task(report)
                 await send_to_client({"type": "response", "message": report.summary(), "kind": "task_result", "report_path": report.report_path})
                 speaker.speak(await outcome_reply(brain, user_text, report.steps, report.status, report.message))
                 return

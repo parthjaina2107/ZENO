@@ -40,6 +40,11 @@ remote_url.txt
 zeno_memory.json
 paired_devices.json
 task_reports/
+*.token
+credentials.json
+client_secret*.json
+*.sqlite3
+*.sqlite3-*
 
 # Testing and coverage
 .pytest_cache/
