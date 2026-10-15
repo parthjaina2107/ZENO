@@ -138,6 +138,17 @@ scripts\unregister_task.bat
 
 ## 🧪 Testing
 
+### Proactive updates and voice
+
+ZENO now supports grouped Windows notification briefings, Git project status, system health
+alerts, watched-process exit notices, and persistent reminders while running. Say **"Brief me"**,
+**"Work status"**, **"Connection status"**, or **"Focus mode"**. A softer female neural voice
+has a local Windows fallback. Optional Gmail/Outlook inbox connections require your own OAuth
+sign-in; WhatsApp, Telegram and Discord coverage comes from available Windows notifications.
+
+See [setup, commands, account access and limitations](docs/awareness.md). Install optional
+dependencies with `uv pip install --python .venv\Scripts\python.exe -r requirements-awareness.txt`.
+
 ### Conversation and spoken feedback
 
 ZENO gives one brief spoken outcome per request. Execution steps, character counts,
@@ -160,7 +171,7 @@ Run the automated test suite with pytest:
 .venv\Scripts\python.exe -m pytest tests -v
 ```
 
-All 67+ automated unit and integration tests across 11 test suites verify:
+All 140 automated unit and integration tests verify:
 - Configuration validation, auto-generated secrets, and safety lists
 - NLU tokenization, regex word boundaries, and zero false-positive routing
 - Multi-tier permission management, action ID binding, and audit logging
@@ -168,3 +179,5 @@ All 67+ automated unit and integration tests across 11 test suites verify:
 - Atomic memory storage and persistence
 - WebSocket deadlock prevention, command parallelism, and connection cleanup
 - Rate limiting, IP tracking, and JWT authentication
+- Read-only inbox adapters, awareness isolation, reminders, and OAuth recovery
+- Local speech recognition, silence filtering, and speech-service fallbacks
