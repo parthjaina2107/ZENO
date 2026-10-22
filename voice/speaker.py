@@ -28,6 +28,8 @@ class VoiceSpeaker:
         self._ready_event = threading.Event()
         self._backend = "none"
         self._neural_retry_at = 0.0
+        self._generation = 0
+        self._queue_lock = threading.Lock()
 
         self._start_worker()
         self._ready_event.wait(timeout=3.0)
@@ -98,7 +100,11 @@ class VoiceSpeaker:
                 self._speech_queue.task_done()
                 break
 
-            clean = self._clean_text(item)
+            generation, text = item
+            if generation != self._generation:
+                self._speech_queue.task_done()
+                continue
+            clean = self._clean_text(text)
             if not clean:
                 self._speech_queue.task_done()
                 continue
@@ -113,17 +119,26 @@ class VoiceSpeaker:
             if config.TTS_BACKEND == "edge" and time.monotonic() >= self._neural_retry_at:
                 try:
                     from .neural import speak_neural
-                    speak_neural(clean, lambda: self._running)
+                    speak_neural(clean, lambda: self._running and generation == self._generation)
                     self._speech_queue.task_done()
                     continue
                 except Exception as exc:
                     logger.warning("Neural speech unavailable (%s); using local voice for five minutes.", type(exc).__name__)
                     self._neural_retry_at = time.monotonic() + 300
 
+            if generation != self._generation:
+                self._speech_queue.task_done()
+                continue
+
             # Speak via SAPI or pyttsx3
             if self._backend == "sapi" and sapi_voice:
                 try:
-                    sapi_voice.Speak(clean)
+                    sapi_voice.Speak(clean, 1)  # Async: cancellation is handled on this COM thread.
+                    while self._running and generation == self._generation:
+                        if sapi_voice.WaitUntilDone(50):
+                            break
+                    if not self._running or generation != self._generation:
+                        sapi_voice.Speak('', 3)  # Purge pending speech.
                 except Exception as e:
                     logger.error(f"SAPI Speak error: {e}")
                     # Re-init SAPI voice if needed
@@ -133,7 +148,7 @@ class VoiceSpeaker:
                         pythoncom.CoInitialize()
                         sapi_voice = win32com.client.Dispatch("SAPI.SpVoice")
                         self._configure_sapi(sapi_voice)
-                        sapi_voice.Speak(clean)
+                        # Do not replay a partially spoken reply after a backend failure.
                     except Exception as e2:
                         logger.error(f"SAPI re-init failed: {e2}")
 
@@ -164,13 +179,32 @@ class VoiceSpeaker:
     def speak(self, text: str):
         """Queue text to be spoken aloud asynchronously."""
         if text:
-            self._speech_queue.put(text)
+            with self._queue_lock:
+                self._speech_queue.put((self._generation, text))
 
     def speak_sync(self, text: str):
         """Speak and block until finished speaking aloud."""
         if text:
-            self._speech_queue.put(text)
+            self.speak(text)
             self._speech_queue.join()
+
+    @property
+    def is_busy(self):
+        return self._speech_queue.unfinished_tasks > 0
+
+    def interrupt(self):
+        """Cancel this generation and queued replies, without shutting down the speaker."""
+        with self._queue_lock:
+            self._generation += 1
+            while True:
+                try:
+                    item = self._speech_queue.get_nowait()
+                except queue.Empty:
+                    break
+                self._speech_queue.task_done()
+                if item is None:
+                    self._speech_queue.put(None)
+                    break
 
     def speak_async(self, text: str):
         """Alias for speak()."""
@@ -186,6 +220,7 @@ class VoiceSpeaker:
     def stop(self):
         """Shutdown worker thread."""
         self._running = False
+        self.interrupt()
         self._speech_queue.put(None)
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=3.0)

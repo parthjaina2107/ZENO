@@ -152,6 +152,8 @@ async def test_local_loop_waits_for_speech_before_capturing():
     app = object.__new__(VoiceAgentApp)
     app.running = True
     app.text_mode = False
+    from voice.conversation import ConversationSession
+    app.conversation = ConversationSession()
     app.speaker = SimpleNamespace(speak=MagicMock(), wait_until_idle=lambda: events.append("speech_finished"))
     def listen(*args):
         events.append("listen")

@@ -64,7 +64,7 @@ def parse_confirmation(text: Optional[str]) -> Optional[bool]:
 
 
 class VoiceListener:
-    def __init__(self, model_size: str = "base"):
+    def __init__(self, model_size: str = "base", initialize_microphone: bool = True):
         self.model_size = model_size
         self._recognizer = None
         self._microphone = None
@@ -73,7 +73,9 @@ class VoiceListener:
         self._running = False
         self._thread = None
         self._mic_available = False
+        self.last_uncertain = False
 
+        self._initialize_microphone = initialize_microphone
         self._init_speech_recognition()
 
     def _init_speech_recognition(self):
@@ -83,6 +85,8 @@ class VoiceListener:
             self._recognizer.dynamic_energy_threshold = True
             self._recognizer.pause_threshold = 0.8
             self._recognizer.operation_timeout = 10
+            if not self._initialize_microphone:
+                return
             
             # Check for microphone
             try:
@@ -142,15 +146,19 @@ class VoiceListener:
                     logger.warning('Local speech is not ready (%s). Run python main.py --setup-speech. %s', type(e).__name__, fallback)
         return self._whisper_model
 
-    def _transcribe_audio(self, audio_data) -> Optional[str]:
+    def _transcribe_audio(self, audio_data, local_only=False) -> Optional[str]:
         """Transcribe captured audio using SpeechRecognition or Whisper."""
+        self.last_uncertain = False
         # 1. Try local whisper if loaded or available
         whisper_model = self._get_whisper_model()
         if whisper_model is not None:
             try:
                 if config.STT_BACKEND == 'faster-whisper':
                     from .local_stt import transcribe
-                    return transcribe(whisper_model, audio_data)
+                    quality = {}
+                    text = transcribe(whisper_model, audio_data, quality)
+                    self.last_uncertain = quality.get('uncertain', False)
+                    return text
                 import io
                 import tempfile
                 import os
@@ -169,7 +177,7 @@ class VoiceListener:
                 logger.warning(f"Whisper transcription failed, falling back: {e}")
 
 
-        if config.STT_BACKEND != 'google' and not config.STT_ALLOW_ONLINE_FALLBACK:
+        if local_only or (config.STT_BACKEND != 'google' and not config.STT_ALLOW_ONLINE_FALLBACK):
             return None
         # Google fallback sends captured audio online; it can be disabled in .env.
         try:
@@ -179,8 +187,9 @@ class VoiceListener:
             # Silence or uncomprehended speech
             return None
 
-    def listen_once(self, timeout: int = 5, phrase_time_limit: int = 10) -> Optional[str]:
+    def listen_once(self, timeout: int = 5, phrase_time_limit: int = 10, local_only=False) -> Optional[str]:
         """Listen for one phrase, return text or None if silence/error."""
+        self.last_uncertain = False
         if not self._mic_available or not self._microphone:
             # Fall back to console input if no microphone
             try:
@@ -198,9 +207,12 @@ class VoiceListener:
                 logger.debug("Listening for audio...")
                 audio = self._recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
             # Release the microphone before CPU/network transcription.
-            text = self._transcribe_audio(audio)
+            text = self._transcribe_audio(audio, local_only=local_only)
             if text:
-                logger.info(f"Heard speech: {text}")
+                if local_only:
+                    logger.debug('Local wake/interruption phrase processed; transcript not logged.')
+                else:
+                    logger.info(f"Heard speech: {text}")
             return text
         except sr.WaitTimeoutError:
             return None
@@ -222,7 +234,7 @@ class VoiceListener:
             if remaining <= 0:
                 break
             text = self.listen_once(timeout=min(3, remaining), phrase_time_limit=3)
-            if not text:
+            if not text or self.last_uncertain:
                 continue
 
             decision = parse_confirmation(text)

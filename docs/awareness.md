@@ -84,6 +84,9 @@ list of Git folders; it defaults to ZENO's own repository. Project monitoring no
 status changes, not every keystroke or edit to an already-dirty file.
 
 This is an in-process monitor, not a Windows startup service: closing ZENO stops collection.
+In desktop mode, closing the window can hide it in the tray; choose Quit ZENO to
+stop the app. Desktop sources collect after the engine starts, but proactive spoken
+digests are not currently dispatched there; request a briefing explicitly.
 Text-console mode provides on-demand briefings; proactive speech is delivered between
 voice interactions, or in server-only mode. Browser/mobile use through `main.py` shares
 the same local awareness state. Starting the FastAPI module independently does not start collection.

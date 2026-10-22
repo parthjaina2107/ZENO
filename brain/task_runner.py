@@ -140,7 +140,20 @@ class TaskRunner:
             return True, "Tool returned an observation." if action.action_type != "run_command" else "Command exited successfully; broader goal still needs verification."
         return False, "Action was attempted; its application-level outcome is not independently verified."
 
-    async def run(self, goal, approve, progress):
+    async def run(self, goal, approve, progress, control=None):
+        # Desktop supplies a cancellation token; CLI/server callers stay compatible.
+        def checkpoint():
+            if control is not None:
+                control.check()
+
+        async def reasoning(awaitable):
+            return await control.wait(awaitable) if control is not None else await awaitable
+
+        async def execute(action):
+            if control is not None:
+                return await control.call(self.brain.planner.execute_action, action)
+            return await asyncio.to_thread(self.brain.planner.execute_action, action)
+
         report = TaskReport(goal)
         literal_match = re.search(r'with exactly (?:this |the )?text\s*:\s*"([^"]*)"', goal, re.IGNORECASE)
         expected_literal = literal_match.group(1) if literal_match else None
@@ -154,10 +167,12 @@ class TaskRunner:
             if not self.brain.client:
                 raise RuntimeError("Task mode requires a configured Gemini API key.")
             for _ in range(self.max_steps):
+                checkpoint()
                 if initial_decision is not None:
                     decision, initial_decision = initial_decision, None
                 else:
-                    decision = await self.decide(goal, report.steps)
+                    decision = await reasoning(self.decide(goal, report.steps))
+                checkpoint()
                 if decision.get("blocked") is True:
                     report.status, report.message = "blocked", str(decision.get("message", "More information is needed."))
                     break
@@ -177,16 +192,18 @@ class TaskRunner:
                     raise ValueError("Task requested an unsupported action or invalid parameters.")
                 action = plan[0]
                 await asyncio.to_thread(self.preflight, action)
+                checkpoint()
                 if any(step["action_id"] == action.action_id for step in report.steps):
                     raise ValueError("Repeated action stopped to avoid an execution loop.")
                 await progress(f"Step {len(report.steps) + 1}: {describe_action(action)}")
                 if action.requires_permission:
-                    if not await approve(action):
+                    if not await reasoning(approve(action)):
                         report.status, report.message = "cancelled", "Required action was denied."
                         break
                 else:
                     self.permissions.log_decision(action, True, source="auto", reason="Task action permitted by configured policy")
-                result = await asyncio.to_thread(self.brain.planner.execute_action, action)
+                checkpoint()
+                result = await execute(action)
                 self.permissions.log_result(action, result, source="task")
                 verified, evidence = await asyncio.to_thread(self.verify, action, result)
                 # Screenshots contain base64 blobs: omit them from the text reasoning loop.
@@ -197,6 +214,7 @@ class TaskRunner:
                     "description": describe_action(action), "success": result.success,
                     "verified": verified, "evidence": evidence,
                     "message": result.message[:2000], "output": str(output)[:4000]})
+                checkpoint()
                 await progress(f"{result.message}\nVerification: {evidence}")
                 if not result.success:
                     report.status, report.message = "failed", result.message

@@ -39,6 +39,11 @@ audit_log.jsonl
 remote_url.txt
 zeno_memory.json
 paired_devices.json
+screenshots/
+google-client.json
+accounts/
+desktop.json
+desktop.lock
 task_reports/
 *.token
 credentials.json

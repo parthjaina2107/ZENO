@@ -125,6 +125,9 @@ class Config:
     STT_BACKEND: str = os.getenv("STT_BACKEND", "faster-whisper").strip().lower()
     STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "").strip()  # Empty: detect English/Hindi/etc.
     STT_ALLOW_ONLINE_FALLBACK: bool = os.getenv("STT_ALLOW_ONLINE_FALLBACK", "true").lower() == "true"
+    WAKE_WORD_ENABLED: bool = os.getenv("WAKE_WORD_ENABLED", "false").lower() == "true"
+    VOICE_FOLLOWUP_SECONDS: int = max(5, min(120, int(os.getenv("VOICE_FOLLOWUP_SECONDS", "30"))))
+    VOICE_BARGE_IN: bool = os.getenv("VOICE_BARGE_IN", "false").lower() == "true"
     LISTEN_TIMEOUT: int = int(os.getenv("LISTEN_TIMEOUT", "5"))
     PHRASE_TIMEOUT: int = int(os.getenv("PHRASE_TIMEOUT", "10"))
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))

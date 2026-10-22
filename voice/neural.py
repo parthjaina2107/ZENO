@@ -20,7 +20,19 @@ def speak_neural(text, running):
     import pygame
     with tempfile.TemporaryDirectory(prefix='zeno-speech-') as folder:
         path = Path(folder) / 'speech.mp3'
-        asyncio.run(render_speech(text, path))
+        async def render_until_cancelled():
+            task = asyncio.create_task(render_speech(text, path))
+            try:
+                while not task.done():
+                    if not running():
+                        return
+                    await asyncio.wait({task}, timeout=0.05)
+                await task
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+        asyncio.run(render_until_cancelled())
         if not running():
             return
         if not pygame.mixer.get_init():

@@ -9,6 +9,10 @@ def setup_report():
     lines.append('Reasoning key: ' + ('configured; not validated' if config.GEMINI_API_KEY else 'missing; set GEMINI_API_KEY in .env'))
     lines.append(f'Voice: {config.TTS_VOICE} ({config.TTS_BACKEND}); online neural speech falls back to Windows voice.')
     lines.append(f'Speech recognition: {config.STT_BACKEND}; model {config.WHISPER_MODEL}')
+    lines.append('Wake session: ' + ('enabled' if config.WAKE_WORD_ENABLED else 'optional; use --wake-word')
+                 + f'; follow-ups {config.VOICE_FOLLOWUP_SECONDS}s; standby recognition stays local.')
+    lines.append('Speech interruption: ' + ('enabled; headphones and cached local recognition required'
+                 if config.VOICE_BARGE_IN else 'off (VOICE_BARGE_IN=true requires headphones)'))
     if config.STT_BACKEND == 'faster-whisper':
         if find_spec('faster_whisper') is None:
             lines.append('Local speech: install requirements-speech.txt, then run --setup-speech.')

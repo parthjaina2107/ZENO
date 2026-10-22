@@ -26,6 +26,7 @@ if sys.platform == "win32":
 from config import config
 from voice.speaker import VoiceSpeaker
 from voice.listener import VoiceListener
+from voice.conversation import ConversationSession, interrupt_intent
 from brain import ZenoBrain, ActionPlanner, NLUEngine
 from brain.planner import describe_action
 from brain.task_runner import TaskRunner
@@ -82,6 +83,8 @@ class VoiceAgentApp:
         self.permissions = PermissionManager(listener=self.listener, speaker=self.speaker)
         self.tunnel_manager = TunnelManager(port=self.port)
         self.server_thread = None
+        self.conversation = ConversationSession(config.WAKE_WORD_ENABLED, config.ASSISTANT_NAME,
+                                                config.VOICE_FOLLOWUP_SECONDS)
 
     def print_banner(self):
         banner = r"""
@@ -222,8 +225,41 @@ class VoiceAgentApp:
         if records:
             self.speaker.speak(await outcome_reply(self.brain, user_text, records))
 
+    def voice_state(self, state):
+        """Console microphone indicator; no audio or transcript is persisted here."""
+        if getattr(self, '_voice_state', None) != state:
+            self._voice_state = state
+            print('[Voice: ' + state + ']', flush=True)
+
+    async def wait_for_reply(self):
+        """Optional headphone barge-in. Never execute commands heard during speech."""
+        loop = asyncio.get_running_loop()
+        if not config.VOICE_BARGE_IN or not self.listener.is_mic_available():
+            self.voice_state('speaking — microphone paused')
+            await loop.run_in_executor(None, self.speaker.wait_until_idle)
+            return
+        while self.running and self.speaker.is_busy:
+            self.voice_state('speaking — interruption microphone active; headphones required')
+            text = await loop.run_in_executor(None, self.listener.listen_once, 1, 3, True)
+            if text and not self.listener.last_uncertain:
+                intent = interrupt_intent(text, config.ASSISTANT_NAME)
+                if intent:
+                    self.speaker.interrupt()
+                    await loop.run_in_executor(None, self.speaker.wait_until_idle)
+                    if intent == 'correct':
+                        self.brain.memory.add_turn('user', "That's not what I meant. Ask what should change; do not repeat or undo completed actions.")
+                        print('[ZENO] Tell me what you would like changed. Completed actions have not been undone.')
+                    self.conversation.extend()
+                    return
+
     async def run_local_loop(self):
         """Continuous local voice/keyboard control loop."""
+        if (not getattr(self, 'text_mode', False) and self.conversation.wake_enabled
+                and self.listener.is_mic_available()):
+            self.voice_state('loading local wake recognition — microphone paused')
+            if await asyncio.to_thread(self.listener._get_whisper_model) is None:
+                print('Wake mode requires cached local speech recognition. Run --setup-speech, then retry, or use --text.')
+                return
         self.speaker.speak(f"{config.ASSISTANT_NAME} is active and standing by.")
         print(f"\n🎧 {config.ASSISTANT_NAME} is listening. Speak clearly or type a command below.")
         print("   (Press Ctrl+C at any time to exit)\n")
@@ -235,19 +271,42 @@ class VoiceAgentApp:
                 if getattr(self, "text_mode", False):
                     text = await loop.run_in_executor(None, input, "ZENO > ")
                 else:
-                    await loop.run_in_executor(None, self.speaker.wait_until_idle)
+                    await self.wait_for_reply()
                     if getattr(self, 'awareness', None):
                         update = self.awareness.next_announcement()
                         if update:
                             print('[Briefing] ' + update)
                             self.speaker.speak(update)
-                            await loop.run_in_executor(None, self.speaker.wait_until_idle)
+                            await self.wait_for_reply()
                     await asyncio.sleep(0.2)
+                    standby = self.conversation.wake_enabled and self.conversation.clock() >= self.conversation.active_until
+                    self.voice_state('standby — microphone active for wake phrase' if standby else 'listening — microphone active')
                     text = await loop.run_in_executor(
-                        None, self.listener.listen_once, config.LISTEN_TIMEOUT, config.PHRASE_TIMEOUT)
+                        None, self.listener.listen_once, config.LISTEN_TIMEOUT, config.PHRASE_TIMEOUT, standby)
+                    # Console fallback is explicit user input, not ambient speech.
+                    if text and self.listener.is_mic_available():
+                        turn = self.conversation.accept(text, self.listener.last_uncertain)
+                        if turn.kind == 'sleep' and await asyncio.to_thread(self.listener._get_whisper_model) is None:
+                            self.conversation.wake_enabled = False
+                            turn.message = 'Wake standby needs a cached local speech model. Run --setup-speech first; direct listening remains enabled.'
+                        if turn.kind != 'command':
+                            if turn.message:
+                                print('[ZENO] ' + turn.message)
+                                self.speaker.speak(turn.message)
+                            continue
+                        text = turn.text
+                        if interrupt_intent(text, config.ASSISTANT_NAME) == 'correct':
+                            self.brain.memory.add_turn('user', "That's not what I meant. Ask what should change; do not repeat or undo completed actions.")
+                            self.speaker.speak('What would you like changed? Completed actions have not been undone.')
+                            continue
 
                 if text and text.strip():
+                    self.voice_state('thinking — microphone paused')
                     await self.process_user_command(text.strip())
+                    if not getattr(self, 'text_mode', False):
+                        # Give follow-ups a full window after processing, not before a long task.
+                        await self.wait_for_reply()
+                        self.conversation.extend()
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 break
@@ -335,10 +394,19 @@ def main():
     parser.add_argument('--voice', help='Neural voice name, for example en-IN-NeerjaNeural')
     parser.add_argument('--doctor', action='store_true', help='Check setup without recording or reading mail')
     parser.add_argument('--setup-speech', action='store_true', help='Download and validate the local faster-whisper model')
+    parser.add_argument('--wake-word', action='store_true', help='Require Hey ZENO before opening a short voice conversation')
+    parser.add_argument('--desktop', action='store_true', help='Open the native Windows press-to-talk app (no remote server)')
     args = parser.parse_args()
 
     if args.voice:
         config.TTS_VOICE = args.voice
+    if args.desktop:
+        try:
+            from desktop.app import run_desktop
+        except ImportError as exc:
+            print('Desktop components are unavailable. Install requirements-desktop.txt, then retry. (' + type(exc).__name__ + ')')
+            return 1
+        return run_desktop()
     if args.doctor:
         from awareness.diagnostics import setup_report
         print(setup_report())
@@ -374,6 +442,8 @@ def main():
         speaker.stop()
         return 0
 
+    if args.wake_word:
+        config.WAKE_WORD_ENABLED = True
     agent = VoiceAgentApp(mode=args.mode, port=args.port)
     agent.text_mode = args.text
     if args.text:

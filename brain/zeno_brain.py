@@ -59,7 +59,7 @@ class ZenoBrain:
     def strip_wake_prefix(self, text: str) -> str:
         """Strip conversational address prefixes like 'Hey Zeno', 'Zeno,', 'OK Zeno'."""
         name = re.escape(self.assistant_name)
-        pattern = rf"^(?:hey\s+|hi\s+|hello\s+|ok\s+|okay\s+)?{name}[,\s:]*\s*"
+        pattern = rf"^(?:hey\s+|hi\s+|hello\s+|ok\s+|okay\s+)?{name}\b[,\s:]*\s*"
         cleaned = re.sub(pattern, "", text.strip(), flags=re.IGNORECASE)
         return cleaned.strip() if cleaned.strip() else text.strip()
 

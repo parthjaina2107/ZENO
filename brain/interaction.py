@@ -38,6 +38,7 @@ async def route_request(brain, text):
             'You are ZENO, a concise desktop assistant. Interpret the WHOLE current request. '
             'Return JSON: {"kind":"chat|clarify|task","message":"..."}. '
             'chat: directly answer questions or explanations in 1-3 natural sentences; do not execute '
+            'If the user explicitly requests a detailed explanation, give enough detail instead of the default short reply. '
             'commands merely mentioned in a question or negated request. Never claim you performed an action. '
             'clarify: ask ONE short question if a target, required content, or reference is ambiguous. '
             'task: message is a self-contained actionable goal, preserving the user\'s exact literal text, '
