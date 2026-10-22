@@ -31,9 +31,6 @@ jobs:
       AWARENESS_ENABLED: 'false'
       TTS_BACKEND: sapi
       QT_QPA_PLATFORM: offscreen
-      ZENO_DATA_DIR: ${{ runner.temp }}/zeno-test-data
-      MEMORY_FILE: ${{ runner.temp }}/zeno-test-memory.json
-      LOG_FILE: ${{ runner.temp }}/zeno-tests.log
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -57,6 +54,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: python scripts/check_docs.py --base $env:BASE_SHA
       - name: Run tests without live provider credentials
+        env:
+          ZENO_DATA_DIR: ${{ runner.temp }}/zeno-test-data
+          MEMORY_FILE: ${{ runner.temp }}/zeno-test-memory.json
+          LOG_FILE: ${{ runner.temp }}/zeno-tests.log
         run: python -m pytest tests -q --junitxml=test-results.xml
       - name: Upload test results
         if: always()
@@ -65,3 +66,4 @@ jobs:
           name: windows-test-results
           path: test-results.xml
           if-no-files-found: ignore
+
