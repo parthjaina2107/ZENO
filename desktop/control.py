@@ -37,10 +37,10 @@ class RunControl:
             # Retrieve errors and finish async cleanup, including on cancellation.
             await asyncio.gather(task, return_exceptions=True)
 
-    async def call(self, function, *args):
+    async def call(self, function, *args, **kwargs):
         """Do not abandon a thread that could still change the user's system."""
         def guarded():
             self.check()
-            return function(*args)
+            return function(*args, **kwargs)
         self.check()
         return await asyncio.to_thread(guarded)

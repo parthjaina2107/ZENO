@@ -90,8 +90,15 @@ class DesktopController(QObject):
             self.engine.permissions.log_decision(action, approved, source="desktop")
 
     def _work(self, text, control, settings):
+        stage, began = "Preparing", time.monotonic()
         def emit(kind, value):
+            nonlocal stage, began
             if not control.cancelled.is_set():
+                if kind == "state":
+                    now = time.monotonic()
+                    logging.getLogger("VoiceAgent.Desktop.Latency").info(
+                        "%s took %.3fs", stage, now - began)
+                    stage, began = value, now
                 self.event.emit(kind, value)
         try:
             if self.engine is None:
@@ -111,6 +118,8 @@ class DesktopController(QObject):
             logging.getLogger("VoiceAgent.Desktop").exception("Desktop request failed")
             self.event.emit("reply", "Something went wrong (" + type(exc).__name__ + "). Check your microphone and connection, then try again. Details are in the local log.")
         finally:
+            logging.getLogger("VoiceAgent.Desktop.Latency").info(
+                "%s took %.3fs", stage, time.monotonic() - began)
             self.finished.emit()
 
     @Slot()

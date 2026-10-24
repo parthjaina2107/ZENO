@@ -9,6 +9,7 @@ class DesktopSettings:
     shortcut: str = ""
     spoken_replies: bool = True
     microphone: int | None = None
+    pause_seconds: float = 0.6
 
     @classmethod
     def load(cls, path):
@@ -20,6 +21,7 @@ class DesktopSettings:
                 shortcut=data.get("shortcut", "") if isinstance(data.get("shortcut", ""), str) else "",
                 spoken_replies=data.get("spoken_replies", True) is not False,
                 microphone=data.get("microphone") if type(data.get("microphone")) is int else None,
+                pause_seconds=data.get("pause_seconds", 0.6) if data.get("pause_seconds") in (0.6, 0.9, 1.4) else 0.6,
             )
         except (OSError, ValueError):
             return cls()

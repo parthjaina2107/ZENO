@@ -13,6 +13,7 @@ from config import config
 from .controller import DesktopController
 from .hotkey import GlobalHotkey
 from .settings import DesktopSettings
+from .overlay import ActivityOverlay
 
 
 STYLE = """
@@ -107,6 +108,7 @@ class DesktopWindow(QMainWindow):
         super().__init__()
         self.application, self.settings, self.settings_path = application, settings, settings_path
         self.controller = controller or DesktopController(settings)
+        self.overlay = ActivityOverlay()
         self.closing = False
         self.approval_id = ""
         self.hotkey = GlobalHotkey(application, self.toggle)
@@ -309,6 +311,13 @@ class DesktopWindow(QMainWindow):
         self.microphone.setCurrentIndex(index)
         self.microphone.currentIndexChanged.connect(self.save_voice)
         body.addWidget(self.microphone)
+        self.pause = QComboBox()
+        self.pause.setAccessibleName("Pause before sending a voice command")
+        for title, seconds in (("Quick · 0.6 second pause", 0.6), ("Balanced · 0.9 second pause", 0.9), ("Relaxed · 1.4 second pause", 1.4)):
+            self.pause.addItem(title, seconds)
+        self.pause.setCurrentIndex(self.pause.findData(self.settings.pause_seconds))
+        self.pause.currentIndexChanged.connect(self.save_pause)
+        body.addWidget(self.pause)
         body.addWidget(label("The microphone is closed when idle, thinking, working or speaking. Recording ends after a natural pause, or is discarded when you press Stop. You have 15 seconds to begin speaking, and up to 25 seconds per command. No wake-word listener runs in desktop mode.", "muted"))
         body.addWidget(label("Local speech recognition is used when configured and available. Online recognition may be used if enabled in your existing settings. Audio is not saved by this desktop interface.", "muted"))
         self.voice_message = label("Changes apply to your next request.", "muted")
@@ -333,6 +342,10 @@ class DesktopWindow(QMainWindow):
 
     def refresh_shortcut(self):
         self.shortcut_hint.setText((self.hotkey.binding + "  ·  Start / stop") if self.hotkey.binding else "Choose a keyboard shortcut in Settings, or use the button below.")
+
+    def save_pause(self):
+        self.settings.pause_seconds = self.pause.currentData()
+        self.persist()
 
     def persist(self):
         try:
@@ -401,6 +414,7 @@ class DesktopWindow(QMainWindow):
             # Ignore a worker state queued just before the user pressed stop.
             if self.controller.control and self.controller.control.cancelled.is_set() and value not in {"Ready", "Stopping"}:
                 return
+            self.overlay.handle_event(kind, value)
             self.status.setText(value)
             busy = value != "Ready"
             self.mark.active = busy
@@ -415,9 +429,11 @@ class DesktopWindow(QMainWindow):
             if value == "Stopping":
                 self.approval_card.hide()
         elif kind == "transcript":
+            self.overlay.handle_event(kind, value)
             self.transcript.setText("You: " + value)
             self.reply.setText("")
         elif kind == "reply":
+            self.overlay.handle_event(kind, value)
             self.reply.setText(value)
             if self.detail.text() == value:
                 self.detail.hide()
@@ -426,6 +442,8 @@ class DesktopWindow(QMainWindow):
             self.detail.show()
         elif kind == "draft":
             self.input.setText(value)
+        elif kind == "level":
+            self.overlay.handle_event(kind, value)
 
     def on_approval(self, request_id, prompt):
         self.approval_id = request_id
@@ -466,6 +484,7 @@ class DesktopWindow(QMainWindow):
             self.finish_quit()
 
     def finish_quit(self):
+        self.overlay.close()
         if self.controller.engine:
             self.controller.engine.close()
         self.tray.hide()

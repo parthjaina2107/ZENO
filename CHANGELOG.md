@@ -4,6 +4,18 @@
 
 ### Added
 
+- Floating activity panel glass styling: neutral translucent surface, faint
+  border, soft shadow and muted monochrome voice bars. Setup reviewed: no installation or
+  configuration changes; restart ZENO to see the updated styling. This is a
+  painted glass effect, without native desktop background blur.
+
+- Non-activating floating desktop panel with live microphone levels, recognized
+  command, response and stage indicators; automatically hides after completion.
+- Adjustable end-of-command pause: 0.6s default, 0.9s balanced or 1.4s relaxed.
+  Speech-model loading overlaps recording; per-stage latency is logged locally.
+  Setup guide reviewed and updated. Restart desktop mode to use these changes;
+  no new dependencies or credentials are needed. Existing settings adopt 0.6s.
+
 - Native Windows press-to-talk desktop app with a user-selected global shortcut,
   Apple-inspired settings, typed fallback, microphone choice and system tray.
 - The same shortcut cancels recording, speech and remaining task steps. Started

@@ -62,7 +62,8 @@ request. No terminal confirmation prompt is used in desktop mode.
 - Microphone capture is **off until explicit activation**, including at startup.
   There is no continuous wake-word capture or voice barge-in in this interface.
 - There are 15 seconds to start speaking and a 25-second phrase limit. About
-  0.9 seconds of silence ends the phrase automatically.
+  0.6 seconds of silence ends the phrase by default. Choose 0.9 or 1.4 seconds
+  in **Voice & microphone** if you need longer pauses within a sentence.
 - Choose an input device and enable/disable spoken replies in **Voice & microphone**.
   Changes apply to the next request. Existing soft voice/rate settings are preserved.
 - Low-confidence transcripts are shown as an editable draft, never executed
@@ -76,6 +77,21 @@ request. No terminal confirmation prompt is used in desktop mode.
   configured `ZENO_DATA_DIR`). API keys and OAuth tokens are not stored there.
 
 ## Troubleshooting
+
+The floating activity panel appears on activation even with settings hidden.
+Listening bars reflect microphone amplitude; other stages use a progress animation,
+not a fabricated audio waveform. Transcripts appear after recognition, not word by
+word. The panel accepts no input and does not take focus from the target app.
+Use your shortcut to stop; approvals still appear in the main window. The last
+reply stays visible for four seconds after completion. Be mindful of nearby viewers
+or screen sharing: command/reply excerpts appear on screen.
+
+The configured speech model loads concurrently with recording and is reused for
+subsequent requests. Capture stays activation-only. No additional model download
+or provider change is introduced. Stage durations (without request text) are logged
+under `VoiceAgent.Desktop.Latency`; use these to distinguish transcription, model,
+tool and speech delays. Actual speed depends on CPU, model, network and tool work;
+no fixed cloud response time is guaranteed. Cancellation still drains workers.
 
 - **No response to the shortcut:** confirm ZENO is running, save a different
   combination and check for overlays or other apps using the keys. The button

@@ -200,6 +200,91 @@ def test_capture_cancelled_before_open_never_touches_mic(monkeypatch):
     microphone.assert_not_called()
 
 
+def test_pause_preferences_validate_and_preserve_old_settings(tmp_path):
+    path = tmp_path / "desktop.json"
+    path.write_text('{"shortcut":"F8"}')
+    assert DesktopSettings.load(path).pause_seconds == 0.6
+    for value in (None, [], "fast", -1, 120):
+        path.write_text(json.dumps({"pause_seconds": value}))
+        assert DesktopSettings.load(path).pause_seconds == 0.6
+    settings = DesktopSettings(pause_seconds=1.4)
+    settings.save(path)
+    assert DesktopSettings.load(path).pause_seconds == 1.4
+
+
+def test_capture_endpoint_and_meter(monkeypatch):
+    import speech_recognition as sr
+    import struct
+    from desktop import audio
+    def record(pause):
+        clock = iter(i * 0.1 for i in range(100))
+        monkeypatch.setattr(audio.time, "monotonic", lambda: next(clock))
+        source = MagicMock(CHUNK=512, SAMPLE_RATE=16000, SAMPLE_WIDTH=2)
+        source.stream.read.side_effect = [struct.pack("<512h", *([1000] * 512))] + [b"\x00" * 1024] * 50
+        microphone = MagicMock()
+        microphone.__enter__.return_value = source
+        monkeypatch.setattr(sr, "Microphone", MagicMock(return_value=microphone))
+        levels = []
+        result = audio.capture(RunControl(), pause_seconds=pause, on_level=levels.append)
+        microphone.__exit__.assert_called_once()
+        assert levels[0] > 0 and levels[-1] == 0
+        assert result.sample_rate == 16000
+        return source.stream.read.call_count
+    assert record(0.6) < record(1.4)
+
+
+@pytest.mark.asyncio
+async def test_model_load_overlaps_capture_before_transcription(monkeypatch):
+    from desktop import audio
+    engine = fake_engine()
+    entered, loaded = threading.Event(), threading.Event()
+    def capture(*args, **kwargs):
+        entered.set()
+        assert loaded.wait(2), "Model load must overlap microphone capture"
+        kwargs["on_level"](0.5)
+        return "audio"
+    def load():
+        assert entered.wait(2)
+        loaded.set()
+    monkeypatch.setattr(audio, "capture", capture)
+    engine.listener._get_whisper_model.side_effect = load
+    engine.listener._transcribe_audio.return_value = "hello"
+    engine.listener.last_uncertain = False
+    engine.brain.think.return_value = SimpleNamespace(kind="chat", message="Hi")
+    emit = MagicMock()
+    await engine.run(None, RunControl(), AsyncMock(), emit, DesktopSettings(spoken_replies=False))
+    engine.listener._transcribe_audio.assert_called_once_with("audio")
+    emit.assert_any_call("level", "0.5")
+
+
+def test_overlay_lifecycle_and_no_focus():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    overlay = ActivityOverlay()
+    try:
+        assert overlay.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        assert overlay.windowFlags() & Qt.WindowType.WindowTransparentForInput
+        overlay.handle_event("state", "Preparing")
+        assert overlay.isVisible()
+        overlay.handle_event("state", "Listening")
+        overlay.handle_event("level", "0.8")
+        assert overlay.bars.level == 0.8
+        overlay.handle_event("state", "Thinking")
+        assert overlay.bars.level == 0
+        overlay.handle_event("reply", "Opened Notepad.")
+        overlay.handle_event("state", "Ready")
+        assert overlay.dismiss.isActive() and not overlay.bars.timer.isActive()
+        overlay.handle_event("state", "Preparing")
+        assert not overlay.dismiss.isActive()
+        assert "shortcut" in overlay.caption.text()
+        app.processEvents()
+    finally:
+        overlay.close()
+
+
 def test_shortcut_validation_and_conflict_preserves_old():
     pytest.importorskip("PySide6")
     from desktop.hotkey import GlobalHotkey, parse_shortcut

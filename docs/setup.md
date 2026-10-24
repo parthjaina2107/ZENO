@@ -130,6 +130,14 @@ without a terminal.
    blocks it, review microphone access for desktop apps in Windows Settings.
 4. Press your shortcut once. Wait for **Listening**, say **“what time is it”**,
    then pause naturally. There are 15 seconds to begin and 25 seconds per phrase.
+   A small floating panel appears near the bottom of the screen containing your
+   pointer, even when the settings window is hidden. It shows microphone activity,
+   the recognized command after transcription, and progress without taking focus.
+   It disappears four seconds after the request finishes.
+   In **Voice & microphone**, choose the pause before sending: **Quick (0.6s)**,
+   **Balanced (0.9s)** or **Relaxed (1.4s)**. Quick is the new default, including
+   for existing settings files. Choose Relaxed if your phrases get cut short.
+   A two-minute silence is not required; the selected short pause sends the request.
 5. Press the **same shortcut while busy** to stop. During recording this discards
    the recording; it does not submit it. Remaining actions and spoken output stop.
 6. If recognition is uncertain, review the editable draft and Send it, or retry.

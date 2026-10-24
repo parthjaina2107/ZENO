@@ -72,7 +72,14 @@ class DesktopEngine:
         if text is None:
             from .audio import capture
             emit("state", "Listening")
-            audio = await control.call(capture, control, settings.microphone)
+            # Load only the configured recognizer while the user speaks. Both
+            # workers drain on cancellation; the microphone still opens on demand.
+            audio, _ = await asyncio.gather(
+                control.call(capture, control, settings.microphone,
+                             pause_seconds=settings.pause_seconds,
+                             on_level=lambda level: emit("level", str(level))),
+                control.call(self.listener._get_whisper_model),
+            )
             control.check()
             if audio is None:
                 return "I didn't hear a command. Press your shortcut to try again."
