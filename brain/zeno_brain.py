@@ -19,6 +19,7 @@ from .planner import ActionPlanner, PlannedAction
 from .memory import ZenoMemory
 from .vision import ScreenVision
 from .api_utils import call_gemini_with_fallback
+from .agent import GoalPlanner
 
 logger = logging.getLogger("VoiceAgent.ZenoBrain")
 
@@ -39,6 +40,7 @@ class ZenoBrain:
         self.vision = ScreenVision(api_key=self.api_key)
         self.nlu = NLUEngine(api_key=self.api_key)
         self.planner = ActionPlanner(executor=executor)
+        self.goal_planner = GoalPlanner(self.nlu, self.planner)
         self.client = None
         self._init_chat_client()
 
@@ -104,7 +106,7 @@ class ZenoBrain:
             f"To unlock full conversational Q&A and screen vision, please configure your Gemini API key."
         )
 
-    async def think(self, raw_user_text: str) -> BrainResponse:
+    async def think(self, raw_user_text: str, agent_mode: bool = False) -> BrainResponse:
         """
         Master cognitive decision pipeline:
         1. Parse persona / wake word
@@ -131,6 +133,11 @@ class ZenoBrain:
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply)
             return BrainResponse(kind="abort", message=reply)
+
+        task_match = re.match(r"^(?:agent(?:\s+task)?|task)(?:\s*:\s*|\s+)(.+)$|^(?:do this task|complete this task)\s*[:,]?\s+(.+)$", clean_text, re.I | re.S)
+        if agent_mode or task_match:
+            goal = next((part for part in task_match.groups() if part), clean_text) if task_match else clean_text
+            return BrainResponse(kind="task", message="Planning your task.", data={"goal": goal})
 
         # ----------------------------------------------------------------------
         # 1. Identity / Greeting queries

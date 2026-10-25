@@ -8,7 +8,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Type
+from typing import Dict, Any, List, Optional, Type, Literal
 from pydantic import BaseModel, Field, conint, ValidationError
 from config import config
 
@@ -86,6 +86,12 @@ class RunCommandParams(BaseModel):
 class ShutdownParams(BaseModel):
     mode: str = "lock"
 
+class MediaParams(BaseModel):
+    command: Literal["play_pause", "next", "previous", "stop"]
+
+class WaitParams(BaseModel):
+    seconds: float = Field(default=1, ge=0, le=10)
+
 
 ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
     "system_info": SystemInfoParams,
@@ -107,6 +113,8 @@ ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
     "file_read": FileReadParams,
     "run_command": RunCommandParams,
     "shutdown": ShutdownParams,
+    "media_control": MediaParams,
+    "wait": WaitParams,
 }
 
 
@@ -153,6 +161,12 @@ def describe_action(action: PlannedAction) -> str:
     """Build a deterministic, human-readable description from the action's real parameters."""
     act_type = action.action_type
     params = action.parameters or {}
+
+    if act_type == "task_plan":
+        return "Approve these exact steps:\n" + "\n".join(
+            f"{i + 1}. {step['action']}: {json.dumps(step['parameters'], ensure_ascii=False)}"
+            for i, step in enumerate(params.get("steps", []))
+        )
 
     if act_type == "run_command":
         cmd = params.get("command", "")

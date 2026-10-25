@@ -81,6 +81,17 @@ class SystemOps:
     def __init__(self):
         self._init_pyautogui()
 
+    def media_control(self, command: str) -> ActionResult:
+        """Send a media key to the active media session; do not claim playback verified."""
+        keys = {"play_pause": "playpause", "next": "nexttrack", "previous": "prevtrack", "stop": "stop"}
+        if command not in keys or pyautogui is None:
+            return ActionResult(False, "Media control is unavailable or invalid.", error="MEDIA_UNAVAILABLE")
+        try:
+            pyautogui.press(keys[command])
+            return ActionResult(True, f"Sent media command: {command}. Playback depends on the active player.")
+        except Exception as exc:
+            return ActionResult(False, f"Media control failed: {exc}", error="MEDIA_FAILED")
+
     def _init_pyautogui(self):
         try:
             import pyautogui

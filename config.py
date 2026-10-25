@@ -122,6 +122,15 @@ class Config:
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
 
+    # Bounds apply to the whole task, including model-driven continuations.
+    AGENT_MAX_STEPS: int = max(1, min(30, int(os.getenv("AGENT_MAX_STEPS", "12"))))
+    AGENT_MAX_ROUNDS: int = max(1, min(10, int(os.getenv("AGENT_MAX_ROUNDS", "4"))))
+    AGENT_TIMEOUT: int = max(10, int(os.getenv("AGENT_TIMEOUT", "180")))
+    AGENT_AUTO_ACTIONS: set = {
+        "system_info", "list_apps", "open_app", "open_url", "web_search",
+        "volume_set", "media_control", "wait",
+    }
+
     # Auto-Approve Policy (safe read-only actions skip confirmation)
     AUTO_APPROVE_ACTIONS: set = {
         "system_info",      # Battery, CPU, RAM, disk, IP, time — read-only
@@ -157,6 +166,8 @@ class Config:
         "run_command": "high",
         "file_delete": "high",
         "shutdown": "high",
+        "media_control": "low",
+        "wait": "low",
     }
 
     # Risk Levels and Action Policies

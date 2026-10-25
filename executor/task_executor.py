@@ -27,6 +27,14 @@ class TaskExecutor:
         logger.info(f"Executing action '{act_type}' with parameters: {params}")
 
         try:
+            if act_type == "media_control":
+                return self.system.media_control(params.get("command", ""))
+
+            if act_type == "wait":
+                import time
+                time.sleep(min(10, max(0, float(params.get("seconds", 1)))))
+                return ActionResult(True, "Wait finished.")
+
             # === APPLICATION MANAGEMENT ===
             if act_type == "open_app":
                 app_name = params.get("app_name", "")

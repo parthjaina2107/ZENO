@@ -93,6 +93,8 @@ Available actions:
 - system_info: { "type": "battery" | "cpu" | "ram" | "disk" | "ip" | "time" }
 - shutdown: { "mode": "shutdown" | "restart" | "sleep" | "lock" }
 - mouse_click: { "x": 100, "y": 200, "button": "left" }
+- media_control: { "command": "play_pause" | "next" | "previous" | "stop" }
+- wait: { "seconds": 1 }
 - multi_step: { "steps": [ ...array of above actions... ] }
 
 Risk levels:
@@ -102,6 +104,25 @@ Risk levels:
 
 If you don't understand the command, set "understood": false and suggest what the user might mean in "confirmation_message".
 """
+
+
+def split_commands(text: str) -> list[str]:
+    """Split explicit sequences outside quotes, leaving dictation/search payloads intact."""
+    if re.match(r"^(?:type|write|run command|execute command|terminal|search|google)\b", text, re.I):
+        return [text]
+    quoted = [(m.start(), m.end()) for m in re.finditer(r'"[^"\n]*"|\'[^\'\n]*\'', text)]
+    separator = re.compile(r"\s+(?:and\s+then|then|and(?=\s+(?:open|launch|close|type|write|search|set|take|check|pause|play|run)\b))\s+", re.I)
+    parts, start = [], 0
+    for match in separator.finditer(text):
+        if any(a <= match.start() < b for a, b in quoted):
+            continue
+        # Once dictation starts, all remaining words are its payload.
+        if re.match(r"^(?:type|write|run command|search|google)\b", text[start:].strip(), re.I):
+            break
+        parts.append(text[start:match.start()].strip())
+        start = match.end()
+    parts.append(text[start:].strip())
+    return parts
 
 
 class NLUEngine:
@@ -142,8 +163,24 @@ class NLUEngine:
 
     def _sanitize_command(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """Validate safety constraints on parsed commands."""
+        if not isinstance(response, dict) or not isinstance(response.get("parameters", {}), dict):
+            return {"understood": False, "action": "unknown", "confirmation_message": "Invalid action format."}
         action = response.get("action")
         params = response.get("parameters", {})
+
+        if action == "multi_step":
+            steps = params.get("steps")
+            if not isinstance(steps, list) or not 1 <= len(steps) <= config.AGENT_MAX_STEPS:
+                return {"understood": False, "action": "blocked", "confirmation_message": "The task has an invalid number of steps."}
+            clean_steps = []
+            for step in steps:
+                if not isinstance(step, dict) or step.get("action") == "multi_step":
+                    return {"understood": False, "action": "blocked", "confirmation_message": "Nested or malformed steps are unsupported."}
+                clean = self._sanitize_command({**step, "understood": True})
+                if not clean.get("understood"):
+                    return clean
+                clean_steps.append(clean)
+            return {**response, "parameters": {"steps": clean_steps}}
 
         if action == "run_command":
             cmd = str(params.get("command", "")).lower()
@@ -179,8 +216,28 @@ class NLUEngine:
         """Built-in regex/keyword parser for reliable offline operation with word-boundary precision."""
         lowered = text.lower().strip()
 
+        # Payload-bearing commands preserve capitalization, URLs and literal text.
+        for pattern, action, key in ((RE_TYPE, "type_text", "text"), (RE_CMD, "run_command", "command"), (RE_SEARCH, "web_search", "query")):
+            match = pattern.search(text.strip())
+            if match:
+                value = match.group(1).strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                    value = value[1:-1]
+                return {"understood": True, "action": action, "parameters": {key: value},
+                        "description": f"{action.replace('_', ' ')}: {value}",
+                        "risk_level": config.ACTION_RISK[action], "confirmation_message": f"{action.replace('_', ' ')}: {value}"}
+
+        media = {
+            "pause music": "play_pause", "play music": "play_pause", "resume music": "play_pause",
+            "pause playback": "play_pause", "play pause": "play_pause", "skip this song": "next",
+            "next song": "next", "next track": "next", "previous song": "previous", "stop music": "stop",
+        }.get(lowered.rstrip(".!?"))
+        if media:
+            return {"understood": True, "action": "media_control", "parameters": {"command": media},
+                    "risk_level": "low", "description": f"Media: {media}"}
+
         # 1. URL pattern
-        url_match = RE_URL.search(lowered)
+        url_match = RE_URL.search(text)
         if url_match:
             url = url_match.group(1).strip()
             return {
@@ -431,8 +488,17 @@ class NLUEngine:
 
         text = user_text.strip()
 
-        # FAST PATH: Try local parser first — handles ~80% of OS commands in <1ms
-        local_result = self._local_fallback_understand(text)
+        # Decompose before the greedy single-command patterns can swallow a task.
+        parts = split_commands(text)
+        if len(parts) > 1:
+            steps = [self._local_fallback_understand(part) for part in parts]
+            if all(step.get("understood") for step in steps):
+                return self._sanitize_command({"understood": True, "action": "multi_step", "parameters": {"steps": steps}})
+            # Never execute just the recognized prefix of an incomplete task.
+            local_result = {"understood": False, "action": "unknown", "parameters": {},
+                            "confirmation_message": "I couldn't plan every step. Rephrase the task or configure Gemini for complex goals."}
+        else:
+            local_result = self._local_fallback_understand(text)
         if local_result.get("understood", False):
             return self._sanitize_command(local_result)
 
