@@ -1,13 +1,55 @@
 # 🎙️ ZENO — Secure Voice Automation & Remote Control
 
-> **ZENO**: Control your entire computer via voice commands—either locally using your microphone or remotely from your smartphone—always protected by explicit permission gating before any action executes.
+> **ZENO**: Run supported computer tasks by voice—locally using your microphone or remotely from your smartphone—with validated plans, action permissions, and progress reporting.
+
+## Agent task mode
+
+Say **“Zeno, task open Notepad then type Hello ZENO”**, type
+`task: check battery then check cpu usage`, or enable **Agent task mode** in the phone UI.
+ZENO turns the request into validated actions, shows its plan, executes a phase,
+and uses the actual results to plan the next phase. It stops when complete, blocked,
+or in need of more information. Task outcomes appear in the conversation.
+
+- Explicit sequences work offline, including `open notepad then type "Hello ZENO"`.
+  Quote literal text; the remainder after `type` is treated as dictation.
+- With `GEMINI_API_KEY`, describe a goal such as “Find the text files in Downloads,
+  read the relevant meeting note, and save a summary in Documents/summary.txt”.
+  ZENO can search/read first, then plan the dependent write from the returned content.
+- In task mode, routine app/URL opening, searches, telemetry, volume and media keys
+  run automatically. File and keyboard/mouse steps require approval of the exact
+  parameters as a group. Newly planned steps need a fresh approval. High-risk steps
+  require two confirmations. Regular command mode retains per-action approval.
+- Say **“Zeno, stop”** locally or on the phone, or press **STOP**, including inside
+  the approval dialog. Cancellation stops subsequent steps; an OS operation already
+  dispatched may finish. Local and remote tasks cannot drive the desktop concurrently.
+- The phone UI shows live speech transcription and task progress. The local loop
+  keeps listening during execution and routes yes/no to the pending approval.
+  Microphone captures overlapping ZENO's own speech are discarded to avoid echo commands.
+- `pause music`, `next song`, `previous song`, and `stop music` send media keys to
+  the active player. Play/pause is a toggle; playback is not independently verified.
+
+Tasks default to 12 executed steps, 4 planning rounds, and 180 seconds. Configure
+`AGENT_MAX_STEPS`, `AGENT_MAX_ROUNDS`, and `AGENT_TIMEOUT` in `.env`. Bounds stop further
+work; they cannot force-kill an already dispatched OS call. A failed step stops its
+dependent steps. The planner may choose a different supported action, but an identical
+previously attempted action is not automatically repeated.
+
+**Current limits:** This is a bounded agent over ZENO's existing desktop/file tools.
+It does not yet navigate arbitrary website interfaces, autonomously drive a coding CLI,
+or verify screen state after every click. Complex planning sends the goal, tool results
+(including requested file contents), and permitted directory names to Gemini. Screen
+image data is excluded from task-planning history; the separate screen-vision feature
+retains its existing behavior. Physical microphone accuracy and live Gemini responses
+depend on your hardware, connectivity and configured API key.
+
+See [implementation and verification notes](docs/agent-task-upgrade.md).
 
 ---
 
 ## 🌟 Key Features
 
 1. **Safety & Permission System**:
-   - Every action requires user confirmation before execution based on an enforceable risk hierarchy.
+   - Actions use an enforceable risk hierarchy; safe telemetry is automatic, and agent task mode permits routine actions within the submitted task.
    - **Low Risk**: Single confirmation ("Open Chrome? Say YES").
    - **Medium Risk**: Parameter-bound confirmations (File manipulation, typing text, volume adjustments).
    - **High Risk**: Double confirmation & explicit prompts (Deleting files, shutting down, terminal commands).
@@ -123,7 +165,7 @@ Run the automated test suite with pytest:
 .venv\Scripts\python.exe -m pytest tests -v
 ```
 
-All 67+ automated unit and integration tests across 11 test suites verify:
+The 90 automated unit and integration tests verify:
 - Configuration validation, auto-generated secrets, and safety lists
 - NLU tokenization, regex word boundaries, and zero false-positive routing
 - Multi-tier permission management, action ID binding, and audit logging
