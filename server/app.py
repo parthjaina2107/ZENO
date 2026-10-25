@@ -7,26 +7,27 @@ communication with permission negotiation.
 import json
 import logging
 import asyncio
+import uuid
 from pathlib import Path
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException, status, Request, Header
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import psutil
-
-# Module-level execution lock to serialize command execution across connections
-EXEC_LOCK = asyncio.Lock()
 
 from config import config
 from .auth import auth_manager
 from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
 from executor.permissions import PermissionManager
+from executor.agent_runner import AgentRunner, coordinator
 from voice.speaker import VoiceSpeaker
 
 logger = logging.getLogger("VoiceAgent.Server")
 
 app = FastAPI(title="ZENO Remote Control", version="2.0.0")
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 # Restrict CORS to own origins and ngrok proxy domains
 ALLOWED_ORIGINS = [
@@ -185,102 +186,51 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
     active_tasks = set()
+    connection_id = "remote:" + uuid.uuid4().hex
+    owned_requests = set()
 
 
     async def send_to_client(data: Dict[str, Any]):
         try:
+            if data.get("type") == "permission_request":
+                owned_requests.add(data["request_id"])
             await websocket.send_text(json.dumps(data))
         except Exception as e:
             logger.error(f"Failed to send to client: {e}")
 
-    async def handle_command(user_text: str):
-        """Execute command under global lock while allowing websocket to continue receiving."""
-        async with EXEC_LOCK:
-            logger.info(f"Remote command received: '{user_text}'")
-
-            # Process via ZENO Cognitive Brain
-            brain_resp = await brain.think(user_text)
-
-            if brain_resp.kind in ("chat", "vision", "memory"):
+    async def handle_command(user_text: str, agent_mode=False):
+        """Keep receiving approvals and stop commands while planning/execution runs."""
+        try:
+            brain_resp = await brain.think(user_text, agent_mode=True) if agent_mode else await brain.think(user_text)
+            if brain_resp.kind in ("chat", "vision", "memory", "abort"):
+                if brain_resp.kind == "abort":
+                    coordinator.stop()
                 speaker.speak(brain_resp.message)
-                await send_to_client({
-                    "type": "response",
-                    "message": brain_resp.message,
-                    "kind": brain_resp.kind
-                })
+                await send_to_client({"type": "response", "message": brain_resp.message, "kind": brain_resp.kind})
                 return
 
-            if brain_resp.kind == "abort":
-                perms.cancel_all_pending("Aborted by user command")
-                speaker.speak(brain_resp.message)
-                await send_to_client({
-                    "type": "response",
-                    "message": f"🛑 {brain_resp.message}",
-                    "kind": "abort"
-                })
-                return
+            async def approve(action):
+                approved = await perms.request_permission_remote(action, send_to_client, config.REMOTE_CONFIRMATION_TIMEOUT)
+                if approved and action.risk_level == "high":
+                    async def send_final(payload):
+                        payload["message"] = "Final confirmation: " + payload["message"]
+                        await send_to_client(payload)
+                    approved = await perms.request_permission_remote(action, send_final, config.REMOTE_CONFIRMATION_TIMEOUT)
+                return approved
 
-            plan = brain_resp.actions
-            for action in plan:
-                if action.action_type in ("unhandled", "unknown"):
-                    reply_msg = action.confirmation_message or "I didn't understand that command."
-                    speaker.speak(reply_msg)
-                    await send_to_client({
-                        "type": "response",
-                        "message": reply_msg
-                    })
-                    break
+            async def emit(event):
+                await send_to_client(event)
+                if event["type"] == "response" or event.get("status") in ("completed", "blocked", "needs_input", "failed"):
+                    speaker.speak(event.get("message", ""))
 
-                if action.requires_permission:
-                    # Auto-approve safe read-only actions
-                    if action.action_type in getattr(config, "AUTO_APPROVE_ACTIONS", set()) and action.risk_level == "low":
-                        perms.log_decision(action, True, source="auto", reason="Auto-approved safe read-only action")
-                    else:
-                        # Announce permission requirement
-                        perm_msg = action.confirmation_message or f"Approval required to {action.description}."
-                        speaker.speak(perm_msg)
-
-                        # Request permission from phone
-                        approved = await perms.request_permission_remote(
-                            action=action,
-                            send_func=send_to_client,
-                            timeout=config.REMOTE_CONFIRMATION_TIMEOUT
-                        )
-
-                        if not approved:
-                            cancel_msg = f"Action cancelled: '{action.description}' was denied or timed out."
-                            speaker.speak(cancel_msg)
-                            await send_to_client({
-                                "type": "response",
-                                "message": cancel_msg
-                            })
-                            break
-                else:
-                    if action.confirmation_message:
-                        speaker.speak(action.confirmation_message)
-
-                # Execute action
-                result = planner.execute_action(action)
-                perms.log_result(action, result, source="remote")
-
-                if action.action_type == "screenshot" and result.success and isinstance(result.output, dict):
-                    # Send screenshot base64 preview
-                    speaker.speak(result.message)
-                    await send_to_client({
-                        "type": "screenshot",
-                        "data": result.output.get("base64"),
-                        "message": result.message
-                    })
-                else:
-                    speaker.speak(result.message)
-                    status_prefix = "✅ " if result.success else "❌ "
-                    await send_to_client({
-                        "type": "response",
-                        "message": f"{status_prefix}{result.message}"
-                    })
-
-                if not result.success:
-                    break
+            runner = AgentRunner(brain, perms, connection_id, approve, emit)
+            await runner.run((brain_resp.data or {}).get("goal", user_text),
+                             actions=brain_resp.actions, agent_mode=brain_resp.kind == "task")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Command processing failed")
+            await send_to_client({"type": "response", "message": "The command could not be processed. Please try again."})
 
     try:
         while True:
@@ -290,7 +240,15 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             except Exception:
                 continue
 
+            if not isinstance(msg, dict):
+                continue
             msg_type = msg.get("type")
+            text_value = msg.get("text", "")
+            if msg_type == "command" and isinstance(text_value, str):
+                stop_text = brain.strip_wake_prefix(text_value).lower().strip(" .!?,")
+                if stop_text in ("stop", "cancel", "cancel everything", "abort", "halt", "kill", "emergency stop"):
+                    msg_type = "abort"
+
 
             # Telemetry request
             if msg_type == "get_telemetry":
@@ -308,15 +266,16 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             # Abort / Emergency stop
             if msg_type == "abort":
                 logger.warning("Emergency abort received over WebSocket.")
+                coordinator.stop()
                 for t in list(active_tasks):
                     if not t.done():
                         t.cancel()
                 active_tasks.clear()
                 perms.cancel_all_pending("Emergency abort via WebSocket")
-                speaker.speak("Emergency stop. All actions aborted.")
+                speaker.speak("Emergency stop. No further steps will run.")
                 await send_to_client({
                     "type": "response",
-                    "message": "🛑 Emergency stop: All actions aborted.",
+                    "message": "🛑 Emergency stop: queued actions aborted. An action already in progress may finish.",
                     "kind": "abort"
                 })
                 continue
@@ -324,18 +283,25 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             # Permission response from client button click
             if msg_type == "permission_response":
                 req_id = msg.get("request_id")
-                approved = bool(msg.get("approved", False))
+                approved = msg.get("approved") is True
                 action_id = msg.get("action_id")
-                perms.resolve_remote_permission(req_id, approved, action_id=action_id)
+                if req_id in owned_requests:
+                    owned_requests.discard(req_id)
+                    perms.resolve_remote_permission(req_id, approved, action_id=action_id)
                 continue
 
             # Voice or text command - processed in background task so receive loop never blocks
             if msg_type == "command":
-                user_text = msg.get("text", "").strip()
-                if not user_text:
+                if not isinstance(text_value, str):
+                    continue
+                user_text = text_value.strip()
+                if not user_text or len(user_text) > 12000:
                     continue
 
-                task = asyncio.create_task(handle_command(user_text))
+                if active_tasks or coordinator.active is not None:
+                    await send_to_client({"type": "response", "message": "ZENO is busy. Stop the current task or wait for it to finish."})
+                    continue
+                task = asyncio.create_task(handle_command(user_text, agent_mode=msg.get("mode") == "agent"))
                 active_tasks.add(task)
                 task.add_done_callback(active_tasks.discard)
 
@@ -344,6 +310,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     except Exception as e:
         logger.exception(f"Unexpected WebSocket error: {e}")
     finally:
+        coordinator.stop(connection_id)
+        for request_id in owned_requests:
+            perms.resolve_remote_permission(request_id, False)
         for t in list(active_tasks):
             if not t.done():
                 t.cancel()

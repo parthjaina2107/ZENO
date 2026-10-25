@@ -9,7 +9,7 @@ import hashlib
 import logging
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
-from config import config
+from config import config, ensure_secrets, KNOWN_DEFAULT_ACCESS_TOKENS, KNOWN_DEFAULT_JWT_SECRETS
 
 logger = logging.getLogger("VoiceAgent.Auth")
 
@@ -19,6 +19,9 @@ LOCKOUT_DURATION = 3600  # 1 hour in seconds
 
 class AuthManager:
     def __init__(self, access_token: Optional[str] = None):
+        if (not config.ACCESS_TOKEN or config.ACCESS_TOKEN in KNOWN_DEFAULT_ACCESS_TOKENS
+                or not config.JWT_SECRET_KEY or config.JWT_SECRET_KEY in KNOWN_DEFAULT_JWT_SECRETS):
+            ensure_secrets()
         self.access_token = access_token or config.ACCESS_TOKEN
         self.secret_key = config.JWT_SECRET_KEY
         self.algorithm = config.JWT_ALGORITHM
