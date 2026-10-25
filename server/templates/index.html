@@ -1,901 +1,413 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>🎙️ ZENO — Autonomous AI Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-primary: #0a0e17;
-      --bg-card: rgba(18, 24, 38, 0.85);
-      --bg-card-border: rgba(255, 255, 255, 0.08);
-      --accent-blue: #3b82f6;
-      --accent-cyan: #06b6d4;
-      --accent-green: #10b981;
-      --accent-red: #ef4444;
-      --accent-amber: #f59e0b;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    body {
-      font-family: var(--font-family);
-      background: radial-gradient(circle at top center, #111827 0%, #030712 100%);
-      color: var(--text-main);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      overflow-x: hidden;
-      padding: 12px;
-    }
-
-    /* Container */
-    .app-container {
-      width: 100%;
-      max-width: 500px;
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      gap: 12px;
-    }
-
-    /* Header */
-    header {
-      background: var(--bg-card);
-      backdrop-filter: blur(16px);
-      border: 1px solid var(--bg-card-border);
-      border-radius: 16px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .brand-icon {
-      font-size: 22px;
-      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
-      padding: 6px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .brand h1 {
-      font-size: 1.1rem;
-      font-weight: 600;
-      letter-spacing: -0.3px;
-    }
-
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.8rem;
-      font-weight: 500;
-      padding: 4px 10px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--bg-card-border);
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-red);
-      transition: background 0.3s ease;
-    }
-
-    .status-dot.connected {
-      background: var(--accent-green);
-      box-shadow: 0 0 10px var(--accent-green);
-    }
-
-    /* Telemetry Bar */
-    .telemetry-bar {
-      display: flex;
-      justify-content: space-between;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid var(--bg-card-border);
-      border-radius: 12px;
-      padding: 8px 14px;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-
-    .telemetry-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .telemetry-val {
-      color: var(--text-main);
-      font-weight: 600;
-    }
-
-    /* Chat Log Window */
-    .chat-container {
-      flex: 1;
-      min-height: 320px;
-      max-height: 48vh;
-      overflow-y: auto;
-      background: var(--bg-card);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--bg-card-border);
-      border-radius: 16px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
-    }
-
-    .message {
-      max-width: 86%;
-      padding: 10px 14px;
-      border-radius: 14px;
-      font-size: 0.92rem;
-      line-height: 1.45;
-      animation: fadeIn 0.25s ease-out forwards;
-      word-break: break-word;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .message.user {
-      align-self: flex-end;
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
-      color: #fff;
-      border-bottom-right-radius: 4px;
-    }
-
-    .message.agent {
-      align-self: flex-start;
-      background: rgba(30, 41, 59, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: var(--text-main);
-      border-bottom-left-radius: 4px;
-    }
-
-    .message.system {
-      align-self: center;
-      background: rgba(255, 255, 255, 0.05);
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      border-radius: 20px;
-      padding: 4px 12px;
-    }
-
-    /* Screenshot Embed */
-    .screenshot-preview {
-      width: 100%;
-      border-radius: 10px;
-      margin-top: 8px;
-      border: 1px solid var(--bg-card-border);
-      cursor: pointer;
-    }
-
-    /* Red STOP Button */
-    .stop-btn {
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      font-weight: 700;
-      font-size: 0.82rem;
-      padding: 0 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
-      transition: all 0.2s ease;
-      white-space: nowrap;
-    }
-    .stop-btn:hover {
-      background: #dc2626;
-      transform: scale(1.02);
-    }
-    .stop-btn:active {
-      transform: scale(0.98);
-    }
-
-    /* Permission Card Modal */
-    .permission-overlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(8px);
-      z-index: 99;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-    }
-
-    .permission-overlay.active {
-      display: flex;
-    }
-
-    .permission-card {
-      background: #111827;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 20px;
-      padding: 24px;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
-      text-align: center;
-      animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    @keyframes popIn {
-      from { transform: scale(0.92); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
-
-    .perm-badge {
-      display: inline-block;
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 4px 12px;
-      border-radius: 20px;
-      margin-bottom: 12px;
-    }
-
-    .perm-badge.low { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
-    .perm-badge.medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
-    .perm-badge.high { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
-
-    .permission-card h3 {
-      font-size: 1.15rem;
-      margin-bottom: 8px;
-    }
-
-    .permission-card p {
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      margin-bottom: 22px;
-      line-height: 1.5;
-    }
-
-    .perm-btn-row {
-      display: flex;
-      gap: 12px;
-    }
-
-    .perm-btn {
-      flex: 1;
-      padding: 14px;
-      border-radius: 12px;
-      border: none;
-      font-family: inherit;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: transform 0.15s ease, filter 0.15s ease;
-    }
-
-    .perm-btn:active {
-      transform: scale(0.97);
-    }
-
-    .perm-btn.approve {
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: #fff;
-    }
-
-    .perm-btn.deny {
-      background: rgba(239, 68, 68, 0.15);
-      color: #f87171;
-      border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-
-    /* Controls: Hold to speak & input */
-    .controls {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .voice-control {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .mic-button {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-      border: none;
-      color: #fff;
-      font-size: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 6px 25px rgba(59, 130, 246, 0.45);
-      transition: all 0.2s ease;
-      touch-action: none;
-      user-select: none;
-    }
-
-    .mic-button:active, .mic-button.recording {
-      transform: scale(1.1);
-      background: linear-gradient(135deg, #ef4444, #dc2626);
-      box-shadow: 0 0 35px rgba(239, 68, 68, 0.8);
-      animation: pulse 1s infinite alternate;
-    }
-
-    @keyframes pulse {
-      from { transform: scale(1.05); }
-      to { transform: scale(1.15); }
-    }
-
-    .mic-hint {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-
-    .text-input-row {
-      display: flex;
-      gap: 8px;
-      background: var(--bg-card);
-      border: 1px solid var(--bg-card-border);
-      border-radius: 14px;
-      padding: 4px;
-    }
-
-    .text-input-row input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: var(--text-main);
-      padding: 10px 14px;
-      font-size: 0.92rem;
-      font-family: inherit;
-    }
-
-    .text-input-row button {
-      background: var(--accent-blue);
-      border: none;
-      color: #fff;
-      padding: 0 16px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 500;
-      font-family: inherit;
-      transition: background 0.15s;
-    }
-
-    .text-input-row button:active {
-      background: #2563eb;
-    }
-
-    /* Auth Modal */
-    #authModal {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(3, 7, 18, 0.95);
-      backdrop-filter: blur(20px);
-      z-index: 100;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-    }
-
-    .auth-box {
-      background: var(--bg-card);
-      border: 1px solid var(--bg-card-border);
-      border-radius: 20px;
-      padding: 28px;
-      width: 100%;
-      max-width: 380px;
-      text-align: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
-    }
-
-    .auth-box h2 {
-      font-size: 1.3rem;
-      margin-bottom: 6px;
-    }
-
-    .auth-box p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-bottom: 20px;
-    }
-
-    .auth-input {
-      width: 100%;
-      padding: 12px 16px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--bg-card-border);
-      color: #fff;
-      font-size: 1rem;
-      font-family: inherit;
-      margin-bottom: 14px;
-      outline: none;
-      text-align: center;
-      letter-spacing: 1px;
-    }
-
-    .auth-btn {
-      width: 100%;
-      padding: 13px;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-      border: none;
-      color: #fff;
-      border-radius: 12px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
-  </style>
-</head>
-<body>
-
-  <!-- App Wrapper -->
-  <div class="app-container">
-
-    <!-- Header -->
-    <header>
-      <div class="brand">
-        <div class="brand-icon">🎙️</div>
-        <div>
-          <h1>ZENO</h1>
-          <p style="font-size: 0.72rem; color: var(--accent-cyan); font-weight: 500;">AI Cognitive Hub</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#111f21" />
+    <meta
+      name="description"
+      content="ZENO — your personal computer, orchestrated by you."
+    />
+    <title>ZENO — Your personal workspace</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <script defer src="/static/vendor/lucide.min.js"></script>
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to workspace</a>
+    <div class="shell">
+      <aside class="rail glass">
+        <a class="brand" href="/" aria-label="Zeno home"
+          >z<span>e</span>no<span class="brand-dot">.</span></a
+        >
+        <div class="rail-label">PERSONAL WORKSPACE</div>
+        <nav aria-label="Main navigation">
+          <button class="nav active" data-view="workspace">
+            <i data-lucide="layout-dashboard"></i>Workspace<span
+              class="nav-dot"
+            ></span></button
+          ><button class="nav" data-view="activity">
+            <i data-lucide="layers-2"></i>Activity<span
+              id="activityCount"
+              class="count"
+              >0</span
+            ></button
+          ><button class="nav" data-view="preferences">
+            <i data-lucide="sliders-horizontal"></i>Preferences
+          </button>
+        </nav>
+        <div class="rail-bottom">
+          <div class="privacy">
+            <i data-lucide="shield-check"></i
+            ><strong>You stay in control.</strong>
+            <p>Review sensitive actions.<br />Stop a task at any time.</p>
+          </div>
+          <button id="disconnect" class="profile">
+            <span class="avatar">Y</span
+            ><span>Your workspace<small>Disconnect session</small></span
+            ><i data-lucide="log-out"></i>
+          </button>
         </div>
-      </div>
-      <div class="status-badge" id="statusBadge">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">Connecting...</span>
-      </div>
-    </header>
-
-    <!-- Telemetry Bar -->
-    <div class="telemetry-bar">
-      <div class="telemetry-item">
-        <span>🔋</span>
-        <span class="telemetry-val" id="telemetryBattery">--%</span>
-      </div>
-      <div class="telemetry-item">
-        <span>💻 CPU:</span>
-        <span class="telemetry-val" id="telemetryCpu">--%</span>
-      </div>
-      <div class="telemetry-item">
-        <span>🧠 RAM:</span>
-        <span class="telemetry-val" id="telemetryRam">--%</span>
+      </aside>
+      <div class="content">
+        <header>
+          <div class="breadcrumb">
+            Personal <span>/</span> <strong id="pageTitle">Workspace</strong>
+          </div>
+          <div class="header-actions">
+            <span class="connection" id="connection"
+              ><b></b><span id="statusText">Connecting</span></span
+            ><button
+              class="icon-button"
+              id="focusCommand"
+              aria-label="Focus command"
+              title="Focus command (Ctrl+K)"
+            >
+              <i data-lucide="command"></i>
+            </button>
+          </div>
+        </header>
+        <main id="main">
+          <section id="workspace" class="view">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">LESS FRICTION. MORE FLOW.</span>
+                <h1>Your day, orchestrated.</h1>
+                <p>Give ZENO a direction. Make room for what matters.</p>
+              </div>
+              <span class="date" id="today"></span>
+            </div>
+            <div class="dashboard-grid">
+              <div class="main-column">
+                <section class="hero glass">
+                  <div
+                    class="hero-art"
+                    role="img"
+                    aria-label="Sculptural smoked glass loop"
+                  ></div>
+                  <div class="hero-copy">
+                    <span class="pill"
+                      ><span class="spark"></span> YOUR PERSONAL AGENT</span
+                    >
+                    <h2>
+                      A thought.<br />A word.<br /><em>Consider it started.</em>
+                    </h2>
+                    <p>
+                      From a quick command to a multi-step task.<br />Your
+                      computer, working with you.
+                    </p>
+                  </div>
+                  <div class="hero-foot">
+                    <span
+                      ><i data-lucide="audio-lines"></i> Speak naturally. Stay
+                      in control.</span
+                    ><span>01 / WORKSPACE</span>
+                  </div>
+                </section>
+                <section class="composer glass" aria-label="Command composer">
+                  <div class="composer-top">
+                    <label class="mode"
+                      ><i data-lucide="sparkles"></i
+                      ><select id="mode" aria-label="Execution mode">
+                        <option value="agent">Agent task</option>
+                        <option value="command">Single command</option>
+                      </select></label
+                    ><span id="composerStatus">Ready when you are</span>
+                  </div>
+                  <label class="sr-only" for="command"
+                    >What would you like to get done?</label
+                  ><textarea
+                    id="command"
+                    rows="2"
+                    placeholder="What would you like to get done?"
+                  ></textarea>
+                  <div class="composer-bottom">
+                    <button
+                      class="voice-button"
+                      id="mic"
+                      aria-label="Start voice input"
+                    >
+                      <i data-lucide="mic"></i
+                      ><span id="micLabel">Use your voice</span></button
+                    ><button class="primary" id="run">
+                      Run task<i data-lucide="arrow-up-right"></i>
+                    </button>
+                  </div>
+                  <p id="inputHint" class="input-hint" aria-live="polite">
+                    Enter to run · Shift + Enter for a new line
+                  </p>
+                </section>
+                <div class="suggestions">
+                  <span>TRY A LITTLE LESS DOING</span>
+                  <div>
+                    <button data-prompt="Check battery then check CPU usage">
+                      <i data-lucide="activity"></i>Check my computer<i
+                        data-lucide="arrow-up-right"
+                      ></i></button
+                    ><button data-prompt="Open calculator">
+                      <i data-lucide="app-window"></i>Open an app<i
+                        data-lucide="arrow-up-right"
+                      ></i></button
+                    ><button data-prompt="Search the web for ">
+                      <i data-lucide="search"></i>Find something<i
+                        data-lucide="arrow-up-right"
+                      ></i>
+                    </button>
+                  </div>
+                </div>
+                <section class="conversation glass">
+                  <div class="section-head">
+                    <h2>Conversation</h2>
+                    <span class="subtle">This session</span>
+                  </div>
+                  <div
+                    id="messages"
+                    role="log"
+                    aria-label="Conversation"
+                    aria-live="polite"
+                  >
+                    <div id="chatEmpty" class="empty-chat">
+                      <span class="empty-icon"
+                        ><i data-lucide="messages-square"></i
+                      ></span>
+                      <div>
+                        <strong>A fresh start.</strong>
+                        <p>
+                          Your requests and ZENO’s responses will appear here.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <aside class="side-column">
+                <section class="task-panel glass">
+                  <div class="section-head">
+                    <h2>In motion</h2>
+                    <span class="tiny-dot"></span>
+                  </div>
+                  <div class="task-symbol"><i data-lucide="orbit"></i></div>
+                  <span id="taskState" class="eyebrow">NO ACTIVE TASK</span>
+                  <h3 id="taskTitle">Space for your next idea.</h3>
+                  <p id="taskMessage">
+                    Start a task to follow its plan, approvals, and progress
+                    here.
+                  </p>
+                  <ol id="steps"></ol>
+                  <button id="stop" class="stop" disabled>
+                    <i data-lucide="square"></i>Stop task
+                  </button>
+                  <div class="task-note">
+                    <i data-lucide="shield-check"></i>Approvals happen before
+                    sensitive actions.
+                  </div>
+                </section>
+                <section class="device glass">
+                  <div class="section-head">
+                    <h2>Your computer</h2>
+                    <i data-lucide="monitor"></i>
+                  </div>
+                  <div class="device-name">
+                    <span class="device-icon"
+                      ><i data-lucide="laptop"></i
+                    ></span>
+                    <div>
+                      <strong>Connected host</strong
+                      ><small id="deviceStatus">Waiting for connection</small>
+                    </div>
+                  </div>
+                  <div class="metric">
+                    <span>CPU usage</span><strong id="cpuValue">—</strong
+                    ><meter
+                      id="cpu"
+                      min="0"
+                      max="100"
+                      value="0"
+                      aria-label="CPU usage"
+                    ></meter>
+                  </div>
+                  <div class="metric">
+                    <span>Memory</span><strong id="ramValue">—</strong
+                    ><meter
+                      id="ram"
+                      min="0"
+                      max="100"
+                      value="0"
+                      aria-label="Memory usage"
+                    ></meter>
+                  </div>
+                  <div class="battery">
+                    <span><i data-lucide="battery-medium"></i>Battery</span
+                    ><strong id="batteryValue">—</strong>
+                  </div>
+                  <span class="metric-note"
+                    >Live readings · updates every 10 seconds</span
+                  >
+                </section>
+                <section class="media glass">
+                  <div>
+                    <span class="eyebrow">SET THE PACE</span>
+                    <h3>A little background rhythm.</h3>
+                    <p>Control media on your computer.</p>
+                  </div>
+                  <div class="media-controls">
+                    <button
+                      class="icon-button"
+                      data-media="previous"
+                      aria-label="Previous track"
+                    >
+                      <i data-lucide="skip-back"></i></button
+                    ><button
+                      class="play"
+                      data-media="play_pause"
+                      aria-label="Play or pause media"
+                    >
+                      <i data-lucide="play"></i
+                      ><i data-lucide="pause"></i></button
+                    ><button
+                      class="icon-button"
+                      data-media="next"
+                      aria-label="Next track"
+                    >
+                      <i data-lucide="skip-forward"></i>
+                    </button>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </section>
+          <section id="activity" class="view" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">A LITTLE CLARITY</span>
+                <h1>Your activity.</h1>
+                <p>A record of what you asked, and what happened next.</p>
+              </div>
+            </div>
+            <div class="activity-tools">
+              <label class="search-box"
+                ><i data-lucide="search"></i
+                ><input
+                  id="activitySearch"
+                  placeholder="Search this session"
+                  aria-label="Search activity" /></label
+              ><span class="subtle">Session only · cleared on reload</span>
+            </div>
+            <div id="activityList" class="glass activity-list"></div>
+          </section>
+          <section id="preferences" class="view" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">MAKE IT YOURS</span>
+                <h1>A workspace that fits.</h1>
+                <p>Small adjustments for a more comfortable flow.</p>
+              </div>
+            </div>
+            <div class="settings glass">
+              <div class="setting">
+                <div>
+                  <h3>Spoken responses</h3>
+                  <p>Read ZENO’s replies aloud in this browser.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  id="speech"
+                  class="switch"
+                  aria-label="Spoken responses"
+                />
+              </div>
+              <div class="setting">
+                <div>
+                  <h3>Reduce motion</h3>
+                  <p>Keep transitions still and predictable.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  id="motion"
+                  class="switch"
+                  aria-label="Reduce motion"
+                />
+              </div>
+              <div class="setting">
+                <div>
+                  <h3>Voice language</h3>
+                  <p>The language used for speech recognition.</p>
+                </div>
+                <select id="language" aria-label="Voice language">
+                  <option value="en-US">English (US)</option>
+                  <option value="en-IN">English (India)</option>
+                  <option value="hi-IN">Hindi</option>
+                </select>
+              </div>
+              <div class="setting">
+                <div>
+                  <h3>Your session</h3>
+                  <p>
+                    Conversation and activity stay in this page’s memory.<br />Preferences
+                    are saved in this browser.
+                  </p>
+                </div>
+                <button id="settingsDisconnect" class="secondary">
+                  Disconnect
+                </button>
+              </div>
+            </div>
+          </section>
+        </main>
+        <footer>
+          <span
+            >ZENO <span class="footer-dot">/</span> A little more
+            effortless.</span
+          ><span>Your intent. Your control.</span>
+        </footer>
       </div>
     </div>
-
-    <!-- Chat / Execution History -->
-    <div class="chat-container" id="chatContainer">
-      <div class="message system">🤖 Connected to ZENO. Voice, Screen Vision & Memory online.</div>
-    </div>
-
-    <!-- Input Controls -->
-    <div class="controls">
-      <div class="voice-control">
-        <button class="mic-button" id="micBtn" title="Hold to speak">🎤</button>
-        <span class="mic-hint" id="micHint">Hold to Speak • Release to Send</span>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="auth" class="glass auth-dialog">
+      <form id="authForm">
+        <div class="brand">zeno<span class="brand-dot">.</span></div>
+        <span class="eyebrow">YOUR PERSONAL WORKSPACE</span>
+        <h2>Good things<br />start with a connection.</h2>
+        <p>
+          Connect to ZENO on your computer using the access token from its
+          terminal or configuration.
+        </p>
+        <label for="token">Access token</label>
+        <div class="token-field">
+          <input
+            id="token"
+            type="password"
+            required
+            autocomplete="off"
+            placeholder="Enter your access token"
+          /><button type="button" id="showToken" aria-label="Show access token">
+            <i data-lucide="eye"></i>
+          </button>
+        </div>
+        <p id="authError" role="alert"></p>
+        <button id="connect" class="primary" type="submit">
+          Connect workspace<i data-lucide="arrow-right"></i></button
+        ><small
+          ><i data-lucide="lock-keyhole"></i>Your token connects you to this
+          ZENO host.</small
+        >
+      </form>
+    </dialog>
+    <dialog id="approval" class="glass approval-dialog">
+      <span class="pill" id="risk">REVIEW REQUIRED</span>
+      <h2 id="approvalTitle">Your approval is needed.</h2>
+      <p id="approvalMessage"></p>
+      <details>
+        <summary>Exact action details</summary>
+        <pre id="approvalDetails"></pre>
+      </details>
+      <div class="approval-actions">
+        <button id="deny" class="secondary">Deny</button
+        ><button id="approve" class="primary">
+          Approve action<i data-lucide="check"></i>
+        </button>
       </div>
-
-      <div class="text-input-row">
-        <input type="text" id="cmdInput" placeholder="Talk to ZENO or give a command..." autocomplete="off">
-        <button id="sendBtn">Send</button>
-        <button id="stopBtn" class="stop-btn" title="Emergency Stop">🛑 STOP</button>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Remote Permission Modal -->
-  <div class="permission-overlay" id="permOverlay">
-    <div class="permission-card">
-      <span class="perm-badge medium" id="permBadge">Medium Risk</span>
-      <h3 id="permTitle">Approval Required</h3>
-      <p id="permDesc">The agent wants to execute an action on your system.</p>
-      <div class="perm-btn-row">
-        <button class="perm-btn deny" id="permDenyBtn">❌ Deny</button>
-        <button class="perm-btn approve" id="permApproveBtn">✅ Approve</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Passphrase Login Modal -->
-  <div id="authModal">
-    <div class="auth-box">
-      <div style="font-size: 32px; margin-bottom: 12px;">🔒</div>
-      <h2>ZENO Access</h2>
-      <p>Enter the secret access token configured on your computer.</p>
-      <input type="password" id="passphraseInput" class="auth-input" placeholder="Secret Access Token">
-      <button class="auth-btn" id="loginBtn">Authorize Session</button>
-      <p id="authError" style="color: var(--accent-red); font-size: 0.8rem; margin-top: 10px; display: none;"></p>
-    </div>
-  </div>
-
-  <script>
-    // State
-    let socket = null;
-    let currentRequestId = null;
-    let currentActionId = null;
-    let recognition = null;
-    let isRecording = false;
-
-    // DOM Elements
-    const chatContainer = document.getElementById("chatContainer");
-    const cmdInput = document.getElementById("cmdInput");
-    const sendBtn = document.getElementById("sendBtn");
-    const micBtn = document.getElementById("micBtn");
-    const micHint = document.getElementById("micHint");
-    const statusDot = document.getElementById("statusDot");
-    const statusText = document.getElementById("statusText");
-    const permOverlay = document.getElementById("permOverlay");
-    const permBadge = document.getElementById("permBadge");
-    const permTitle = document.getElementById("permTitle");
-    const permDesc = document.getElementById("permDesc");
-    const permApproveBtn = document.getElementById("permApproveBtn");
-    const permDenyBtn = document.getElementById("permDenyBtn");
-    const authModal = document.getElementById("authModal");
-    const passphraseInput = document.getElementById("passphraseInput");
-    const loginBtn = document.getElementById("loginBtn");
-    const authError = document.getElementById("authError");
-
-    // Telemetry Elements
-    const telemetryBattery = document.getElementById("telemetryBattery");
-    const telemetryCpu = document.getElementById("telemetryCpu");
-    const telemetryRam = document.getElementById("telemetryRam");
-
-    // Mobile Audio Unlock
-    let audioUnlocked = false;
-    function unlockAudio() {
-      if (!audioUnlocked && 'speechSynthesis' in window) {
-        const dummy = new SpeechSynthesisUtterance('');
-        window.speechSynthesis.speak(dummy);
-        audioUnlocked = true;
-      }
-    }
-    document.addEventListener('touchstart', unlockAudio, { once: true });
-    document.addEventListener('click', unlockAudio, { once: true });
-
-    // Helper: Browser Text-to-Speech (Speaks responses out loud on mobile)
-    function speak(text) {
-      if ('speechSynthesis' in window && text) {
-        // Strip markdown, URLs, and non-ASCII emojis so speech is smooth & natural
-        let clean = text.replace(/https?:\/\/\S+/g, 'link');
-        clean = clean.replace(/[*_`#~]/g, '');
-        // Remove emoji glyphs
-        clean = clean.replace(/[\u{1F600}-\u{1F6FF}|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '');
-        clean = clean.replace(/[✅❌⚠️🔒🎤🤖💻🔋🧠]/g, '');
-        clean = clean.trim();
-
-        if (!clean) return;
-
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(clean);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.lang = 'en-US';
-        window.speechSynthesis.speak(utterance);
-      }
-    }
-
-    // Helper: Add message to chat log
-    function appendMessage(text, sender = "agent", extraContent = null) {
-      const msgDiv = document.createElement("div");
-      msgDiv.className = `message ${sender}`;
-      msgDiv.textContent = text;
-
-      if (extraContent) {
-        msgDiv.appendChild(extraContent);
-      }
-
-      chatContainer.appendChild(msgDiv);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
-    // WebSocket Management
-    function initWebSocket() {
-      const token = localStorage.getItem("voice_agent_jwt");
-      if (!token) {
-        showAuthModal();
-        return;
-      }
-
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        // Send JWT token as first message
-        sendWsMessage({ type: "auth", token: token });
-        statusDot.classList.add("connected");
-        statusText.textContent = "Online";
-        appendMessage("🟢 Connected to host machine.", "system");
-        // Request telemetry
-        sendWsMessage({ type: "get_telemetry" });
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          handleIncomingMessage(data);
-        } catch (e) {
-          console.error("Failed to parse WS message:", e);
-        }
-      };
-
-      socket.onclose = (event) => {
-        statusDot.classList.remove("connected");
-        statusText.textContent = "Offline";
-        if (event.code === 4001 || event.code === 4003) {
-          // Auth failed
-          localStorage.removeItem("voice_agent_jwt");
-          showAuthModal("Authentication expired or invalid. Please sign in again.");
-        } else {
-          appendMessage("⚠️ Connection lost. Retrying in 3 seconds...", "system");
-          setTimeout(initWebSocket, 3000);
-        }
-      };
-
-      socket.onerror = (err) => {
-        console.warn("WebSocket error:", err);
-      };
-    }
-
-    function sendWsMessage(obj) {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(obj));
-      } else {
-        appendMessage("❌ Cannot send message: Not connected to host.", "system");
-      }
-    }
-
-    // Handle incoming messages from Agent
-    function handleIncomingMessage(data) {
-      switch (data.type) {
-        case "response":
-          appendMessage(data.message, "agent");
-          speak(data.message);
-          break;
-
-        case "telemetry":
-          if (data.battery) telemetryBattery.textContent = `${data.battery}%`;
-          if (data.cpu !== undefined) telemetryCpu.textContent = `${data.cpu}%`;
-          if (data.ram !== undefined) telemetryRam.textContent = `${data.ram}%`;
-          break;
-
-        case "screenshot":
-          const img = document.createElement("img");
-          img.className = "screenshot-preview";
-          img.src = data.data;
-          appendMessage(data.message || "Desktop Screenshot captured:", "agent", img);
-          speak("Here is the latest screenshot of your computer.");
-          break;
-
-        case "permission_request":
-          currentRequestId = data.request_id;
-          currentActionId = data.action_id || null;
-          permBadge.textContent = `${data.risk_level} Risk`;
-          permBadge.className = `perm-badge ${data.risk_level.toLowerCase()}`;
-          permTitle.textContent = data.action_type.replace(/_/g, " ").toUpperCase();
-          permDesc.textContent = data.message || data.description;
-          permOverlay.classList.add("active");
-          speak(data.message || "Permission required to execute action. Approve or deny?");
-          break;
-
-        default:
-          console.log("Unhandled event:", data);
-      }
-    }
-
-    // Permission Handlers
-    permApproveBtn.addEventListener("click", () => {
-      if (currentRequestId) {
-        sendWsMessage({
-          type: "permission_response",
-          request_id: currentRequestId,
-          action_id: currentActionId,
-          approved: true
-        });
-        appendMessage("✅ You APPROVED the action.", "user");
-        permOverlay.classList.remove("active");
-        currentRequestId = null;
-        currentActionId = null;
-      }
-    });
-
-    permDenyBtn.addEventListener("click", () => {
-      if (currentRequestId) {
-        sendWsMessage({
-          type: "permission_response",
-          request_id: currentRequestId,
-          action_id: currentActionId,
-          approved: false
-        });
-        appendMessage("❌ You DENIED the action.", "user");
-        permOverlay.classList.remove("active");
-        currentRequestId = null;
-        currentActionId = null;
-      }
-    });
-
-    // Emergency Stop Handler
-    const stopBtn = document.getElementById("stopBtn");
-    if (stopBtn) {
-      stopBtn.addEventListener("click", () => {
-        sendWsMessage({ type: "abort" });
-        appendMessage("🛑 EMERGENCY STOP requested.", "user");
-        permOverlay.classList.remove("active");
-        currentRequestId = null;
-        currentActionId = null;
-      });
-    }
-
-    // Send text command
-    function sendCommand() {
-      const text = cmdInput.value.trim();
-      if (!text) return;
-
-      appendMessage(text, "user");
-      sendWsMessage({ type: "command", text: text });
-      cmdInput.value = "";
-    }
-
-    sendBtn.addEventListener("click", sendCommand);
-    cmdInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") sendCommand();
-    });
-
-    // Web Speech API Setup
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRec) {
-      recognition = new SpeechRec();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
-
-      recognition.onstart = () => {
-        isRecording = true;
-        micBtn.classList.add("recording");
-        micHint.textContent = "Listening... Speak now";
-      };
-
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
-          appendMessage(transcript, "user");
-          sendWsMessage({ type: "command", text: transcript });
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.warn("Speech recognition error:", event.error);
-        stopRecording();
-      };
-
-      recognition.onend = () => {
-        stopRecording();
-      };
-    } else {
-      micHint.textContent = "Web Speech not supported in browser. Use typing.";
-    }
-
-    function startRecording() {
-      if (recognition && !isRecording) {
-        try {
-          recognition.start();
-        } catch (e) {
-          console.warn("Recognition already active", e);
-        }
-      }
-    }
-
-    function stopRecording() {
-      isRecording = false;
-      micBtn.classList.remove("recording");
-      micHint.textContent = "Hold to Speak • Release to Send";
-      if (recognition) {
-        try { recognition.stop(); } catch (e) {}
-      }
-    }
-
-    // Touch & Mouse bindings for Hold to Speak
-    micBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startRecording(); });
-    micBtn.addEventListener("touchend", (e) => { e.preventDefault(); stopRecording(); });
-    micBtn.addEventListener("mousedown", startRecording);
-    micBtn.addEventListener("mouseup", stopRecording);
-
-    // Auth Modal Management
-    function showAuthModal(errorMsg = null) {
-      authModal.style.display = "flex";
-      if (errorMsg) {
-        authError.textContent = errorMsg;
-        authError.style.display = "block";
-      } else {
-        authError.style.display = "none";
-      }
-    }
-
-    loginBtn.addEventListener("click", async () => {
-      const code = passphraseInput.value.trim();
-      if (!code) return;
-
-      try {
-        const res = await fetch("/auth", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `token=${encodeURIComponent(code)}`
-        });
-
-        const data = await res.json();
-        if (res.ok && data.jwt_token) {
-          localStorage.setItem("voice_agent_jwt", data.jwt_token);
-          authModal.style.display = "none";
-          initWebSocket();
-        } else {
-          authError.textContent = data.detail || "Authentication failed.";
-          authError.style.display = "block";
-        }
-      } catch (e) {
-        authError.textContent = "Error connecting to server.";
-        authError.style.display = "block";
-      }
-    });
-
-    // Start Telemetry Poller every 30s
-    setInterval(() => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        sendWsMessage({ type: "get_telemetry" });
-      }
-    }, 30000);
-
-    // On Load
-    window.addEventListener("DOMContentLoaded", () => {
-      initWebSocket();
-    });
-  </script>
-</body>
+      <button id="approvalStop" class="text-button">Stop entire task</button>
+    </dialog>
+  </body>
 </html>
