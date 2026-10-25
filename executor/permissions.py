@@ -234,7 +234,10 @@ class PermissionManager:
         for req_id, entry in list(self._pending_remote_requests.items()):
             future = entry.get("future") if isinstance(entry, dict) else entry
             if future and not future.done():
-                future.set_result(False)
+                def resolve_pending(target=future):
+                    if not target.done():
+                        target.set_result(False)
+                future.get_loop().call_soon_threadsafe(resolve_pending)
         self._pending_remote_requests.clear()
         logger.info(f"Cancelled all pending permission requests: {reason}")
 
@@ -262,6 +265,8 @@ class PermissionManager:
             approved = False
             self.log_decision(action, False, source="remote", reason="Timeout waiting for remote approval")
             return False
+        finally:
+            self._pending_remote_requests.pop(request_id, None)
 
         self.log_decision(action, approved, source="remote")
         return approved
