@@ -25,6 +25,7 @@ class VoiceSpeaker:
         self._running = False
         self._ready_event = threading.Event()
         self._backend = "none"
+        self.speech_generation = 0
 
         self._start_worker()
         self._ready_event.wait(timeout=3.0)
@@ -140,12 +141,17 @@ class VoiceSpeaker:
     def speak(self, text: str):
         """Queue text to be spoken aloud asynchronously."""
         if text:
+            self.speech_generation += 1
             self._speech_queue.put(text)
+
+    def speech_state(self):
+        """A capture spanning any TTS utterance must not be treated as a user command."""
+        return self.speech_generation, self._speech_queue.unfinished_tasks > 0
 
     def speak_sync(self, text: str):
         """Speak and block until finished speaking aloud."""
         if text:
-            self._speech_queue.put(text)
+            self.speak(text)
             self._speech_queue.join()
 
     def speak_async(self, text: str):

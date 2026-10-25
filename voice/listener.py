@@ -72,6 +72,7 @@ class VoiceListener:
         self._running = False
         self._thread = None
         self._mic_available = False
+        self.tts_state = None
 
         self._init_speech_recognition()
 
@@ -177,9 +178,16 @@ class VoiceListener:
 
         import speech_recognition as sr
         try:
+            before = self.tts_state() if self.tts_state else (0, False)
+            if before[1]:
+                time.sleep(0.05)
+                return None
             with self._microphone as source:
                 logger.debug("Listening for audio...")
                 audio = self._recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
+                after = self.tts_state() if self.tts_state else (0, False)
+                if after[1] or before[0] != after[0]:
+                    return None
                 text = self._transcribe_audio(audio)
                 if text:
                     logger.info(f"Heard speech: {text}")

@@ -30,6 +30,9 @@ from brain import ZenoBrain, ActionPlanner, NLUEngine
 from executor.task_executor import TaskExecutor
 from logging.handlers import RotatingFileHandler
 from executor.permissions import PermissionManager
+from executor.agent_runner import AgentRunner, coordinator
+from brain.planner import describe_action
+from voice.listener import parse_confirmation
 from tunnel.tunnel_manager import TunnelManager
 
 def setup_logging(log_file: Optional[str] = None, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 5):
@@ -69,6 +72,7 @@ class VoiceAgentApp:
         # Initialize subsystems
         self.speaker = VoiceSpeaker()
         self.listener = VoiceListener(model_size=config.WHISPER_MODEL)
+        self.listener.tts_state = self.speaker.speech_state
         self.executor = TaskExecutor()
         self.brain = ZenoBrain(executor=self.executor)
         self.planner = self.brain.planner
@@ -76,6 +80,8 @@ class VoiceAgentApp:
         self.permissions = PermissionManager(listener=self.listener, speaker=self.speaker)
         self.tunnel_manager = TunnelManager(port=self.port)
         self.server_thread = None
+        self._local_approval = None
+        self._local_task = None
 
     def print_banner(self):
         banner = r"""
@@ -148,6 +154,7 @@ class VoiceAgentApp:
         brain_resp = await self.brain.think(user_text)
 
         if brain_resp.kind == "abort":
+            coordinator.stop()
             self.permissions.cancel_all_pending("Aborted by user command")
             print(f"🛑 [{config.ASSISTANT_NAME}]: {brain_resp.message}")
             self.speaker.speak(brain_resp.message)
@@ -160,47 +167,36 @@ class VoiceAgentApp:
             return
 
 
-        # Step 2: OS Automation Action Execution
-        actions = brain_resp.actions
-        for i, action in enumerate(actions):
-            if action.action_type in ("unhandled", "unknown"):
-                msg = action.confirmation_message or "I could not understand that command."
-                print(f"🤖 [{config.ASSISTANT_NAME}]: {msg}")
-                self.speaker.speak(msg)
-                return
+        async def emit(event):
+            message = event.get("message", "")
+            print(f"[{event.get('status', 'ZENO')}] {message}")
+            if event["type"] == "response" or event.get("status") in ("completed", "blocked", "needs_input", "failed"):
+                self.speaker.speak(message)
 
-            # Step 3: Permission Gate (only for actions requiring approval)
-            if action.requires_permission:
-                # Auto-approve safe read-only actions
-                if action.action_type in getattr(config, "AUTO_APPROVE_ACTIONS", set()) and action.risk_level == "low":
-                    self.permissions.log_decision(action, True, source="auto", reason="Auto-approved safe read-only action")
-                else:
-                    approved = await self.permissions.request_permission_local(action)
-                    if not approved:
-                        cancel_msg = f"Cancelled: '{action.description}' was not approved."
-                        print(f"❌ {cancel_msg}")
-                        self.speaker.speak(cancel_msg)
-                        return
-            else:
-                # Direct announcement for smooth assistant experience
-                if action.confirmation_message:
-                    self.speaker.speak(action.confirmation_message)
+        runner = AgentRunner(self.brain, self.permissions, "local", self.approve_local_task, emit)
+        await runner.run((brain_resp.data or {}).get("goal", user_text),
+                         actions=brain_resp.actions, agent_mode=brain_resp.kind == "task")
 
-            # Step 4: Execution
-            print(f"⚡ [Executing]: {action.description}...")
-            result = self.planner.execute_action(action)
-            self.permissions.log_result(action, result, source="local")
-
-            # Step 5: Output & Speech
-            if result.success:
-                success_msg = f"Done! {result.message}"
-                print(f"✅ {success_msg}")
-                self.speaker.speak(success_msg)
-            else:
-                fail_msg = f"Failed to complete action: {result.message}"
-                print(f"⚠️ {fail_msg}")
-                self.speaker.speak(fail_msg)
-                break
+    async def approve_local_task(self, action):
+        """The single local input loop owns the mic and routes yes/no responses here."""
+        rounds = 2 if action.risk_level == "high" else 1
+        approved = False
+        try:
+            for stage in range(rounds):
+                prompt = ("Final confirmation. " if stage else "") + describe_action(action) + ". Say yes or no."
+                self._local_approval = asyncio.get_running_loop().create_future()
+                print(f"\n[Approval] {prompt}")
+                self.speaker.speak(prompt)
+                try:
+                    approved = await asyncio.wait_for(self._local_approval, config.REMOTE_CONFIRMATION_TIMEOUT)
+                except asyncio.TimeoutError:
+                    approved = False
+                if not approved:
+                    break
+            self.permissions.log_decision(action, approved, source="local")
+            return approved
+        finally:
+            self._local_approval = None
 
     async def run_local_loop(self):
         """Continuous local voice/keyboard control loop."""
@@ -220,7 +216,27 @@ class VoiceAgentApp:
                 )
 
                 if text and text.strip():
-                    await self.process_user_command(text.strip())
+                    text = text.strip()
+                    clean = self.brain.strip_wake_prefix(text).lower().strip(" .!?,")
+                    if clean in ("stop", "cancel", "cancel everything", "abort", "halt", "kill", "emergency stop"):
+                        coordinator.stop()
+                        if self._local_task and not self._local_task.done():
+                            self._local_task.cancel()
+                        print("[ZENO] Stop requested. No further steps will run.")
+                        continue
+                    if self._local_approval is not None and not self._local_approval.done():
+                        decision = parse_confirmation(text)
+                        if decision is not None:
+                            self._local_approval.set_result(decision)
+                        else:
+                            print("[ZENO] Please say yes, no, or stop.")
+                    elif self._local_task and not self._local_task.done():
+                        print("[ZENO] A task is running. Say stop to cancel it.")
+                    else:
+                        self._local_task = asyncio.create_task(self.process_user_command(text))
+                        # Retrieve exceptions without leaving a background task warning.
+                        self._local_task.add_done_callback(self._local_task_finished)
+                await asyncio.sleep(0.05)
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 break
@@ -228,10 +244,16 @@ class VoiceAgentApp:
                 logger.error(f"Error in local processing loop: {e}")
                 await asyncio.sleep(1)
 
+    @staticmethod
+    def _local_task_finished(task):
+        if not task.cancelled() and task.exception():
+            logger.error("Local task failed: %s", task.exception())
+
     def shutdown(self):
         """Clean shutdown of all subsystems."""
         print("\n🛑 Shutting down Voice Agent gracefully...")
         self.running = False
+        coordinator.stop()
         self.listener.stop()
         self.speaker.stop()
         self.tunnel_manager.stop_tunnel()
