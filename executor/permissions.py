@@ -178,7 +178,7 @@ class PermissionManager:
         self.log_decision(action, approved, source="local")
         return approved
 
-    def create_remote_permission_request(self, action: PlannedAction) -> tuple[str, Dict[str, Any], asyncio.Future]:
+    def create_remote_permission_request(self, action: PlannedAction, device_id: Optional[str] = None) -> tuple[str, Dict[str, Any], asyncio.Future]:
         """Create a trackable remote permission request future."""
         request_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
@@ -187,7 +187,8 @@ class PermissionManager:
         self._pending_remote_requests[request_id] = {
             "future": future,
             "action_id": act_id,
-            "action": action
+            "action": action,
+            "device_id": device_id,
         }
 
         payload = {
@@ -202,18 +203,27 @@ class PermissionManager:
         }
         return request_id, payload, future
 
-    def resolve_remote_permission(self, request_id: str, approved: bool, action_id: Optional[str] = None) -> bool:
+    def resolve_remote_permission(self, request_id: str, approved: bool, action_id: Optional[str] = None, device_id: Optional[str] = None) -> bool:
         """Called when a remote client sends permission_response."""
-        entry = self._pending_remote_requests.pop(request_id, None)
+        entry = self._pending_remote_requests.get(request_id)
         if not entry:
             return False
 
         if isinstance(entry, dict):
             future = entry.get("future")
             expected_action_id = entry.get("action_id")
+            expected_device_id = entry.get("device_id")
         else:
             future = entry
             expected_action_id = None
+            expected_device_id = None
+
+        if expected_device_id and device_id != expected_device_id:
+            logger.warning("Rejected permission response from a different paired device.")
+            return False
+
+        # This request is owned by the correct device; consume it exactly once.
+        self._pending_remote_requests.pop(request_id, None)
 
         if action_id is not None and expected_action_id:
             if action_id != expected_action_id:
@@ -247,13 +257,14 @@ class PermissionManager:
         self,
         action: PlannedAction,
         send_func,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        device_id: Optional[str] = None,
     ) -> bool:
         """
         Send permission request over WebSocket and await user's button tap.
         """
         timeout_seconds = timeout or config.REMOTE_CONFIRMATION_TIMEOUT
-        request_id, payload, future = self.create_remote_permission_request(action)
+        request_id, payload, future = self.create_remote_permission_request(action, device_id=device_id)
 
         # Transmit request over WebSocket
         await send_func(payload)
@@ -270,3 +281,34 @@ class PermissionManager:
 
         self.log_decision(action, approved, source="remote")
         return approved
+
+    async def request_plan_review_remote(self, actions, send_func, device_id: str, timeout: Optional[int] = None) -> bool:
+        """Require the originating paired device to acknowledge a multi-step plan."""
+        request_id = str(uuid.uuid4())
+        future = asyncio.get_running_loop().create_future()
+        action_ids = [a.action_id for a in actions]
+        self._pending_remote_requests[request_id] = {
+            "future": future, "device_id": device_id, "plan_action_ids": action_ids,
+        }
+        await send_func({
+            "type": "plan_preview", "request_id": request_id,
+            "steps": [{"number": i + 1, "action_id": a.action_id, "description": describe_action(a), "risk_level": a.risk_level} for i, a in enumerate(actions)],
+            "message": "Review this complete plan. Individual high-impact actions will still need confirmation."
+        })
+        try:
+            return bool(await asyncio.wait_for(future, timeout=timeout or config.REMOTE_CONFIRMATION_TIMEOUT))
+        except asyncio.TimeoutError:
+            self._pending_remote_requests.pop(request_id, None)
+            return False
+
+    def resolve_plan_review(self, request_id: str, approved: bool, action_ids: list, device_id: Optional[str]) -> bool:
+        entry = self._pending_remote_requests.get(request_id)
+        if not entry or entry.get("device_id") != device_id or entry.get("plan_action_ids") != action_ids:
+            logger.warning("Rejected a plan review response with mismatched device or action list.")
+            return False
+        self._pending_remote_requests.pop(request_id, None)
+        future = entry["future"]
+        if not future.done():
+            future.set_result(approved)
+            return True
+        return False

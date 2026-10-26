@@ -1,0 +1,2 @@
+# Local CPU int8 speech recognition. Model download: python main.py --setup-speech
+faster-whisper==1.2.1

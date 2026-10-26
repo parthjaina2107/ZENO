@@ -32,6 +32,9 @@ class ScreenshotParams(BaseModel):
 class ListAppsParams(BaseModel):
     pass
 
+class UIInspectParams(BaseModel):
+    pass
+
 class OpenAppParams(BaseModel):
     app_name: str = Field(..., min_length=1)
 
@@ -97,6 +100,7 @@ ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
     "system_info": SystemInfoParams,
     "screenshot": ScreenshotParams,
     "list_apps": ListAppsParams,
+    "ui_inspect": UIInspectParams,
     "open_app": OpenAppParams,
     "close_app": CloseAppParams,
     "open_url": OpenUrlParams,
@@ -147,7 +151,7 @@ class PlannedAction:
     parameters: Dict[str, Any] = field(default_factory=dict)
     description: str = ""
     risk_level: str = "medium"  # "low", "medium", "high"
-    requires_permission: bool = True  # Always requires user approval
+    requires_permission: bool = True  # Planner sets this from the configured action policy.
     confirmation_message: str = ""
     action_id: str = ""
 
@@ -225,6 +229,8 @@ def describe_action(action: PlannedAction) -> str:
         return "Take screenshot"
     elif act_type == "list_apps":
         return "List running applications"
+    elif act_type == "ui_inspect":
+        return "Inspect the focused window and its accessible controls"
     elif act_type == "shutdown":
         mode = params.get("mode", "lock")
         return f'System {mode}'
@@ -301,7 +307,7 @@ class ActionPlanner:
                 step_llm_risk = step.get("risk_level", "medium").lower()
                 step_table_risk = config.ACTION_RISK.get(step_action, "high")
                 step_risk = max_risk(step_table_risk, step_llm_risk)
-                needs_perm = step_risk in ("low", "medium", "high")
+                needs_perm = config.requires_confirmation(step_action, validated_params)
                 confirm_msg = step.get("confirmation_message", f"Proceed with step {i+1}: {desc}?")
                 step_obj = PlannedAction(
                     action_type=step_action,
@@ -346,7 +352,7 @@ class ActionPlanner:
         # Single action: enforce baseline table risk
         table_risk = config.ACTION_RISK.get(action_type, "high")
         computed_risk = max_risk(table_risk, raw_risk)
-        needs_perm = computed_risk in ("low", "medium", "high")
+        needs_perm = config.requires_confirmation(action_type, validated_params)
 
         act_obj = PlannedAction(
             action_type=action_type,

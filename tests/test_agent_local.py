@@ -46,6 +46,8 @@ def test_capture_overlapping_tts_is_discarded():
 async def test_local_loop_listens_for_stop_during_execution():
     app = VoiceAgentApp.__new__(VoiceAgentApp)
     app.running = True
+    from voice.conversation import ConversationSession
+    app.conversation = ConversationSession(wake_enabled=False)
     app._local_task = None
     app._local_approval = None
     app.speaker = MagicMock()
@@ -68,6 +70,7 @@ async def test_local_loop_listens_for_stop_during_execution():
         return phrase
     app.listener = MagicMock()
     app.listener.listen_once.side_effect = listen
+    app.listener.last_uncertain = False
     await asyncio.wait_for(app.run_local_loop(), 2)
     assert started.is_set()
     assert cancelled.is_set()

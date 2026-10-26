@@ -1,0 +1,3 @@
+# Tests and repository documentation checks; not needed by end users.
+pytest==9.1.1
+pytest-asyncio==1.4.0

@@ -18,3 +18,15 @@ Design references: https://v0.app/templates/components (glow navigation, fluid d
 - Media buttons send host media keys; no playback state or track metadata is invented.
 - Google Fonts is optional; local system fallbacks remain usable offline.
 - This validates the redesigned UI, not a commercial-launch security or load certification. The local verification server uses offline command planning and does not validate live model-provider credentials.
+
+## Backend integration verification
+
+The dashboard uses same-origin authentication and WebSockets, including the
+current backend's paired-device identity. The integration retains newer native
+desktop, awareness and conversation code from main. Single commands signal their
+final completion separately from intermediate responses. Revoked devices are
+checked before accepting further socket messages.
+
+The expanded merged suite passes 210 tests, including browser pairing, revocation
+and command completion regressions. A real browser battery/CPU agent task
+completed through the merged backend with no browser console errors. Real provider and microphone checks remain manual.

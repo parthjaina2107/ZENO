@@ -20,6 +20,13 @@ const storage = {
     } catch {}
   },
 };
+const browserDeviceId =
+  storage.get("zeno_device_id") ||
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+storage.set("zeno_device_id", browserDeviceId);
+
 let socket,
   reconnectTimer,
   ready = false,
@@ -200,6 +207,9 @@ function handle(data) {
       controls();
       renderActivity();
       break;
+    case "command_finished":
+      if (busy && !activeTask) finish("responded");
+      break;
     case "response":
       message(data.message);
       speak(data.message);
@@ -211,7 +221,6 @@ function handle(data) {
         $("taskState").textContent = "RESPONSE RECEIVED";
         $("taskTitle").textContent = "Your request, answered.";
         $("taskMessage").textContent = data.message;
-        finish("responded");
       }
       break;
     case "screenshot":
@@ -309,7 +318,11 @@ $("authForm").addEventListener("submit", async (event) => {
     const response = await fetch("/auth", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token }),
+      body: new URLSearchParams({
+        token,
+        device_id: browserDeviceId,
+        device_label: "ZENO browser",
+      }),
       signal: AbortSignal.timeout(15000),
     });
     const data = await response.json();

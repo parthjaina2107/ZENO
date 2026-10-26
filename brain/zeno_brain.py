@@ -20,6 +20,7 @@ from .memory import ZenoMemory
 from .vision import ScreenVision
 from .api_utils import call_gemini_with_fallback
 from .agent import GoalPlanner
+from .interaction import is_direct_command, route_request
 
 logger = logging.getLogger("VoiceAgent.ZenoBrain")
 
@@ -42,6 +43,8 @@ class ZenoBrain:
         self.planner = ActionPlanner(executor=executor)
         self.goal_planner = GoalPlanner(self.nlu, self.planner)
         self.client = None
+        self.awaiting_clarification = False
+        self.awareness = None
         self._init_chat_client()
 
     def _init_chat_client(self):
@@ -58,7 +61,7 @@ class ZenoBrain:
     def strip_wake_prefix(self, text: str) -> str:
         """Strip conversational address prefixes like 'Hey Zeno', 'Zeno,', 'OK Zeno'."""
         name = re.escape(self.assistant_name)
-        pattern = rf"^(?:hey\s+|hi\s+|hello\s+|ok\s+|okay\s+)?{name}[,\s:]*\s*"
+        pattern = rf"^(?:hey\s+|hi\s+|hello\s+|ok\s+|okay\s+)?{name}\b[,\s:]*\s*"
         cleaned = re.sub(pattern, "", text.strip(), flags=re.IGNORECASE)
         return cleaned.strip() if cleaned.strip() else text.strip()
 
@@ -125,6 +128,16 @@ class ZenoBrain:
         clean_text = self.strip_wake_prefix(raw_text)
         lowered = clean_text.lower().strip(".!?,")
 
+        if self.awareness is not None:
+            import asyncio
+            from awareness.commands import normalize, SUMMARY_REQUESTS
+            if normalize(clean_text) in SUMMARY_REQUESTS:
+                return BrainResponse(kind='chat', message=await self.awareness.summarize(self.client))
+            briefing = await asyncio.to_thread(self.awareness.handle_command, clean_text)
+            if briefing is not None:
+                # Do not inject notification contents into the action planner's history.
+                return BrainResponse(kind="chat", message=briefing)
+
         # ----------------------------------------------------------------------
         # 0. Emergency Stop / Abort intent (Pre-NLU kill switch)
         # ----------------------------------------------------------------------
@@ -137,11 +150,20 @@ class ZenoBrain:
         task_match = re.match(r"^(?:agent(?:\s+task)?|task)(?:\s*:\s*|\s+)(.+)$|^(?:do this task|complete this task)\s*[:,]?\s+(.+)$", clean_text, re.I | re.S)
         if agent_mode or task_match:
             goal = next((part for part in task_match.groups() if part), clean_text) if task_match else clean_text
-            return BrainResponse(kind="task", message="Planning your task.", data={"goal": goal})
+            return BrainResponse(kind="task", message=goal, data={"goal": goal})
 
         # ----------------------------------------------------------------------
         # 1. Identity / Greeting queries
         # ----------------------------------------------------------------------
+        task_prefix = re.match(r"^(?:task\s*:\s*|task\s+|do (?:a |the )?task\s*:?\s+)", clean_text, re.IGNORECASE)
+        if task_prefix:
+            goal = clean_text[task_prefix.end():].strip()
+            if not goal:
+                return BrainResponse(kind="chat", message="Describe your goal after task:.")
+            self.memory.add_turn("user", clean_text)
+            self.awaiting_clarification = False
+            return BrainResponse(kind="task", message=goal, data={"goal": goal})
+
         if lowered in ("who are you", "what is your name", "who are you?", "what's your name"):
             reply = f"I am {self.assistant_name}, your autonomous voice and remote automation assistant."
             self.memory.add_turn("user", clean_text)
@@ -172,6 +194,25 @@ class ZenoBrain:
         # ----------------------------------------------------------------------
         # 4. OS Automation Action intent
         # ----------------------------------------------------------------------
+        if self.client and (self.awaiting_clarification or not is_direct_command(clean_text)):
+            try:
+                decision = await route_request(self, clean_text)
+                self.memory.add_turn("user", clean_text)
+                self.awaiting_clarification = decision["kind"] == "clarify"
+                kind = "chat" if decision["kind"] == "clarify" else decision["kind"]
+                if kind == "chat":
+                    self.memory.add_turn("zeno", decision["message"])
+                return BrainResponse(kind=kind, message=decision["message"])
+            except Exception as exc:
+                logger.warning("Contextual routing failed: %s", exc)
+                return BrainResponse(kind="chat", message="My reasoning service isn't responding. Please try again; simple commands like open Notepad still work.")
+
+        # Offline mode must not mistake a question containing 'restart' for a power command.
+        if not self.client and not is_direct_command(clean_text):
+            reply = "I need my reasoning service for that request. Simple commands like open Notepad or check battery level still work."
+            self.memory.add_turn("user", clean_text)
+            self.memory.add_turn("zeno", reply)
+            return BrainResponse(kind="chat", message=reply)
         nlu_result = await self.nlu.understand(clean_text)
         action_type = nlu_result.get("action", "unknown")
 
@@ -180,7 +221,6 @@ class ZenoBrain:
             actions = self.planner.plan(nlu_result)
             confirm_msg = nlu_result.get("confirmation_message") or f"Planning action: {nlu_result.get('description', '')}"
             self.memory.add_turn("user", clean_text)
-            self.memory.add_turn("zeno", confirm_msg)
             return BrainResponse(
                 kind="action",
                 message=confirm_msg,

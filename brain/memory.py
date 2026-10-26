@@ -84,7 +84,7 @@ class ZenoMemory:
             return ""
         lines = []
         for t in turns:
-            speaker = "User" if t["role"] == "user" else "ZENO"
+            speaker = {"user": "User", "tool": "Observed execution result"}.get(t["role"], "ZENO")
             lines.append(f"{speaker}: {t['text']}")
         return "\n".join(lines)
 

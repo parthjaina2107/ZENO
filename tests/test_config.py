@@ -27,7 +27,7 @@ def test_allowed_dirs():
 def test_fallback_models():
     assert hasattr(config, "GEMINI_FALLBACK_MODELS")
     assert len(config.GEMINI_FALLBACK_MODELS) >= 1
-    assert "gemini-2.0-flash" in config.GEMINI_FALLBACK_MODELS
+    assert "gemini-3.1-flash-lite" in config.GEMINI_FALLBACK_MODELS
 
 
 def test_auto_approve_actions():

@@ -14,6 +14,10 @@ BASE_DIR = Path(__file__).resolve().parent
 # Load environment variables from .env file if it exists
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
+# Preserve the key saved during the previous desktop experiment as a fallback.
+# Project .env and explicit environment values retain precedence.
+if os.getenv("LOCALAPPDATA"):
+    load_dotenv(Path(os.environ["LOCALAPPDATA"]) / "ZENO" / ".env")
 
 
 # Known insecure default secret values
@@ -104,9 +108,10 @@ class Config:
 
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
     GEMINI_FALLBACK_MODELS: list = [
-        "gemini-2.0-flash",
+        "gemini-3.6-flash",
+        "gemini-3.1-flash-lite",
     ]
 
     NGROK_AUTH_TOKEN: str = os.getenv("NGROK_AUTH_TOKEN", "").strip()
@@ -117,10 +122,22 @@ class Config:
 
     # Voice / Audio Settings
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base").strip()
+    STT_BACKEND: str = os.getenv("STT_BACKEND", "faster-whisper").strip().lower()
+    STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "").strip()  # Empty: detect English/Hindi/etc.
+    STT_ALLOW_ONLINE_FALLBACK: bool = os.getenv("STT_ALLOW_ONLINE_FALLBACK", "true").lower() == "true"
+    WAKE_WORD_ENABLED: bool = os.getenv("WAKE_WORD_ENABLED", "false").lower() == "true"
+    VOICE_FOLLOWUP_SECONDS: int = max(5, min(120, int(os.getenv("VOICE_FOLLOWUP_SECONDS", "30"))))
+    VOICE_BARGE_IN: bool = os.getenv("VOICE_BARGE_IN", "false").lower() == "true"
     LISTEN_TIMEOUT: int = int(os.getenv("LISTEN_TIMEOUT", "5"))
     PHRASE_TIMEOUT: int = int(os.getenv("PHRASE_TIMEOUT", "10"))
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
+    TTS_BACKEND: str = os.getenv("TTS_BACKEND", "edge").strip().lower()
+    TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-NeerjaNeural").strip()
+    TTS_RATE: str = os.getenv("TTS_RATE", "-12%").strip()
+    TTS_VOLUME: str = os.getenv("TTS_VOLUME", "-15%").strip()
+    TTS_PITCH: str = os.getenv("TTS_PITCH", "-2Hz").strip()
+    TTS_LOCAL_VOICE: str = os.getenv("TTS_LOCAL_VOICE", "Zira").strip()
 
     # Bounds apply to the whole task, including model-driven continuations.
     AGENT_MAX_STEPS: int = max(1, min(30, int(os.getenv("AGENT_MAX_STEPS", "12"))))
@@ -132,6 +149,27 @@ class Config:
     }
 
     # Auto-Approve Policy (safe read-only actions skip confirmation)
+    # Local awareness state is separate from the repository and its Git history.
+    DATA_DIR: Path = Path(os.getenv("ZENO_DATA_DIR", str(Path(os.getenv("LOCALAPPDATA", str(Path.home() / '.local' / 'share'))) / "ZENO")))
+    AWARENESS_ENABLED: bool = os.getenv("AWARENESS_ENABLED", "true").lower() == "true"
+    AWARENESS_POLL_SECONDS: int = max(15, int(os.getenv("AWARENESS_POLL_SECONDS", "60")))
+    BRIEFING_INTERVAL_SECONDS: int = max(60, int(os.getenv("BRIEFING_INTERVAL_SECONDS", "900")))
+    QUIET_HOURS: str = os.getenv("QUIET_HOURS", "")
+    WATCH_PROJECTS: list = [p.strip() for p in os.getenv("WATCH_PROJECTS", str(BASE_DIR)).split(";") if p.strip()]
+    OUTLOOK_CLIENT_ID: str = os.getenv("OUTLOOK_CLIENT_ID", "").strip()
+
+    # Only deletion and powering off/restarting require confirmation.
+    CONFIRMATION_ACTIONS: set = {"file_delete"}
+    CONFIRMATION_POWER_MODES: set = {"shutdown", "restart"}
+
+    @classmethod
+    def requires_confirmation(cls, action_type: str, parameters: dict) -> bool:
+        return action_type in cls.CONFIRMATION_ACTIONS or (
+            action_type == "shutdown"
+            and str(parameters.get("mode", "lock")).strip().lower() in cls.CONFIRMATION_POWER_MODES
+        )
+
+    # Legacy read-only allowlist; the planner applies the confirmation policy above.
     AUTO_APPROVE_ACTIONS: set = {
         "system_info",      # Battery, CPU, RAM, disk, IP, time — read-only
         "screenshot",       # Captures screen — no system modification
@@ -150,6 +188,7 @@ class Config:
         "system_info": "low",
         "screenshot": "low",
         "list_apps": "low",
+        "ui_inspect": "low",
         "open_app": "low",
         "close_app": "medium",
         "open_url": "low",

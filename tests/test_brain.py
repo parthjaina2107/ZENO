@@ -133,3 +133,33 @@ async def test_zeno_brain_kill_switch():
         assert resp.kind == "abort"
         assert "stop" in resp.message.lower() or "stopping" in resp.message.lower()
 
+
+@pytest.mark.asyncio
+async def test_task_prefix_supports_spoken_commands():
+    brain = ZenoBrain(api_key="")
+    for text in ("task: Open Notepad", "task Open Notepad", "do a task Open Notepad", "Hey Zeno task Open Notepad"):
+        response = await brain.think(text)
+        assert response.kind == "task"
+        assert response.message == "Open Notepad"
+
+
+@pytest.mark.asyncio
+async def test_local_loop_waits_for_speech_before_capturing():
+    from main import VoiceAgentApp
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    events = []
+    app = object.__new__(VoiceAgentApp)
+    app.running = True
+    app.text_mode = False
+    from voice.conversation import ConversationSession
+    app.conversation = ConversationSession()
+    app.speaker = SimpleNamespace(speak=MagicMock(), wait_until_idle=lambda: events.append("speech_finished"))
+    def listen(*args):
+        events.append("listen")
+        app.running = False
+        return None
+    app.listener = SimpleNamespace(listen_once=listen)
+    await app.run_local_loop()
+    assert events == ["speech_finished", "listen"]
+

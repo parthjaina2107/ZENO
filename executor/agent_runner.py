@@ -49,9 +49,10 @@ coordinator = TaskCoordinator()
 
 
 class AgentRunner:
-    def __init__(self, brain, permissions, source, approve, emit):
+    def __init__(self, brain, permissions, source, approve, emit, planner=None):
         self.brain, self.permissions = brain, permissions
         self.source, self.approve, self.emit = source, approve, emit
+        self.planner = planner or brain.planner
 
     async def run(self, goal, actions=None, agent_mode=False):
         run = TaskRun(goal, self.source)
@@ -139,7 +140,7 @@ class AgentRunner:
                     if automatic(action) or action.action_id in batch_ids:
                         self.permissions.log_decision(action, True, source=self.source,
                                                       reason="Task plan approved" if action.action_id in batch_ids else "Allowed by action policy")
-                    elif action.requires_permission:
+                    elif action.requires_permission or (agent_mode and action.risk_level == "high"):
                         if not await guarded(self.approve(action)):
                             terminal_status, terminal_message = "cancelled", "Task cancelled: action was denied or timed out."
                             await self.emit({"type": "response", "message": terminal_message, "kind": "cancelled"})
@@ -150,7 +151,7 @@ class AgentRunner:
                     seen.add(action.action_id)
                     # A thread cannot be force-killed. Retain desktop ownership until it returns,
                     # and never start the next action after cancellation.
-                    worker = asyncio.create_task(asyncio.to_thread(self.brain.planner.execute_action, action))
+                    worker = asyncio.create_task(asyncio.to_thread(self.planner.execute_action, action))
                     try:
                         result = await asyncio.shield(worker)
                     except asyncio.CancelledError:

@@ -21,7 +21,11 @@ def remote(monkeypatch, tmp_path):
     for name, value in {"task_executor": executor, "zeno_brain": brain, "action_planner": brain.planner,
                         "permission_manager": permissions, "host_speaker": MagicMock()}.items():
         monkeypatch.setattr(server, name, value)
-    token = server.auth_manager.create_session_token("test-agent")
+    from server.pairing import DeviceRegistry
+    registry = DeviceRegistry(tmp_path / "devices.json")
+    registry.pair("agent-test-device", "Test browser", "testclient")
+    monkeypatch.setattr(server, "device_registry", registry)
+    token = server.auth_manager.create_session_token("test-agent", device_id="agent-test-device")
     with TestClient(server.app) as client:
         with client.websocket_connect("/ws") as ws:
             ws.send_json({"type": "auth", "token": token})
@@ -86,3 +90,43 @@ def test_remote_high_risk_still_requires_two_approvals(remote):
                   "action_id": final_request["action_id"], "approved": False})
     until(ws, lambda m: m.get("status") == "cancelled")
     executor.execute.assert_not_called()
+
+
+def test_workspace_assets_and_browser_pairing(monkeypatch, tmp_path):
+    server = importlib.import_module("server.app")
+    from server.pairing import DeviceRegistry
+    registry = DeviceRegistry(tmp_path / "devices.json")
+    monkeypatch.setattr(server, "device_registry", registry)
+    with TestClient(server.app) as client:
+        for path in ("/", "/static/app.js", "/static/app.css", "/static/glass-loop.png", "/static/vendor/lucide.min.js"):
+            assert client.get(path).status_code == 200
+        response = client.post("/auth", data={"token": server.auth_manager.access_token,
+                               "device_id": "workspace-browser", "device_label": "ZENO browser"})
+        assert response.status_code == 200
+        token = response.json()["jwt_token"]
+        assert server.auth_manager.verify_session_token(token)["device_id"] == "workspace-browser"
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": token})
+            assert ws.receive_json()["type"] == "auth_ok"
+            ws.send_json({"type": "get_telemetry"})
+            assert ws.receive_json()["type"] == "telemetry"
+            registry.revoke("workspace-browser")
+            ws.send_json({"type": "command", "text": "open notepad"})
+            from starlette.websockets import WebSocketDisconnect
+            with pytest.raises(WebSocketDisconnect) as error:
+                ws.receive_json()
+            assert error.value.code == 4003
+
+
+def test_normal_command_signals_completion_after_all_results(remote):
+    ws, executor, _ = remote
+    ws.send_json({"type": "command", "text": "open notepad then type Hello", "mode": "command"})
+    responses = []
+    while True:
+        event = ws.receive_json()
+        if event["type"] == "command_finished":
+            break
+        if event["type"] == "response":
+            responses.append(event)
+    assert len(responses) == 2
+    assert executor.execute.call_count == 2

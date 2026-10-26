@@ -11,6 +11,7 @@ import logging
 import base64
 import io
 import datetime
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from brain.planner import ActionResult
@@ -79,6 +80,7 @@ APP_EXECUTABLE_MAP = {
 
 class SystemOps:
     def __init__(self):
+        self._last_opened_app = None
         self._init_pyautogui()
 
     def media_control(self, command: str) -> ActionResult:
@@ -106,6 +108,7 @@ class SystemOps:
         """Launch an application by friendly name or executable name."""
         name_clean = app_name.strip().lower()
         target = APP_EXECUTABLE_MAP.get(name_clean, app_name.strip())
+        self._last_opened_app = name_clean
 
         try:
             if target.startswith("ms-settings:"):
@@ -119,16 +122,12 @@ class SystemOps:
             except Exception:
                 pass
 
-            # Attempt 2: subprocess.Popen
+            # Launch a single executable; an app name must never become a shell script.
             try:
-                subprocess.Popen(target, shell=True)
-                return ActionResult(success=True, message=f"Started '{app_name}' via shell.")
-            except Exception:
-                pass
-
-            # Attempt 3: Windows 'start' command
-            subprocess.Popen(f'start "" "{target}"', shell=True)
-            return ActionResult(success=True, message=f"Invoked start for '{app_name}'.")
+                subprocess.Popen([target], shell=False)
+                return ActionResult(success=True, message=f"Started '{app_name}'.")
+            except Exception as exc:
+                return ActionResult(success=False, message=f"Could not launch '{app_name}'.", error=str(exc))
 
         except Exception as e:
             logger.error(f"Failed to open app '{app_name}': {e}")
@@ -355,6 +354,13 @@ class SystemOps:
 
     def type_text(self, text: str) -> ActionResult:
         """Type text using clipboard paste for Unicode safety, restoring clipboard in finally."""
+        if self._last_opened_app in ("notepad", "notepad.exe"):
+            try:
+                from .notepad_input import NotepadInput
+                output = NotepadInput().paste(text, pyperclip, pyautogui)
+                return ActionResult(True, f"Typed and verified {len(text)} characters in Notepad.", output=output)
+            except Exception as exc:
+                return ActionResult(False, f"Could not verify Notepad typing: {exc}", error="NOTEPAD_INPUT_FAILED")
         old_clip = None
         try:
             try:
@@ -364,8 +370,9 @@ class SystemOps:
 
             pyperclip.copy(text)
             pyautogui.hotkey("ctrl", "v")
+            time.sleep(0.3)
 
-            return ActionResult(success=True, message=f"Typed {len(text)} characters.")
+            return ActionResult(success=True, message=f"Paste sent ({len(text)} characters); delivery to this application is unverified.", output={"verified": False})
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to type text: {e}", error=str(e))
         finally:

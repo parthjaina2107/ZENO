@@ -106,13 +106,13 @@ def test_websocket_command_approval_no_deadlock():
 
     # Mock executor to succeed quickly without actually opening notepad
     mock_exec = MagicMock()
-    mock_exec.execute.return_value = ActionResult(True, "Opened notepad", {"pid": 1234})
+    mock_exec.execute.return_value = ActionResult(True, "Shutdown requested")
     from brain import ZenoBrain
     from executor.permissions import PermissionManager
     from voice.speaker import VoiceSpeaker
     mock_brain = ZenoBrain(executor=mock_exec)
     mock_perms = PermissionManager()
-    mock_speaker = VoiceSpeaker()
+    mock_speaker = MagicMock()
 
     init_shared_subsystems(
         executor=mock_exec,
@@ -123,7 +123,7 @@ def test_websocket_command_approval_no_deadlock():
 
     with client.websocket_connect(f"/ws?token={jwt_token}") as ws:
         # Send command that requires permission
-        ws.send_json({"type": "command", "text": "open notepad"})
+        ws.send_json({"type": "command", "text": "shutdown"})
 
         # First message should be permission request
         msg1 = ws.receive_json()
@@ -136,8 +136,13 @@ def test_websocket_command_approval_no_deadlock():
 
         # Server must process approval and send success response without deadlocking
         msg2 = ws.receive_json()
+        assert msg2.get("type") == "permission_request"
+        assert "Final confirmation" in msg2["message"]
+        mock_exec.execute.assert_not_called()
+        ws.send_json({"type": "permission_response", "request_id": msg2["request_id"], "action_id": msg2["action_id"], "approved": True})
+        msg2 = ws.receive_json()
         assert msg2.get("type") == "response"
-        assert "notepad" in msg2.get("message", "").lower()
+        assert "shutdown" in msg2.get("message", "").lower()
 
 
 def test_websocket_first_message_auth():
@@ -168,5 +173,34 @@ def test_websocket_abort_kill_switch():
         resp = ws.receive_json()
         assert resp.get("type") == "response"
         assert "aborted" in resp.get("message", "").lower()
+
+
+def test_remote_routine_multistep_executes_without_permission_prompts():
+    from unittest.mock import MagicMock, AsyncMock
+    from brain.planner import ActionPlanner, ActionResult
+    from brain.zeno_brain import BrainResponse
+    from server.app import init_shared_subsystems
+
+    executor = MagicMock()
+    executor.execute.return_value = ActionResult(True, "Routine action completed")
+    planner = ActionPlanner(executor=executor)
+    actions = planner.plan({"understood": True, "action": "multi_step", "parameters": {"steps": [
+        {"action": "open_app", "parameters": {"app_name": "spotify"}},
+        {"action": "volume_set", "parameters": {"level": 30}},
+    ]}})
+    brain = MagicMock()
+    brain.think = AsyncMock(return_value=BrainResponse("action", "", actions))
+    permissions = MagicMock()
+    init_shared_subsystems(executor=executor, brain=brain, planner=planner,
+                           permissions=permissions, speaker=MagicMock())
+    auth_manager._attempts.clear()
+    token = client.post("/auth", data={"token": auth_manager.access_token}).json()["jwt_token"]
+    with client.websocket_connect(f"/ws?token={token}") as ws:
+        ws.send_json({"type": "command", "text": "open spotify and set volume to 30"})
+        assert ws.receive_json()["type"] == "response"
+        assert ws.receive_json()["type"] == "response"
+    assert executor.execute.call_count == 2
+    permissions.request_permission_remote.assert_not_called()
+    permissions.request_plan_review_remote.assert_not_called()
 
 
