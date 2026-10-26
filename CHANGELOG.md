@@ -58,3 +58,10 @@ Licensing remains undecided. No commercial product release is declared here.
   browser; old sessions may require sign-in. Existing credentials remain in .env.
   No frontend build step is required. Hardware/provider and commercial-release
   checks remain outstanding in the launch-readiness guide.
+
+### Monochrome web theme
+
+- Replaced champagne colours with a high-contrast black, white and silver palette,
+  including monochrome hero artwork, cursor lighting, controls and dialogs.
+- Setup reviewed: no dependencies, configuration or backend changes. Refresh the
+  browser after restarting an older server to load the updated stylesheet.
