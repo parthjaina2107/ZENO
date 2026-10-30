@@ -1,2 +1,4 @@
 # Optional native Windows app (CLI/server installations do not need Qt).
 PySide6-Essentials==6.12.0
+PySide6-Addons==6.12.0
+PySide6-WebEngine==6.12.0.140

@@ -367,6 +367,10 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 user_text = text_value.strip()
                 if not user_text or len(user_text) > 12000:
                     continue
+                if msg.get('mode') == 'chat':
+                    from brain.companion import conversation_text
+                    if conversation_text(user_text) is None:
+                        user_text = 'Chat: ' + user_text
 
                 if active_tasks or coordinator.active is not None:
                     await send_to_client({"type": "response", "message": "ZENO is busy. Stop the current task or wait for it to finish."})

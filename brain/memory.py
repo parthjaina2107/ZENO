@@ -165,7 +165,7 @@ class ZenoMemory:
         lowered = text.strip().lower()
 
         # 1. Listing all memories
-        if any(p in lowered for p in [
+        if any(lowered.startswith(p) for p in [
             "what do you remember", "list my memories", "show my memories",
             "what memories do you have", "what do you know about me"
         ]):
@@ -178,7 +178,7 @@ class ZenoMemory:
             return {"action": "memory_list", "message": msg}
 
         # 2. Remembering a fact: "Remember that X is Y" or "Remember X is Y"
-        remember_match = re.search(r"(?:please\s+)?remember\s+(?:that\s+)?(.+?)\s+(?:is|=|as)\s+(.+)", text, re.IGNORECASE)
+        remember_match = re.match(r"(?:please\s+)?remember\s+(?:that\s+)?(.+?)\s+(?:is|=|as)\s+(.+)", text.strip(), re.IGNORECASE)
         if remember_match:
             key = remember_match.group(1).strip()
             # Clean common filler prefixes
@@ -188,7 +188,7 @@ class ZenoMemory:
             return {"action": "memory_store", "key": key, "value": val, "message": msg}
 
         # 3. Forgetting a fact: "Forget my X" or "Delete memory of X"
-        forget_match = re.search(r"(?:please\s+)?(?:forget|delete\s+memory\s+of)\s+(?:that\s+)?(?:my\s+|the\s+)?(.+)", text, re.IGNORECASE)
+        forget_match = re.match(r"(?:please\s+)?(?:forget|delete\s+memory\s+of)\s+(?:that\s+)?(?:my\s+|the\s+)?(.+)", text.strip(), re.IGNORECASE)
         if forget_match:
             key = forget_match.group(1).strip().rstrip("?.!")
             success = self.forget_fact(key)
@@ -199,7 +199,7 @@ class ZenoMemory:
             return {"action": "memory_forget", "key": key, "message": msg}
 
         # 4. Recalling a specific fact: "What is my X?" or "What did I tell you about my X?"
-        recall_match = re.search(r"(?:what\s+is\s+my|what's\s+my|do\s+you\s+remember\s+my|what\s+did\s+i\s+say\s+about\s+my)\s+(.+)", text, re.IGNORECASE)
+        recall_match = re.match(r"(?:what\s+is\s+my|what's\s+my|do\s+you\s+remember\s+my|what\s+did\s+i\s+say\s+about\s+my)\s+(.+)", text.strip(), re.IGNORECASE)
         if recall_match:
             key = recall_match.group(1).strip().rstrip("?.!")
             val = self.recall_fact(key)

@@ -230,12 +230,20 @@ changes require `--setup-speech` again. There is no automatic updater yet.
 | No speech recognized | Check input, Windows permissions, cached model and noise; try typed input |
 | Model not cached | Run `--setup-speech`; verify internet and writable data directory |
 | Gemini authentication/quota/model error | Check key, accessible model and provider quota; retry a basic command |
+| AI unavailable / Gemini 503 | Google is overloaded or unreachable. Wait and use Retry; changing the key does not fix a 503. Direct local commands such as `check battery` remain available. A connected dashboard indicates local connectivity, not provider availability. |
 | Unexpected voice/data transmission | Check `TTS_BACKEND`, `STT_BACKEND` and online fallback before your next request |
 | Mail unavailable | Check account setup/status and reconnect; a saved token may have expired |
 | Long Stopping state | An in-flight worker is still draining; another task will not start concurrently |
 
 See [support instructions](../SUPPORT.md) for a redacted bug report and
 [privacy/storage details](privacy.md) before sharing diagnostics or removing data.
+
+Reasoning requests use an 12-second per-attempt timeout and a 36-second overall
+fallback budget. SDK retries are disabled for these calls; ZENO manages retries
+and fallback models. The underlying SDK transport also receives the timeout so
+abandoned calls cannot keep retrying indefinitely. Worker cleanup may extend
+the final return beyond the application budget. Restart ZENO after upgrading;
+no credentials, packages or environment changes are required.
 
 ## Glass web workspace
 
@@ -261,3 +269,94 @@ See [the UI verification notes](ui-redesign.md) and
 [agent implementation notes](agent-task-upgrade.md). Local CLI and native desktop
 retain their contextual verified-task workflows, which require Gemini for goal
 planning. Do not run independent ZENO processes against the same desktop at once.
+
+
+## Persistent desktop island and separate dashboard
+
+`main.py --desktop` and `Start-ZENO.cmd` start the compact island. Hover opens its
+quick-access panel, not the dashboard. Moving the pointer away collapses it after
+550 ms, unless an approval needs your answer. Draft text is retained; running
+work continues. Cursor lighting follows the pointer across the island controls.
+
+Choose **Open workspace** on the island or **Open dashboard** in the tray to open the
+full workspace in a separate resizable window. Closing it leaves the island
+running. Both use the same desktop controller, without a web server or token.
+Choose **Preferences** on the island or **Preferences** in the black dashboard
+for microphone, shortcut, pause and spoken-reply settings. The old white desktop
+settings window has been removed. Save settings on this page; the existing
+desktop.json location and values are preserved. Restart desktop mode to load
+this interface update; no new dependencies or migration are required.
+
+After upgrading, quit ZENO and install the optional desktop requirements:
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe -r requirements-desktop.txt
+.\.venv\Scripts\python.exe main.py --desktop
+```
+
+PySide6-Essentials supplies the island. The separate desktop dashboard also needs
+the pinned PySide6-Addons and PySide6-WebEngine packages. They are loaded only
+when opening that dashboard; CLI/server installations do not require Qt. Keep
+versions aligned with `requirements-desktop.txt`. No credentials or settings
+migration is needed. Reduced motion in dashboard Preferences applies to both
+interfaces for the session. Windows sign-in startup remains unchanged.
+See [desktop controls](desktop.md).
+
+## Notch lighting update
+
+Restart desktop mode and refresh the browser to load the matte-black workspace
+and compact voice panel. No new dependencies or configuration migration are
+required. A screen-edge light and island rim appear only while the native audio
+stream is open, after activation. They do not grant microphone access or replace
+Windows permission indicators. An unavailable microphone never shows the active
+light. Stop/stream closure clears it. Reduce motion in Preferences retains a
+static microphone indicator while disabling pulses and sweeps. See the
+[interface and microphone lifecycle](desktop.md#reactive-notch-interface).
+
+## OriginKit-inspired island update
+
+Restart desktop mode to load the redesigned native island. **Open workspace**
+opens the existing dashboard separately; **Preferences** opens its settings page.
+The island now includes local ribbon/cursor effects, icon tiles and a panel that
+grows for the composer and approvals. **Minimize** or leaving the island returns
+to the pill. The normal shortcut, voice settings and approval policy are retained.
+No package install, browser server, credential or settings migration is required.
+Icons and their license are bundled in `desktop/assets/icons/`. Keep that folder
+with the desktop sources when copying a checkout. Reduced motion also controls
+ribbon and button animation. See [island details](desktop.md#originkit-inspired-island).
+
+## Native coding-workspace update
+
+Install/sign in to a current Codex CLI; VS Code is detected separately. For PDF
+instructions install `requirements-coding.txt` in the project environment. Restart
+desktop mode, select **Coding task · Codex** and supply a full project folder.
+Optional settings: CODING_CODEX_PATH, CODING_VSCODE_PATH, CODING_MODEL and
+CODING_TIMEOUT_SECONDS (default 900). Existing OneDrive Desktop/Documents roots
+are now permitted alongside local file roots; existing shortcut aliases remain
+unchanged. No Gemini change, model training or settings migration is required.
+Context consent and approved file proposals precede saving. Reports, provider
+logs and backups persist in ZENO_DATA_DIR/coding_runs. Generated code and runtime
+tests are not executed automatically. See [coding workspaces](coding-workspace.md).
+
+## Companion conversation update
+
+Restart ZENO and refresh the dashboard to get **Just talk** for conversation-only
+text and native voice turns. Island/CLI requests can use `Chat:`. Existing Gemini
+credentials/models and speech settings apply; no new packages, training dataset,
+model download or account is required. Explicit `conversation style gentle` (also
+balanced/playful/direct) saves a preference in the existing memory file.
+`clear conversation` clears in-process dialogue context, not saved facts or UI/
+provider copies. The new mode does not add background listening. See
+[companion controls, provider data and limitations](companion.md). No settings
+migration is required; general conversation still needs a working provider.
+
+## Assistant experience update
+
+Restart desktop mode and refresh browser pages. Dashboard Preferences now offers
+Assistant personality: choose Focused, Warm or Balanced and Apply profile. The
+choice persists in the existing memory file; Balanced is the default. The island's
+Assistant/Just talk toggle controls its own text, Talk button and activation
+shortcut for this session. Dashboard modes remain independent. Escape works while
+the island has focus, stopping a request or collapsing idle UI. No new packages,
+accounts, environment variables or voice models are needed. Existing speech and
+approval settings are retained. See [assistant controls and preview](assistant-experience.md).

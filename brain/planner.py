@@ -166,6 +166,17 @@ def describe_action(action: PlannedAction) -> str:
     act_type = action.action_type
     params = action.parameters or {}
 
+    if act_type == 'coding_request':
+        return (f"Read supported project files in {params['workspace']} and send a filtered snapshot "
+                "to Codex using your signed-in account to prepare code changes. Account usage limits apply. "
+                "Common secret files are excluded; source files may still contain private data. "
+                f"Goal: {params['goal']}")
+    if act_type == 'coding_apply':
+        return (f"Apply these files in {params['workspace']}, back up originals, and request VS Code to open. "
+                f"Runtime tests will not run. Diff previews may be truncated; full proposal: {params.get('proposal', 'proposal.json')}\n" +
+                '\n\n'.join(f"{item['path']}\nBefore: {item['before_sha256']}\nAfter: {item['after_sha256']}\n{item['preview']}"
+                            for item in params['files']))
+
     if act_type == "task_plan":
         return "Approve these exact steps:\n" + "\n".join(
             f"{i + 1}. {step['action']}: {json.dumps(step['parameters'], ensure_ascii=False)}"

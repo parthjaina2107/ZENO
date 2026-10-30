@@ -2,7 +2,7 @@ import asyncio
 import json
 import threading
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -93,6 +93,7 @@ def fake_engine():
     engine = DesktopEngine.__new__(DesktopEngine)
     engine.brain = MagicMock()
     engine.brain.client = None
+    engine.brain.strip_wake_prefix.side_effect = lambda text: text
     engine.brain.think = AsyncMock()
     engine.permissions = MagicMock()
     engine.speaker = MagicMock()
@@ -183,9 +184,26 @@ def test_capture_closes_stream_on_cancel(monkeypatch):
     microphone = MagicMock()
     microphone.__enter__.return_value = source
     monkeypatch.setattr(sr, "Microphone", MagicMock(return_value=microphone))
+    events = []
+    microphone.__enter__.side_effect = lambda *args: (events.append('stream opened'), source)[1]
+    microphone.__exit__.side_effect = lambda *args: events.append('stream closed')
     with pytest.raises(asyncio.CancelledError):
-        capture(token)
+        capture(token, on_open=lambda: events.append('light on'), on_close=lambda: events.append('light off'))
     microphone.__exit__.assert_called_once()
+    assert events == ['stream opened', 'light on', 'stream closed', 'light off']
+
+
+def test_capture_denied_never_signals_active_microphone(monkeypatch):
+    import speech_recognition as sr
+    from desktop.audio import capture
+    microphone = MagicMock()
+    microphone.__enter__.side_effect = OSError('Microphone unavailable')
+    monkeypatch.setattr(sr, 'Microphone', MagicMock(return_value=microphone))
+    opened, closed = MagicMock(), MagicMock()
+    with pytest.raises(OSError):
+        capture(RunControl(), on_open=opened, on_close=closed)
+    opened.assert_not_called()
+    closed.assert_called_once()
 
 
 def test_capture_cancelled_before_open_never_touches_mic(monkeypatch):
@@ -266,7 +284,7 @@ def test_overlay_lifecycle_and_no_focus():
     overlay = ActivityOverlay()
     try:
         assert overlay.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
-        assert overlay.windowFlags() & Qt.WindowType.WindowTransparentForInput
+        assert not overlay.windowFlags() & Qt.WindowType.WindowTransparentForInput
         overlay.handle_event("state", "Preparing")
         assert overlay.isVisible()
         overlay.handle_event("state", "Listening")
@@ -280,6 +298,9 @@ def test_overlay_lifecycle_and_no_focus():
         overlay.handle_event("state", "Preparing")
         assert not overlay.dismiss.isActive()
         assert "shortcut" in overlay.caption.text()
+        overlay.handle_event("state", "Ready")
+        overlay.collapse()
+        assert overlay.isVisible() and not overlay.expanded
         app.processEvents()
     finally:
         overlay.close()
@@ -386,3 +407,225 @@ async def test_controller_cancellation_invalidates_pending_approval():
         await asyncio.wait_for(task, 1)
     assert controller.pending_id is None
     controller.engine.permissions.log_decision.assert_called_once_with(action, False, source="desktop")
+
+
+def test_island_routes_commands_and_request_bound_approvals():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    starts, stops, texts, approvals = [], [], [], []
+    island.start_requested.connect(lambda: starts.append(True))
+    island.stop_requested.connect(lambda: stops.append(True))
+    island.text_requested.connect(texts.append)
+    island.approval_decided.connect(lambda request, approved: approvals.append((request, approved)))
+    try:
+        island.start.click()
+        assert starts == [True]
+        island.handle_event("state", "Listening")
+        island.start.click()
+        assert stops == [True]
+        island.set_approval("first", "Delete the selected test file?")
+        island.collapse()
+        assert island.expanded  # Pending approvals must remain visible.
+        island.allow.click()
+        island.allow.click()
+        assert approvals == [("first", True)]
+        island.set_approval("second", "Final confirmation")
+        island.deny.click()
+        assert approvals[-1] == ("second", False)
+        island.set_approval("", "")
+        island.handle_event("state", "Ready")
+        island.enable_typing()
+        assert not island.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        island.entry.setText("check battery")
+        island.submit()
+        assert texts == ["check battery"]
+        assert island.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        island.handle_event("draft", "uncertain request")
+        assert texts == ["check battery"]  # A draft never executes by itself.
+        assert island.entry.text() == "uncertain request"
+        app.processEvents()
+    finally:
+        island.close()
+
+
+def test_island_hover_animation_reverses_without_jumping():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QCursor
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    try:
+        island.show()
+        center = island.x() + island.width() / 2
+        island.expand()
+        island.motion.setCurrentTime(island.motion.duration() // 2)
+        midway = island.size()
+        assert 68 < midway.height() < island.expanded_size[1]
+        assert abs(island.x() + island.width() / 2 - center) <= 1
+        island.collapse()
+        assert island.size() == midway
+        island.motion.setCurrentTime(island.motion.duration())
+        assert island.height() == 68 and island.body.isHidden()
+        island.expand()
+        island.motion.setCurrentTime(island.motion.duration())
+        assert island.height() == island.expanded_size[1] and not island.body.isHidden()
+        assert island.body_opacity.opacity() == 1
+        assert island.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        island.set_approval("pending", "Review this action")
+        island.collapse()
+        assert island.expanded
+        # Sample cursor position without moving the user's actual pointer.
+        with patch.object(
+            QCursor, "pos", return_value=island.mapToGlobal(QPoint(80, 40))
+        ):
+            island._track_pointer()
+        assert island._glow > 0
+        island.hide()
+        assert not island.ambient.isActive()
+    finally:
+        island.close()
+
+
+def test_island_pointer_tracking_collapses_after_leaving_child_controls():
+    pytest.importorskip("PySide6")
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QCursor
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    try:
+        island.show()
+        with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(50, 30))):
+            island._track_pointer()
+        island.motion.setCurrentTime(island.motion.duration())
+        assert island.expanded
+        old = island._pointer.x()
+        with patch.object(QCursor, 'pos', return_value=island.start.mapToGlobal(QPoint(10, 10))):
+            island._track_pointer()
+        assert island._pointer.x() > old and island._glow > 0
+        # A focused entry or running task must not permanently pin the island.
+        island.typing = True
+        island.busy = True
+        island.entry.setText('keep this draft')
+        with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(-100, -100))):
+            island._track_pointer()  # No native leave event required.
+            assert island.dismiss.isActive()
+            island._auto_collapse()
+        assert not island.expanded
+        assert island.entry.text() == 'keep this draft'
+        island.set_approval('review', 'Review action')
+        with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(-100, -100))):
+            island._track_pointer()
+            island._auto_collapse()
+        assert island.expanded  # Pending approvals are the deliberate exception.
+    finally:
+        island.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_outage_finishes_without_speaking_or_running_actions():
+    engine = fake_engine()
+    engine.brain.think.return_value = SimpleNamespace(kind='chat',
+        message='Google Gemini is unavailable. No actions were run.',
+        data={'service_error': 'unavailable'})
+    emit = MagicMock()
+    await engine.run('Explain this', RunControl(), AsyncMock(), emit, DesktopSettings(spoken_replies=True))
+    emit.assert_any_call('service_error', 'unavailable')
+    engine.speaker.speak.assert_not_called()
+    engine.brain.planner.execute_action.assert_not_called()
+
+
+def test_mic_lights_are_input_transparent_and_stop_on_ready():
+    pytest.importorskip('PySide6')
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    try:
+        island.show()
+        island.handle_event('state', 'Opening microphone')
+        assert not island.microphone_active and not island.lights.isVisible()
+        island.handle_event('microphone', 'on')
+        island.handle_event('state', 'Listening')
+        assert island.lights.isVisible() and island.lights.timer.isActive()
+        assert island.lights.windowFlags() & Qt.WindowType.WindowTransparentForInput
+        assert island.lights.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+        island.handle_event('level', '.8')
+        assert island.lights.level == .8
+        island.handle_event('microphone', 'off')
+        assert not island.lights.timer.isActive() and not island.lights.isVisible()
+        island.reduced_motion = True
+        island.handle_event('microphone', 'on')
+        assert island.lights.isVisible() and not island.lights.timer.isActive()
+        island.handle_event('state', 'Stopping')
+        assert not island.microphone_active and not island.lights.isVisible()
+        island.handle_event('state', 'Ready')
+        assert not island.lights.timer.isActive()
+    finally:
+        island.close()
+
+
+def test_island_composer_and_approval_controls_fit_adaptive_panel():
+    pytest.importorskip('PySide6')
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    try:
+        island.show()
+        island.enable_typing()
+        island.motion.setCurrentTime(island.motion.duration())
+        app.processEvents()
+        assert island.entry.isVisible()
+        assert island.body.height() >= island.body.minimumSizeHint().height()
+        island.set_approval('review', 'Review this request before continuing. ' * 30)
+        island.motion.setCurrentTime(island.motion.duration())
+        app.processEvents()
+        assert island.body.height() >= island.body.minimumSizeHint().height()
+        assert island.allow.isVisible() and island.deny.isVisible()
+        assert island.settings_button.mapTo(island, island.settings_button.rect().bottomRight()).y() < island.height()
+    finally:
+        island.close()
+
+
+def test_island_conversation_toggle_and_escape_route_safely():
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    chats, texts, stops = [], [], []
+    island.conversation_requested.connect(lambda: chats.append(True))
+    island.text_requested.connect(texts.append)
+    island.stop_requested.connect(lambda: stops.append(True))
+    try:
+        island.mode_button.click()
+        assert island.chat_only and island.mode_button.isChecked()
+        island.activate()
+        assert chats == [True]
+        island.entry.setText('open Chrome and write code')
+        island.submit()
+        assert texts == ['Chat: open Chrome and write code']
+        island.handle_event('state', 'Thinking')
+        assert not island.mode_button.isEnabled()
+        island.keyPressEvent(QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier))
+        assert stops == [True]
+        island.handle_event('microphone', 'on')
+        assert island.bars.capture_active
+        island.handle_event('microphone', 'off')
+        assert not island.bars.capture_active and island.bars.level == 0
+        island.handle_event('state', 'Ready')
+        island.mode_button.click()
+        assert not island.chat_only
+    finally:
+        island.lights.close()
+        island.close()

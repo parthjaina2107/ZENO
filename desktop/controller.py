@@ -31,12 +31,13 @@ class DesktopController(QObject):
         self.answer_lock = threading.Lock()
         self.finished.connect(self._finished)
 
-    def activate(self, text=None):
+    def activate(self, text=None, *, chat_only=False):
         if self.busy:
             self.stop()
             return
         self.busy = True
         self.control = RunControl()
+        self.control.chat_only = bool(chat_only)
         settings = replace(self.settings)
         self.event.emit("state", "Preparing")
         threading.Thread(target=self._work, args=(text, self.control, settings),

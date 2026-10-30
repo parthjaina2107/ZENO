@@ -71,38 +71,22 @@
           <section id="workspace" class="view">
             <div class="page-heading">
               <div>
-                <span class="eyebrow">LESS FRICTION. MORE FLOW.</span>
-                <h1>Your day, orchestrated.</h1>
-                <p>Give ZENO a direction. Make room for what matters.</p>
+                <span class="eyebrow">YOUR SPACE, IN FOCUS.</span>
+                <h1>Workspace</h1>
+                <p>Everything you need, a little closer.</p>
               </div>
               <span class="date" id="today"></span>
             </div>
             <div class="dashboard-grid">
               <div class="main-column">
-                <section class="hero glass">
-                  <div
-                    class="hero-art"
-                    role="img"
-                    aria-label="Sculptural smoked glass loop"
-                  ></div>
+                <section class="hero glass voice-hero" aria-label="Voice workspace">
                   <div class="hero-copy">
-                    <span class="pill"
-                      ><span class="spark"></span> YOUR PERSONAL AGENT</span
-                    >
-                    <h2>
-                      A thought.<br />A word.<br /><em>Consider it started.</em>
-                    </h2>
-                    <p>
-                      From a quick command to a multi-step task.<br />Your
-                      computer, working with you.
-                    </p>
+                    <span class="pill" id="voiceState">MICROPHONE OFF</span>
+                    <h2 id="voiceTitle">Ready when you are.</h2>
+                    <p id="voiceDescription">One thought. One request. A little less friction.</p>
+                    <div class="voice-ribbon" aria-hidden="true"><span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span><span style="--i:6"></span><span style="--i:7"></span><span style="--i:8"></span><span style="--i:9"></span><span style="--i:10"></span><span style="--i:11"></span><span style="--i:12"></span><span style="--i:13"></span><span style="--i:14"></span><span style="--i:15"></span><span style="--i:16"></span><span style="--i:17"></span><span style="--i:18"></span><span style="--i:19"></span><span style="--i:20"></span><span style="--i:21"></span><span style="--i:22"></span><span style="--i:23"></span><span style="--i:24"></span></div>
                   </div>
-                  <div class="hero-foot">
-                    <span
-                      ><i data-lucide="audio-lines"></i> Speak naturally. Stay
-                      in control.</span
-                    ><span>01 / WORKSPACE</span>
-                  </div>
+                  <div class="hero-foot"><span>ACTIVATION ONLY</span><span>YOUR PERSONAL WORKSPACE</span></div>
                 </section>
                 <section class="composer glass" aria-label="Command composer">
                   <div class="composer-top">
@@ -110,6 +94,7 @@
                       ><i data-lucide="sparkles"></i
                       ><select id="mode" aria-label="Execution mode">
                         <option value="agent">Agent task</option>
+                        <option value="chat">Just talk</option>
                         <option value="command">Single command</option>
                       </select></label
                     ><span id="composerStatus">Ready when you are</span>
@@ -304,6 +289,16 @@
               </div>
             </div>
             <div class="settings glass">
+              <div class="setting">
+                <div><h3>Assistant personality</h3><p>Focused for concise answers, warm for a relaxed conversation, or balanced. Apply to save your choice.</p></div>
+                <select id="assistantProfile" aria-label="Assistant personality">
+                  <option value="">Choose a profile</option>
+                  <option value="focused">Focused</option>
+                  <option value="warm">Warm</option>
+                  <option value="balanced">Balanced</option>
+                </select>
+                <button id="applyAssistantProfile" class="secondary">Apply profile</button>
+              </div>
               <div class="setting">
                 <div>
                   <h3>Spoken responses</h3>

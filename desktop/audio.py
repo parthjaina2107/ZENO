@@ -3,6 +3,7 @@ import math
 import struct
 import time
 from collections import deque
+from contextlib import ExitStack
 
 
 def rms(data):
@@ -10,12 +11,18 @@ def rms(data):
     return math.sqrt(sum(sample * sample for sample in samples) / max(1, len(samples)))
 
 
-def capture(control, device=None, wait_seconds=15, phrase_seconds=25, pause_seconds=0.6, on_level=None):
+def capture(control, device=None, wait_seconds=15, phrase_seconds=25, pause_seconds=0.6, on_level=None,
+            on_open=None, on_close=None):
     import speech_recognition as sr
     control.check()
     # Construct/open only after explicit activation. The context closes on ALL exits.
-    with sr.Microphone(device_index=device, sample_rate=16000, chunk_size=512) as source:
+    with ExitStack() as stack:
+        if on_close:
+            stack.callback(on_close)
+        source = stack.enter_context(sr.Microphone(device_index=device, sample_rate=16000, chunk_size=512))
         control.check()
+        if on_open:
+            on_open()
         started = time.monotonic()
         speech_started = None
         last_voice = started

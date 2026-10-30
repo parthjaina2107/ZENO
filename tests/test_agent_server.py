@@ -41,6 +41,16 @@ def until(ws, predicate):
     raise AssertionError("Expected protocol event was not received")
 
 
+def test_remote_just_talk_never_executes_unprefixed_action(remote):
+    ws, executor, perms = remote
+    ws.send_json({'type': 'command', 'text': 'open notepad then type Hello', 'mode': 'chat'})
+    final = until(ws, lambda message: message.get('type') == 'response')
+    assert final['kind'] == 'chat'
+    until(ws, lambda message: message.get('type') == 'command_finished')
+    executor.execute.assert_not_called()
+    assert not perms._pending_remote_requests
+
+
 def test_remote_agent_approves_phase_and_completes(remote):
     ws, executor, perms = remote
     ws.send_json({"type": "command", "text": "open notepad then type Hello ZENO", "mode": "agent"})

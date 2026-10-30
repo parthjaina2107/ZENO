@@ -1,5 +1,8 @@
 /* ZENO workspace. Conversation remains in memory; only preferences and the session credential persist. */
 "use strict";
+const desktopMode = !!window.qt?.webChannelTransport;
+let desktopBridge = null;
+let desktopServiceError = false;
 const $ = (id) => document.getElementById(id);
 const storage = {
   get(k) {
@@ -55,6 +58,7 @@ function notify(message) {
   toastTimer = setTimeout(() => ($("toast").hidden = true), 5000);
 }
 function view(name) {
+  if (desktopMode && name === "preferences") send({type: "get_desktop_settings"});
   document
     .querySelectorAll(".view")
     .forEach((el) => (el.hidden = el.id !== name));
@@ -73,17 +77,22 @@ document
   );
 function controls() {
   $("run").disabled = !ready || busy;
-  $("mic").disabled = !ready || busy || !recognition;
+  $("mic").disabled = !ready || busy || (!recognition && !desktopMode);
   $("stop").disabled = !ready || !busy;
   document
     .querySelectorAll("[data-media]")
     .forEach((b) => (b.disabled = !ready || busy));
   $("mode").disabled = busy;
+  $("applyAssistantProfile").disabled = !ready || busy;
+  $("assistantProfile").disabled = busy;
+  if ($("codingWorkspace")) $("codingWorkspace").disabled = busy;
   $("run").firstChild.textContent = busy
     ? "Working…"
     : $("mode").value === "agent"
       ? "Run task"
-      : "Run command";
+      : $("mode").value === "chat" ? "Send" : $("mode").value === "coding" ? "Plan code" : "Run command";
+  $("command").placeholder = $("mode").value === "chat"
+    ? "What's on your mind?" : "What would you like to get done?";
   $("composerStatus").textContent = !ready
     ? "Waiting for connection"
     : busy
@@ -107,12 +116,18 @@ function setConnection(connected, label) {
   controls();
 }
 function send(data) {
+  if (desktopMode) {
+    if (!desktopBridge) return false;
+    desktopBridge.send(JSON.stringify(data));
+    return true;
+  }
   if (socket?.readyState !== WebSocket.OPEN || (!ready && data.type !== "auth"))
     return false;
   socket.send(JSON.stringify(data));
   return true;
 }
 function speak(text) {
+  if (desktopMode) return; // Native controller owns spoken replies.
   if ($("speech").checked && "speechSynthesis" in window && !recording) {
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -152,8 +167,100 @@ function dismissApproval() {
   permission = null;
   if ($("approval").open) $("approval").close();
 }
+function microphoneVisual(active) {
+  document.body.classList.toggle('mic-active', active);
+  $("voiceState").textContent = active ? "MICROPHONE ON" : "MICROPHONE OFF";
+  $("voiceTitle").textContent = active ? "Go ahead. I'm listening." : "Ready when you are.";
+  $("voiceDescription").textContent = active ? "Speak naturally. Your workspace is listening." : "One thought. One request. A little less friction.";
+  if (!active) document.body.style.setProperty('--mic-level', '0');
+}
+function assistantPhase(state) {
+  const phases = {
+    Ready: ["Ready when you are.", "Voice, text, or a moment to talk."],
+    Preparing: ["Getting ready.", "Preparing your request."],
+    "Opening microphone": ["Opening microphone.", "Waiting for your audio device."],
+    Transcribing: ["Finding your words.", "Transcribing the captured audio."],
+    Thinking: ["Thinking it through.", "Interpreting your request."],
+    "AI unavailable": ["AI unavailable.", "The request could not be answered. Retry when the service returns."],
+    Working: ["On your request.", "Running supported steps. You can stop at any time."],
+    "Approval needed": ["Your call.", "Review the action before it runs."],
+    Speaking: ["A reply for you.", "Speech playback. The microphone is off."],
+    Stopping: ["Wrapping up safely.", "New steps are stopped; started work may finish."],
+    "Reading project": ["Reading your workspace.", "Preparing the approved project context."],
+    "Planning code": ["Working out the code.", "Preparing a proposal. Files are unchanged."],
+    "Saving code": ["Saving approved changes.", "Backing up originals and checking saved files."],
+    "Opening VS Code": ["Opening your workspace.", "Requesting VS Code to open the project."],
+  };
+  document.body.dataset.assistantPhase = state.toLowerCase().replaceAll(" ", "-");
+  if (document.body.classList.contains("mic-active")) return;
+  const copy = phases[state] || [state, "Your request is in progress."];
+  $("voiceTitle").textContent = copy[0];
+  $("voiceDescription").textContent = copy[1];
+}
 function handle(data) {
   switch (data.type) {
+    case "desktop_settings":
+      $("desktopShortcut").value = data.shortcut || "";
+      $("desktopSpoken").checked = data.spoken_replies;
+      $("desktopPause").value = String(data.pause_seconds);
+      $("desktopMicrophone").replaceChildren();
+      for (const device of data.microphones || []) {
+        const option = document.createElement("option");
+        option.value = device.id == null ? "default" : String(device.id);
+        option.textContent = device.name;
+        $("desktopMicrophone").append(option);
+      }
+      $("desktopMicrophone").value = data.microphone == null ? "default" : String(data.microphone);
+      $("desktopSettingsMessage").textContent = data.message || "Changes apply to your next request.";
+      break;
+    case "desktop_state":
+      if (["Ready", "Stopping"].includes(data.state)) microphoneVisual(false);
+      if (data.state === "Preparing") {
+        desktopServiceError = false;
+        $("statusText").textContent = "Connected";
+      }
+      busy = data.state !== "Ready";
+      assistantPhase(desktopServiceError ? "AI unavailable" : data.state);
+      $("taskState").textContent = desktopServiceError ? "AI UNAVAILABLE" : data.state.toUpperCase();
+      if (!busy) {
+        dismissApproval();
+        finish(desktopServiceError ? "failed" : "responded");
+      }
+      controls();
+      break;
+    case "desktop_microphone":
+      microphoneVisual(data.text === 'on');
+      break;
+    case "desktop_level":
+      document.body.style.setProperty('--mic-level', String(Math.max(0, Math.min(1, Number(data.text) || 0))));
+      break;
+    case "desktop_service_error":
+      desktopServiceError = true;
+      $("taskState").textContent = "AI UNAVAILABLE";
+      $("statusText").textContent = "Connected · AI unavailable";
+      break;
+    case "desktop_reply":
+      message(data.text);
+      $("taskMessage").textContent = data.text;
+      break;
+    case "desktop_detail":
+      $("taskMessage").textContent = data.text;
+      break;
+    case "desktop_transcript":
+      if (currentRun?.status === "running" && currentRun.text === data.text) break;
+      message(data.text, "user");
+      currentRun = {text: data.text, mode: "agent", status: "running", time: new Date(), messages: []};
+      runs.unshift(currentRun);
+      $("taskTitle").textContent = data.text;
+      renderActivity();
+      break;
+    case "desktop_draft":
+      $("command").value = data.text;
+      $("inputHint").textContent = "Review this uncertain transcript, then choose Run.";
+      break;
+    case "desktop_clear_approval":
+      dismissApproval();
+      break;
     case "auth_ok":
       setConnection(true, "Connected");
       if ($("auth").open) $("auth").close();
@@ -233,7 +340,7 @@ function handle(data) {
       $("risk").textContent =
         (data.risk_level || "Review") + " · APPROVAL REQUIRED";
       $("approvalTitle").textContent = data.message?.startsWith(
-        "Final confirmation:",
+        "Final confirmation",
       )
         ? "One final confirmation."
         : "You decide what happens next.";
@@ -255,6 +362,16 @@ function handle(data) {
   }
 }
 function connect() {
+  if (desktopMode) {
+    new QWebChannel(qt.webChannelTransport, (channel) => {
+      desktopBridge = channel.objects.zeno;
+      desktopBridge.event.connect((raw) => handle(JSON.parse(raw)));
+      send({type: "hello"});
+      send({type: "get_desktop_settings"});
+      send({type: "motion", reduced: $("motion").checked});
+    });
+    return;
+  }
   clearTimeout(reconnectTimer);
   const token = storage.get("voice_agent_jwt");
   if (!token) {
@@ -350,6 +467,10 @@ $("showToken").addEventListener("click", () => {
   );
 });
 $("disconnect").addEventListener("click", () => {
+  if (desktopMode) {
+    view("preferences");
+    return;
+  }
   if (busy) {
     notify("Stop the active task before disconnecting.");
     return;
@@ -365,6 +486,16 @@ $("disconnect").addEventListener("click", () => {
 });
 function run(text = $("command").value.trim(), mode = $("mode").value) {
   if (!text) return;
+  if (mode === "chat") text = "Chat: " + text;
+  if (desktopMode && mode === "coding") {
+    const workspace = $("codingWorkspace").value.trim();
+    if (!workspace || /["\n\r]/.test(workspace)) {
+      notify("Enter the full project folder path without quotes.");
+      $("codingWorkspace").focus();
+      return;
+    }
+    text = `Coding task in "${workspace}": ${text}`;
+  }
   if (!ready || busy) {
     notify(
       busy
@@ -400,7 +531,20 @@ function run(text = $("command").value.trim(), mode = $("mode").value) {
   renderActivity();
 }
 $("run").addEventListener("click", () => run());
-$("mode").addEventListener("change", controls);
+$("applyAssistantProfile").addEventListener("click", () => {
+  const profile = $("assistantProfile").value;
+  if (!["focused", "warm", "balanced"].includes(profile)) {
+    notify("Choose an assistant profile first.");
+    return;
+  }
+  run("assistant profile " + profile, "command");
+});
+$("mode").addEventListener("change", () => {
+  controls();
+  $("inputHint").textContent = $("mode").value === "chat"
+    ? "Conversation only · Context is sent to your AI provider · Type ‘clear conversation’ to reset context"
+    : "Enter to run · Shift + Enter for a new line";
+});
 $("command").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
@@ -491,6 +635,7 @@ $("motion").checked =
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 $("language").value = storage.get("zeno_language") || "en-US";
 function preferences() {
+  if (desktopMode) send({type: "motion", reduced: $("motion").checked});
   storage.set("zeno_speech", $("speech").checked);
   storage.set("zeno_motion", $("motion").checked);
   storage.set("zeno_language", $("language").value);
@@ -509,12 +654,13 @@ for (const id of ["speech", "motion", "language"])
 document.body.classList.toggle("reduce-motion", $("motion").checked);
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SpeechRecognition) {
+if (SpeechRecognition && !desktopMode) {
   recognition = new SpeechRecognition();
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.lang = $("language").value;
   recognition.onstart = () => {
+    microphoneVisual(true);
     recording = true;
     $("mic").classList.add("recording");
     $("micLabel").textContent = "Finish listening";
@@ -543,6 +689,7 @@ if (SpeechRecognition) {
       );
   };
   recognition.onend = () => {
+    microphoneVisual(false);
     recording = false;
     $("mic").classList.remove("recording");
     $("micLabel").textContent = "Use your voice";
@@ -551,12 +698,19 @@ if (SpeechRecognition) {
       ? "Review your words, then choose Run."
       : "Enter to run · Shift + Enter for a new line";
   };
+} else if (desktopMode) {
+  $("micLabel").textContent = "Talk to ZENO";
+  $("inputHint").textContent = "Talk runs a native voice request · type and press Enter to run";
 } else {
   $("micLabel").textContent = "Voice unavailable";
   $("inputHint").textContent =
     "Voice recognition is not supported here. Type your request instead.";
 }
 $("mic").addEventListener("click", () => {
+  if (desktopMode) {
+    send({type: "listen", mode: $("mode").value});
+    return;
+  }
   if (!recognition) return;
   if (recording) {
     recognition.stop();
@@ -603,6 +757,59 @@ window.addEventListener("pagehide", () => {
   recognition?.abort();
 });
 icons();
+if (desktopMode) {
+  $("mode").value = "agent";
+  $("mode").querySelector('[value="command"]').remove();
+  $("mode").add(new Option("Coding task · Codex", "coding"));
+  const workspaceLabel = document.createElement("label");
+  workspaceLabel.hidden = true;
+  workspaceLabel.textContent = "Project folder (full path)";
+  workspaceLabel.style.cssText = "display:none;margin:12px 0;font-size:13px;color:var(--muted)";
+  const workspaceInput = document.createElement("input");
+  workspaceInput.id = "codingWorkspace";
+  workspaceInput.type = "text";
+  workspaceInput.placeholder = "C:\\Users\\HP\\OneDrive\\Desktop\\etc";
+  workspaceInput.style.cssText = "display:block;width:100%;margin-top:8px;padding:12px;background:rgba(255,255,255,.04);color:inherit;border:1px solid #555;border-radius:12px";
+  workspaceLabel.append(workspaceInput);
+  document.querySelector(".composer-top").after(workspaceLabel);
+  $("mode").addEventListener("change", () => {
+    workspaceLabel.hidden = $("mode").value !== "coding";
+    workspaceLabel.style.display = workspaceLabel.hidden ? "none" : "block";
+  });
+  $("disconnect").querySelector("small").textContent = "Preferences";
+  $("settingsDisconnect").closest(".setting").hidden = true;
+  $("speech").closest(".setting").hidden = true;
+  $("language").closest(".setting").hidden = true;
+  const note = document.createElement("p");
+  note.textContent = "Manage shortcuts, voice and microphone here. Reduced motion applies to the dashboard and island for this session.";
+  $("preferences").prepend(note);
+  $("desktopShortcut").addEventListener("focus", () => send({type: "shortcut_capture", active: true}));
+  $("desktopShortcut").addEventListener("blur", () => send({type: "shortcut_capture", active: false}));
+  $("desktopShortcut").addEventListener("keydown", (event) => {
+    if (event.key === "Tab") return;
+    event.preventDefault();
+    if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
+    if (event.metaKey) { notify("Choose a shortcut without the Windows key."); return; }
+    const parts = [];
+    if (event.ctrlKey) parts.push("Ctrl");
+    if (event.altKey) parts.push("Alt");
+    if (event.shiftKey) parts.push("Shift");
+    parts.push(event.key.length === 1 ? event.key.toUpperCase() : event.key);
+    $("desktopShortcut").value = parts.join("+");
+  });
+  $("clearShortcut").addEventListener("click", () => { $("desktopShortcut").value = ""; });
+  $("saveDesktopSettings").addEventListener("click", () => {
+    send({type: "save_desktop_settings", shortcut: $("desktopShortcut").value,
+      spoken_replies: $("desktopSpoken").checked,
+      microphone: $("desktopMicrophone").value === "default" ? null : Number($("desktopMicrophone").value),
+      pause_seconds: Number($("desktopPause").value)});
+  });
+  $("quitDesktop").addEventListener("click", () => send({type: "quit"}));
+  document.querySelector(".brand").addEventListener("click", (event) => {
+    event.preventDefault();
+    view("workspace");
+  });
+}
 controls();
 renderActivity();
 connect();

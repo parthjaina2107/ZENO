@@ -71,3 +71,31 @@ deleting local files does not delete remote copies automatically.
 Never attach raw `.env`, OAuth JSON/tokens, logs, screenshots, memory files, event
 databases or task reports to a public issue. Redact private content before sharing
 diagnostics. See [SECURITY.md](../SECURITY.md) for vulnerability reporting.
+
+## Coding-workspace data
+
+Native coding requests send filtered source/tutorial context to the signed-in
+Codex provider after consent. Common secret filenames are excluded, but source can
+still contain private data; this is not a secret scanner. ZENO_DATA_DIR/coding_runs
+(normally %LOCALAPPDATA%\ZENO\coding_runs) retains goals, paths, schemas, provider
+events, proposed code, reports and backups. Audit logs can contain diff previews.
+Temporary snapshots are removed after planning. There is no automatic retention
+cleanup. Deleting run data does not erase project files or provider-side copies.
+See [coding workspaces](coding-workspace.md) before approving sensitive source.
+
+## Companion conversations
+
+Just talk uses the configured Gemini service with recent in-process context and
+explicitly saved facts. ZENO adds no training-data capture or fine-tuning pipeline;
+provider policies still govern provider-side handling. Recent context is bounded
+to 12 entries. Explicit conversation-style preferences persist in the existing
+memory file. Conversation-only messages do not write facts or run tools.
+`clear conversation` clears brain context but not saved facts, visible dashboard
+messages, terminal output or provider copies. Online recognition/TTS still follow
+the existing flows above. No confidential health-service guarantee is made.
+See [companion details](companion.md) before sharing sensitive experiences.
+
+Assistant profile choices are explicit preferences stored in the same memory file
+as conversation style. They affect model instructions, not voice recordings or
+model weights. The island mode is session-only. No new training capture, analytics
+or data destination is added by the orb/profile controls.

@@ -18,7 +18,7 @@ from .nlu import NLUEngine
 from .planner import ActionPlanner, PlannedAction
 from .memory import ZenoMemory
 from .vision import ScreenVision
-from .api_utils import call_gemini_with_fallback
+from .api_utils import call_gemini_with_fallback, last_api_failure, reasoning_failure_message
 from .agent import GoalPlanner
 from .interaction import is_direct_command, route_request
 
@@ -66,48 +66,23 @@ class ZenoBrain:
         return cleaned.strip() if cleaned.strip() else text.strip()
 
     async def _generate_conversational_reply(self, user_text: str) -> str:
-        """Generate conversational answer using Gemini 2.5 Flash with memory & context."""
+        """Tool-free companion generation with bounded provider calls."""
+        from .companion import context, instructions, offline_reply
+        self.conversation_unavailable = False
         if self.client:
-            model_to_use = getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
-            dialogue_context = self.memory.format_dialogue_context(limit=4)
-            personal_memories = self.memory.format_memory_for_prompt()
-
-            system_instruction = (
-                f"You are {self.assistant_name}, a highly intelligent, polite, and capable personal AI desktop assistant. "
-                "Your responses are spoken aloud via Text-to-Speech or sent to the user's mobile screen. "
-                "Keep spoken answers natural, clear, and concise (1 to 3 sentences) unless the user specifically asks for in-depth details. "
-                "Always maintain your identity as ZENO."
-            )
-
-            prompt_parts = [system_instruction]
-            if personal_memories:
-                prompt_parts.append(personal_memories)
-            if dialogue_context:
-                prompt_parts.append(f"Recent Conversation:\n{dialogue_context}")
-            prompt_parts.append(f"User: {user_text}\n{self.assistant_name}:")
-
-            full_prompt = "\n\n".join(prompt_parts)
-
             try:
                 response = await call_gemini_with_fallback(
                     client=self.client,
-                    contents=full_prompt,
-                    primary_model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    contents=context(self.memory, user_text),
+                    generation_config={'system_instruction': instructions(self.memory, chat_only=True)},
+                    max_retries=1,
                 )
-
-                if response and hasattr(response, "text") and response.text:
-                    answer = response.text.strip()
-                    if answer:
-                        return answer
-            except Exception as e:
-                logger.error(f"Conversational generation error: {e}")
-
-        # Local fallback if offline or API key missing
-        return (
-            f"I am {self.assistant_name}, standing by. I can run system commands, control apps, "
-            f"adjust volume, take screenshots, or check your battery. "
-            f"To unlock full conversational Q&A and screen vision, please configure your Gemini API key."
-        )
+                if response and isinstance(response.text, str) and response.text.strip():
+                    return response.text.strip()
+            except Exception:
+                logger.warning('Companion generation unavailable')
+        self.conversation_unavailable = True
+        return offline_reply(user_text)
 
     async def think(self, raw_user_text: str, agent_mode: bool = False) -> BrainResponse:
         """
@@ -127,6 +102,43 @@ class ZenoBrain:
 
         clean_text = self.strip_wake_prefix(raw_text)
         lowered = clean_text.lower().strip(".!?,")
+
+        from .companion import conversation_text, social_opening, CLEAR_REQUESTS, STYLES, PROFILES
+        chat_text = conversation_text(clean_text)
+        if lowered in CLEAR_REQUESTS or (chat_text is not None and chat_text.lower().rstrip('.!?') in CLEAR_REQUESTS):
+            self.memory.clear_short_term()
+            self.awaiting_clarification = False
+            return BrainResponse(kind='chat', message='Cleared the conversation context for this session. Saved facts and copies in the interface or provider are unchanged.')
+        style_match = re.fullmatch(r'conversation style\s+(\w+)', lowered)
+        if style_match and chat_text is None:
+            style = style_match.group(1)
+            if style not in STYLES:
+                return BrainResponse(kind='chat', message='Choose balanced, gentle, playful or direct.')
+            self.memory.remember_fact('conversation_style', style, category='user_preferences')
+            return BrainResponse(kind='memory', message=f'Conversation style set to {style}.')
+        profile_match = re.fullmatch(r'assistant profile\s+(\w+)', lowered)
+        if profile_match and chat_text is None:
+            profile = profile_match.group(1)
+            if profile not in PROFILES:
+                return BrainResponse(kind='chat', message='Choose balanced, focused or warm.')
+            self.memory.remember_fact('assistant_profile', profile, category='user_preferences')
+            return BrainResponse(kind='memory', message=f'Assistant profile set to {profile}.')
+        if chat_text is None and lowered in {'what can you do', 'show capabilities', 'help'}:
+            return BrainResponse(kind='chat', message=(
+                'We can talk, explore ideas, or work through a problem. I can also run supported '
+                'computer tasks, such as opening apps, checking system status and working with permitted files. '
+                'The native desktop has a coding-workspace mode when Codex is installed and signed in. '
+                'Choose Just talk for conversation only, or ask for an Agent task. Sensitive steps need your approval.'))
+        if chat_text is None and social_opening(clean_text):
+            chat_text = clean_text
+        if chat_text is not None:
+            self.awaiting_clarification = False
+            reply = await self._generate_conversational_reply(chat_text)
+            self.memory.add_turn('user', chat_text)
+            self.memory.add_turn('zeno', reply)
+            return BrainResponse(kind='chat', message=reply,
+                                 data={'conversation_only': True, 'service_error': 'unavailable'}
+                                 if self.conversation_unavailable else {'conversation_only': True})
 
         if self.awareness is not None:
             import asyncio
@@ -165,7 +177,7 @@ class ZenoBrain:
             return BrainResponse(kind="task", message=goal, data={"goal": goal})
 
         if lowered in ("who are you", "what is your name", "who are you?", "what's your name"):
-            reply = f"I am {self.assistant_name}, your autonomous voice and remote automation assistant."
+            reply = f"I am {self.assistant_name}, an AI assistant. We can talk things through, explore ideas, or work on supported computer tasks."
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply)
             return BrainResponse(kind="chat", message=reply)
@@ -205,11 +217,13 @@ class ZenoBrain:
                 return BrainResponse(kind=kind, message=decision["message"])
             except Exception as exc:
                 logger.warning("Contextual routing failed: %s", exc)
-                return BrainResponse(kind="chat", message="My reasoning service isn't responding. Please try again; simple commands like open Notepad still work.")
+                return BrainResponse(kind="chat", message=reasoning_failure_message(),
+                                     data={"service_error": last_api_failure() or "invalid_response"})
 
         # Offline mode must not mistake a question containing 'restart' for a power command.
         if not self.client and not is_direct_command(clean_text):
-            reply = "I need my reasoning service for that request. Simple commands like open Notepad or check battery level still work."
+            from .companion import offline_reply
+            reply = offline_reply(clean_text)
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply)
             return BrainResponse(kind="chat", message=reply)

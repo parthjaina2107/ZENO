@@ -1,0 +1,39 @@
+<div class="settings glass" id="desktopSettings">
+  <div class="setting">
+    <div><h3>Keyboard shortcut</h3><p>Press your combination in the field. Use it once to listen, again to stop.</p></div>
+    <input id="desktopShortcut" readonly placeholder="Click and press a shortcut" aria-label="Activation shortcut" />
+  </div>
+  <div class="setting">
+    <div><h3>Shortcut controls</h3><p>Ctrl or Alt with a letter or number, or a function key except F12.</p></div>
+    <button class="secondary" id="clearShortcut">Disable shortcut</button>
+  </div>
+  <div class="setting">
+    <div><h3>Microphone</h3><p>Used only when you start a voice request.</p></div>
+    <select id="desktopMicrophone" aria-label="Input microphone"></select>
+  </div>
+  <div class="setting">
+    <div><h3>Pause before sending</h3><p>How long ZENO waits after you stop speaking.</p></div>
+    <select id="desktopPause" aria-label="Pause before sending">
+      <option value="0.6">Quick · 0.6 seconds</option>
+      <option value="0.9">Balanced · 0.9 seconds</option>
+      <option value="1.4">Relaxed · 1.4 seconds</option>
+    </select>
+  </div>
+  <div class="setting">
+    <div><h3>Spoken responses</h3><p>Read final replies aloud using your configured desktop voice.</p></div>
+    <input id="desktopSpoken" type="checkbox" class="switch" aria-label="Desktop spoken responses" />
+  </div>
+  <div class="setting">
+    <p id="desktopSettingsMessage" role="status">Changes apply to your next request.</p>
+    <button id="saveDesktopSettings" class="primary">Save settings</button>
+  </div>
+</div>
+<div class="settings glass">
+  <div class="setting">
+    <div><h3>About your workspace</h3><p>Listening starts only when you ask. Sensitive actions need approval; high-risk actions ask twice. Requests may reach your configured AI provider. Existing memory, task reports and audit logs may retain request details.</p></div>
+  </div>
+  <div class="setting">
+    <div><h3>Quit ZENO</h3><p>Stops remaining work and closes the island and dashboard.</p></div>
+    <button id="quitDesktop" class="secondary">Quit ZENO</button>
+  </div>
+</div>

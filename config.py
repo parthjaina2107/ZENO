@@ -109,6 +109,10 @@ class Config:
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    CODING_CODEX_PATH: str = os.getenv("CODING_CODEX_PATH", "").strip()
+    CODING_VSCODE_PATH: str = os.getenv("CODING_VSCODE_PATH", "").strip()
+    CODING_MODEL: str = os.getenv("CODING_MODEL", "").strip()
+    CODING_TIMEOUT_SECONDS: int = max(30, min(3600, int(os.getenv("CODING_TIMEOUT_SECONDS", "900"))))
     GEMINI_FALLBACK_MODELS: list = [
         "gemini-3.6-flash",
         "gemini-3.1-flash-lite",
@@ -225,6 +229,12 @@ class Config:
         str(USER_HOME / "Downloads"),
         str(BASE_DIR),  # Allow working inside project dir
     ]
+    for _drive_key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        if os.getenv(_drive_key):
+            for _folder in ("Desktop", "Documents"):
+                _candidate = Path(os.environ[_drive_key]) / _folder
+                if _candidate.is_dir() and str(_candidate) not in ALLOWED_DIRS:
+                    ALLOWED_DIRS.append(str(_candidate))
 
     BLOCKED_PATHS = [
         "C:\\Windows",

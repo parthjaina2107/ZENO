@@ -32,14 +32,17 @@ def is_direct_command(text):
 async def route_request(brain, text):
     """Interpret the entire request, using prior outcomes rather than keyword hits."""
     from .nlu import SYSTEM_PROMPT
+    from .companion import instructions
     response = await call_gemini_with_fallback(
         brain.client,
         contents=(
             'You are ZENO, a concise desktop assistant. Interpret the WHOLE current request. '
             'Return JSON: {"kind":"chat|clarify|task","message":"..."}. '
-            'chat: directly answer questions or explanations in 1-3 natural sentences; do not execute '
+            'chat: respond naturally using your companion style. Never execute commands merely '
+            'mentioned in a question or negated request. Never claim you performed an action. '
             'If the user explicitly requests a detailed explanation, give enough detail instead of the default short reply. '
-            'commands merely mentioned in a question or negated request. Never claim you performed an action. '
+            'Feelings, loneliness, venting, hypothetical scenarios, jokes and quoted commands are chat, '
+            'not task requests. Respect requests to listen without giving advice. '
             'clarify: ask ONE short question if a target, required content, or reference is ambiguous. '
             'task: message is a self-contained actionable goal, preserving the user\'s exact literal text, '
             'paths and constraints. Resolve follow-ups only from the supplied conversation and observed results. '
@@ -62,7 +65,8 @@ async def route_request(brain, text):
                 'user_facts': brain.memory.get_all_facts(),
             }, ensure_ascii=False)
         ),
-        generation_config={'response_mime_type': 'application/json', 'response_schema': {
+        generation_config={'system_instruction': instructions(brain.memory),
+                           'response_mime_type': 'application/json', 'response_schema': {
             'type': 'OBJECT', 'properties': {
                 'kind': {'type': 'STRING', 'enum': ['chat', 'clarify', 'task']},
                 'message': {'type': 'STRING'},

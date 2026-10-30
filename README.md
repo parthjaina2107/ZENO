@@ -4,6 +4,21 @@
 
 ## Agent task mode
 
+ZENO now includes a compact state-reactive orb, an island **Assistant / Just talk**
+switch, Focused/Warm/Balanced response profiles and a capability guide. See
+[the assistant experience](docs/assistant-experience.md) for controls and previews.
+
+Choose **Just talk** for conversation, venting, ideas or lighthearted chat. On the
+island/CLI use `Chat: ...` or `Can we talk?`. Conversation-only requests cannot run
+computer actions. This configures the existing model, with no private-chat training
+collection. See [companion controls, privacy and limits](docs/companion.md).
+
+Native desktop/island users can select **Coding task · Codex** to work from a
+tutorial/project folder, review proposed code, save it with backups, and request
+VS Code to open. This uses a separately signed-in Codex CLI. Generated code and
+runtime tests are not executed automatically. See
+[coding workspace setup and limits](docs/coding-workspace.md).
+
 Say **“Zeno, task open Notepad then type Hello ZENO”**, type
 `task: check battery then check cpu usage`, or enable **Agent task mode** in the phone UI.
 ZENO turns the request into validated actions, shows its plan, executes a phase,
@@ -125,11 +140,13 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-desktop.txt
 .\.venv\Scripts\python.exe main.py --desktop
 ```
 
-Or double-click `Start-ZENO.cmd` after installing dependencies. The minimal,
-Apple Settings-inspired app includes **Assistant**, **Keyboard shortcut**,
-**Voice & microphone**, and **About & privacy** pages.
+Or double-click `Start-ZENO.cmd` after installing dependencies. Hover over the
+island for compact voice/text controls; move away to collapse it. Choose
+**Dashboard** to open the full glass workspace in a separate window. Both share
+the native controller. **Preferences** on the island opens Preferences inside that same black dashboard,
+including shortcut and microphone controls. See the [upgrade steps](docs/setup.md#persistent-desktop-island-and-separate-dashboard).
 
-Choose your own shortcut in Settings: press it once to listen, speak and pause
+Choose your own shortcut in dashboard Preferences: press it once to listen, speak and pause
 to send, then press **the same shortcut while busy to stop**. The microphone is
 closed until activation. Cancellation prevents remaining steps and interrupts
 speech; an OS action already started may finish, and completed actions are not

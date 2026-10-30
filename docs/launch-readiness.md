@@ -116,3 +116,30 @@ microphones, real user speech, authorization, installers or third-party services
    instructions, known limitations, checksums and verified artifacts.
 5. Have the owner approve public product publication separately. A source push
    does not publish a commercial product or approve its legal/service obligations.
+
+## Coding-workspace verification still pending
+
+The native Codex route is covered by fake-provider and temporary-file tests.
+Real account/provider calls, installed CLI Windows sandbox behavior, realistic
+tutorial correctness, VS Code GUI outcomes, larger document extraction and
+account usage disclosure remain manual checks. Generated-code execution and
+automatic runtime test loops are not implemented. These additions do not close
+any commercial launch or security gate above.
+
+An earlier automated run reported 256 passing tests; the combined Qt test process
+did not exit after reporting results and required cleanup. The dedicated coding
+tests and coding/dashboard subset exited normally. Clean combined-suite teardown
+remains to be investigated before treating this as a clean release check.
+
+Current assistant changes are verified with desktop and WebEngine suites in
+separate processes to avoid that combined teardown issue. Personality, orb and
+input controls do not close live voice/provider or human safety review gates.
+
+## Companion evaluation still pending
+
+Just talk adds model instructions, synthetic examples and software contract tests,
+not a trained or clinically validated support system. Actual model conversation
+quality, multilingual safety, responses to minors, dependency/crisis behavior and
+qualified human review remain pending. The synthetic review cases in evals are
+not completed provider evaluations. Conversation cannot guarantee monitoring,
+treatment or emergency response. Existing commercial/security gates remain open.

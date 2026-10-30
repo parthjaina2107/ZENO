@@ -1,0 +1,42 @@
+/* Only the native island loads these density adjustments. Shared UI stays intact. */
+html { background: #1a1a1a; }
+body.desktop-island { font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+.desktop-island .shell { padding: 16px; gap: 20px; }
+.desktop-island .rail { width: 176px; padding: 20px 12px; top: 16px; height: calc(100vh - 32px); }
+.desktop-island .brand { font-size: 32px; }
+.desktop-island header { margin-bottom: 0; height: 52px; padding: 10px 20px; }
+.desktop-island .page-heading { margin-bottom: 0; padding: 20px 0; }
+.desktop-island h1 { font-size: 27px; }
+.desktop-island .dashboard-grid { grid-template-columns: minmax(0, 1fr) 245px; gap: 16px; }
+.desktop-island .hero { height: 270px; }
+.desktop-island .hero h2 { font-size: 28px; margin-top: 14px; }
+.desktop-island .hero-copy { padding: 22px; }
+.desktop-island .hero-foot { padding: 14px 22px; }
+.desktop-island .composer { padding: 20px; }
+.desktop-island .task-panel, .desktop-island .device { padding: 20px; }
+.desktop-island .task-symbol { margin: 14px 0; }
+.desktop-island #mode { pointer-events: auto; }
+.desktop-island .date { display: none; }
+.desktop-island .profile { cursor: pointer; }
+.desktop-island #desktopShortcut,
+.desktop-island #desktopMicrophone,
+.desktop-island #desktopPause {
+  max-width: 260px;
+  width: 100%;
+  padding: 12px;
+  color: #eeeeee;
+  background: #242424;
+  border: 1px solid #ffffff30;
+  border-radius: 12px;
+}
+.desktop-island #desktopSettingsMessage { max-width: 440px; }
+.desktop-island #preferences > .settings { margin-bottom: 20px; }
+@media (max-width: 980px) {
+  .desktop-island .rail { width: 72px; }
+  .desktop-island .dashboard-grid { grid-template-columns: minmax(0, 1fr) 225px; }
+}
+@media (max-width: 740px) {
+  .desktop-island .rail { width: auto; height: auto; }
+  .desktop-island .dashboard-grid { grid-template-columns: 1fr; }
+  .desktop-island .hero { height: 260px; }
+}

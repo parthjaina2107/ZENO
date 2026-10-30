@@ -1,0 +1,2 @@
+# Optional PDF tutorial reader for native coding tasks. DOCX uses the standard library.
+pypdf==6.21.4
