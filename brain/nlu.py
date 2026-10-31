@@ -10,7 +10,7 @@ import re
 import os
 from typing import Dict, Any, Optional
 from config import config
-from .api_utils import call_gemini_with_fallback
+from .api_utils import cloud_allowed, reasoning_available, call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.NLU")
 
@@ -134,16 +134,17 @@ class NLUEngine:
         self._init_client()
 
     def _init_client(self):
-        if self.api_key:
+        if self.api_key and cloud_allowed():
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,
+                                           http_options={'base_url': 'https://generativelanguage.googleapis.com'})
                 logger.info("Gemini NLU client initialized successfully.")
             except Exception as e:
                 logger.warning(f"Could not initialize Gemini Client: {e}")
                 self.client = None
         else:
-            logger.info("No Gemini API key provided. Using built-in local fallback NLU.")
+            logger.info("Cloud NLU disabled or unconfigured; local reasoning/parser remain available.")
 
     def update_api_key(self, api_key: str):
         self.api_key = api_key
@@ -524,7 +525,7 @@ class NLUEngine:
             return self._sanitize_command(local_result)
 
         # SLOW PATH: If Gemini client is active, attempt Gemini call with fallback chain & retries
-        if self.client:
+        if reasoning_available(self.client):
             prompt = f"{SYSTEM_PROMPT}\n\nUser command: \"{text}\"\nJSON:"
             try:
                 response = await call_gemini_with_fallback(

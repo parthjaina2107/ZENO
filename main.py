@@ -107,9 +107,10 @@ class VoiceAgentApp:
         print("=" * 64)
         print(f"  • Operating Mode     : {self.mode.upper()}")
         print(f"  • Microphone Ready   : {'YES' if self.listener.is_mic_available() else 'NO (Console Fallback)'}")
-        print(f"  • Gemini AI Brain    : {'Online' if config.GEMINI_API_KEY else 'Offline (Local Rules Fallback)'}")
+        from brain.api_utils import cloud_allowed
+        print(f"  • AI mode            : {config.LLM_MODE} (provider availability not tested)")
         print(f"  • Cognitive Memory   : Online (Short-term context + Long-term facts)")
-        print(f"  • Multimodal Vision  : {'Active' if config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
+        print(f"  • Multimodal Vision  : {'Cloud configured; not tested' if cloud_allowed() and config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
         print(f"  • Proactive Updates  : {'Enabled — say brief me' if self.awareness else 'Disabled'}")
         print(f"  • Voice              : {config.TTS_VOICE if config.TTS_BACKEND == 'edge' else config.TTS_LOCAL_VOICE}")
         print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None (LAN Only)'}")
@@ -452,6 +453,8 @@ def main():
     if args.voice:
         config.TTS_VOICE = args.voice
     if args.desktop:
+        from brain.ollama_runtime import start_local_runtime
+        start_local_runtime()
         try:
             from desktop.app import run_desktop
         except ImportError as exc:
@@ -495,6 +498,8 @@ def main():
 
     if args.wake_word:
         config.WAKE_WORD_ENABLED = True
+    from brain.ollama_runtime import start_local_runtime
+    start_local_runtime()
     agent = VoiceAgentApp(mode=args.mode, port=args.port)
     agent.text_mode = args.text
     if args.text:

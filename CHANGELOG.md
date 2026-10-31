@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Added local Ollama reasoning and opt-in free-tier Gemini-to-local routing.
+  Cloud calls default off; an existing key alone no longer enables them. Free
+  cloud requires explicit confirmation of a billing-disabled Free-tier project,
+  allows only reviewed Flash models and excludes hosted paid tools/cache options.
+  Quota/auth failures fall back locally without retries. Local text, structured
+  routing and planning preserve action validation; local text models cannot see
+  screenshots. Added local runtime startup, diagnostics and a text-only smoke
+  command. Local speech defaults to SAPI/faster-whisper without online fallback.
+  External coding now requires separate CODING_ALLOW_EXTERNAL opt-in; it is not
+  covered by the free-tier routing policy.
+  Setup updated for Ollama/model downloads, speech dependencies, model storage,
+  deadlines, account/privacy checks and explicit existing-.env migration.
+  Live cloud billing/quota and hardware voice checks remain manual; no release
+  or licensing decision is made.
+
 - Replaced the microphone-active overlay with a reference-inspired slim black
   listening island, left-aligned label, cyan glow and level-reactive bars.
   Removed screen-edge lighting; click the listening island for controls, while

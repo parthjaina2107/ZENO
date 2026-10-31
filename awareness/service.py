@@ -151,13 +151,13 @@ class AwarenessService:
         return ' '.join([summary] + limitations)
 
     async def summarize(self, client):
-        from brain.api_utils import call_gemini_with_fallback
+        from brain.api_utils import call_gemini_with_fallback, reasoning_available
         events = self.store.events(pending=True, limit=10) or self.store.events(limit=10)
         self._remember_briefing(events)
         if not events:
             unavailable = [name for name in ('Gmail', 'Outlook') if self.status.get(name) != 'Connected']
             return 'There are no recent collected updates.' + (' I cannot currently check ' + ' or '.join(unavailable) + '.' if unavailable else '')
-        if not client:
+        if not reasoning_available(client):
             return 'AI summaries need the reasoning service. ' + digest(events)
         try:
             response = await call_gemini_with_fallback(client, contents=(

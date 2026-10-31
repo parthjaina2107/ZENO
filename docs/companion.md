@@ -4,8 +4,8 @@ Choose **Just talk** in the dashboard to chat about your day, interests, learnin
 creative ideas, good news or difficult feelings. The same mode works for typed
 messages and the native dashboard's on-demand voice button. On the island or CLI,
 prefix a message with `Chat:` or say `Can we talk?`. Ordinary emotional openings
-such as `I feel lonely` also take the conversational path. No extra model install
-or account is needed beyond the existing Gemini configuration.
+such as `I feel lonely` also take the conversational path. Use the downloaded local Ollama model or explicitly enabled free-tier Gemini;
+see [model setup](setup.md#3-configure-your-api-key-and-preferences).
 
 The companion uses the existing model with system instructions and synthetic
 tone examples. This is behavior configuration, **not fine-tuning or model training**.
@@ -52,10 +52,10 @@ safe next steps. ZENO cannot diagnose, provide treatment, monitor safety, contac
 emergency services or guarantee crisis detection. A small English phrase fallback
 can offer immediate-help guidance during an outage; it is not multilingual crisis
 detection. Otherwise an outage produces a transparent limited response rather than
-pretending an offline model is available. No helpline directory is integrated.
+pretending a model answered successfully. No helpline directory is integrated.
 
-Conversation text, recent context and explicitly saved facts go to the configured
-Gemini service. Online speech recognition/TTS can send audio/replies to their
+Conversation text, recent context and explicitly saved facts go to local Ollama
+in local mode, or to Gemini when free-cloud mode is explicitly enabled. Online speech recognition/TTS can send audio/replies to their
 providers. Messages can remain in the UI or terminal; diagnostics from other
 features may also retain content. This is not a confidential health service.
 See [privacy](privacy.md) before sharing sensitive information.

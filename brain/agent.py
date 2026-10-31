@@ -4,7 +4,7 @@ import json
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from config import config
-from .api_utils import call_gemini_with_fallback
+from .api_utils import reasoning_available, call_gemini_with_fallback
 from .planner import ACTION_PARAM_MODELS
 
 
@@ -29,7 +29,7 @@ class GoalPlanner:
         self.planner = planner
 
     async def decide(self, goal: str, observations: list[dict]) -> AgentDecision:
-        if not self.nlu.client:
+        if not reasoning_available(self.nlu.client):
             if observations:
                 failed = any(not item["success"] for item in observations)
                 return AgentDecision(status="blocked" if failed else "done", message=(
@@ -38,7 +38,7 @@ class GoalPlanner:
             result = await self.nlu.understand(goal)
             if not result.get("understood"):
                 return AgentDecision(status="clarify", message=result.get("confirmation_message") or
-                                     "This goal needs Gemini. Configure GEMINI_API_KEY or give explicit supported commands.")
+                                     "This goal needs local AI or confirmed free-tier cloud AI, or use explicit supported commands.")
             steps = result.get("parameters", {}).get("steps", []) if result["action"] == "multi_step" else [result]
             return AgentDecision(status="plan", message="I will carry out these steps in order.", steps=[
                 AgentStep(**{k: v for k, v in step.items() if k in AgentStep.model_fields}) for step in steps

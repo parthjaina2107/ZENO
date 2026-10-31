@@ -94,12 +94,12 @@ async def test_api_utils_fallback_retry():
     mock_resp = MagicMock()
     mock_resp.text = '{"understood": true, "action": "system_info"}'
 
-    # First call on gemini-2.5-flash raises 503, second call succeeds on fallback model
+    # First free-tier model raises 503; the next allowed model succeeds.
     call_counts = {"attempts": 0}
 
     def fake_generate(model, contents, **kwargs):
         call_counts["attempts"] += 1
-        if model == "gemini-2.5-flash":
+        if model == "gemini-3.8-flash":
             raise Exception("503 Service Unavailable")
         return mock_resp
 
@@ -108,7 +108,7 @@ async def test_api_utils_fallback_retry():
     resp = await call_gemini_with_fallback(
         client=mock_client,
         contents="test prompt",
-        primary_model="gemini-2.5-flash",
+        primary_model="gemini-3.8-flash",
         max_retries=1
     )
 

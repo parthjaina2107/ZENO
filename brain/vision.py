@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Optional, Dict, Any
 from config import config
-from .api_utils import call_gemini_with_fallback
+from .api_utils import cloud_allowed, reasoning_available, call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.Vision")
 
@@ -34,16 +34,17 @@ class ScreenVision:
         self._init_client()
 
     def _init_client(self):
-        if self.api_key:
+        if self.api_key and cloud_allowed():
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,
+                                           http_options={'base_url': 'https://generativelanguage.googleapis.com'})
                 logger.info("ScreenVision: Gemini multimodal client initialized.")
             except Exception as e:
                 logger.warning(f"ScreenVision: Could not initialize Gemini client: {e}")
                 self.client = None
         else:
-            logger.info("ScreenVision: No Gemini API key provided. Visual inspection will use fallback telemetry.")
+            logger.info("ScreenVision: Cloud disabled or unconfigured. Local mode provides basic window telemetry only.")
 
     def is_vision_query(self, text: str) -> bool:
         """Determine if user utterance is asking about the screen."""
@@ -91,7 +92,7 @@ class ScreenVision:
             }
 
         # 2. If Gemini client is active, run multimodal analysis
-        if self.client:
+        if reasoning_available(self.client):
             model_to_use = getattr(config, "GEMINI_MODEL", "gemini-2.5-flash")
             system_instruction = (
                 "You are ZENO, an autonomous AI computer assistant. "
@@ -135,7 +136,7 @@ class ScreenVision:
         fallback_msg = (
             f"I took a look at your screen ({w} by {h} pixels). "
             f"Your active window appears to be '{active_window}'. "
-            "For detailed visual intelligence, please configure your free Gemini API key in the environment."
+            "Detailed screen interpretation requires enabled cloud vision. The local text model cannot inspect images."
         )
         return {
             "success": True,

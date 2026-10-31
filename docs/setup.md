@@ -13,7 +13,8 @@ Administrator privileges are not required for the usual installation.
 - A connected microphone and speakers/headphones for voice use.
 - Internet for downloading dependencies and the local speech model. Gemini,
   connected mail and online voice features also need internet at runtime.
-- Your own Gemini API key for reasoning and complex tasks. Basic literal commands
+- Ollama with a downloaded model for local reasoning, or an optional confirmed
+  Free-tier Gemini project. Basic literal commands
   can use the local fallback, and mail accounts are optional.
 
 Confirm the tools are installed:
@@ -66,11 +67,82 @@ if (-not (Test-Path -LiteralPath .env)) { Copy-Item -LiteralPath .env.example -D
 notepad .env
 ```
 
-Set `GEMINI_API_KEY` to your own key from [Google AI Studio](https://aistudio.google.com/).
-Keep it in this local file. `GEMINI_MODEL` selects the model; choose a model your
-account can access using the [official model reference](https://ai.google.dev/gemini-api/docs/models).
-The example uses `gemini-3.8-flash`; access and quotas depend on the provider and
-account. Changing models does not remove API limits or guarantee free usage.
+ZENO now defaults to **local AI**, with cloud calls disabled even if a Gemini key
+is already saved. Install Ollama from its [Windows instructions](https://docs.ollama.com/windows),
+then download the text model once:
+
+```powershell
+ollama pull qwen3:4b
+```
+
+ZENO looks for `%LOCALAPPDATA%\ZENO\ollama\ollama.exe` (portable), then the
+standard `%LOCALAPPDATA%\Programs\Ollama` installation, then PATH. Desktop/CLI
+startup launches an installed server hidden on `127.0.0.1:11434` with
+`OLLAMA_NO_CLOUD=1` if that port is not already in use. It never downloads models
+on startup. The server may remain running after ZENO closes; stop its process
+when finished. Models normally live in `%USERPROFILE%\.ollama\models`; set
+Ollama's own `OLLAMA_MODELS` only if you deliberately choose another location.
+An already-running server is not reconfigured; cloud-backed model aliases are
+rejected by the request adapter. No Windows login-startup entry is added by ZENO.
+
+Set these values in your existing `.env`, preserving credentials:
+
+```dotenv
+LLM_MODE=local
+GEMINI_FREE_TIER_CONFIRMED=false
+LOCAL_LLM_ENABLED=true
+OLLAMA_MODEL=qwen3:4b
+OLLAMA_TIMEOUT_SECONDS=90
+TTS_BACKEND=sapi
+STT_BACKEND=faster-whisper
+STT_ALLOW_ONLINE_FALLBACK=false
+```
+
+Install `requirements-speech.txt` and run `main.py --setup-speech` once for local
+speech recognition (see the speech section below). SAPI uses installed Windows
+voices. Existing `.env` speech settings retain precedence: change them explicitly
+when upgrading if they currently select online speech. Text input works without
+a microphone or cached speech model.
+
+For optional free cloud reasoning, create/check your project in
+[Google AI Studio](https://aistudio.google.com/): **billing must be disabled and
+the project must be on Free tier**. A key cannot prove billing status. Only after
+checking that, set `LLM_MODE=free-cloud-local`, `GEMINI_FREE_TIER_CONFIRMED=true`,
+and `GEMINI_API_KEY` to that project's key. Leave confirmation false if unsure.
+The default `GEMINI_MODEL=gemini-3.8-flash` and fallback Flash models have free-tier
+standard inference listed in [Google pricing](https://ai.google.dev/gemini-api/docs/pricing)
+as reviewed on 2026-10-31. Eligibility, quotas and pricing can change; confirmation
+is a user assertion, not an automatic billing check or a guarantee of zero charges.
+Do not enable billing. No paid model, hosted search/tool or cache option is routed.
+On quota/auth failure ZENO immediately tries local AI; other cloud failures have
+a bounded retry chain. Local inference has a separate 90-second default deadline.
+
+Simple supported commands still use the local parser first. Chat, interpretation
+and task planning can use the downloaded model; all actions retain parameter
+validation and permission checks. Qwen3 4B is a text model: local-only screen
+requests report basic window telemetry, not visual understanding. Cloud vision
+requires the explicitly enabled free-cloud mode. Free-tier cloud requests can
+send conversation context, requested file contents or explicitly requested screen
+images to Google; its free-tier terms may allow product improvement use.
+
+A 16 GB RAM / 4 GB GPU laptop is a reasonable starting target for the compact
+model, but speed and memory headroom need local checks. No full-size model or
+fine-tuning is required. To disable local inference, set `LOCAL_LLM_ENABLED=false`;
+with cloud disabled, only the deterministic fallback remains.
+
+Verify local text, structured routing and task planning without recording or
+running actions:
+
+```powershell
+.venv\Scripts\python.exe scripts\local_ai_smoke.py
+```
+
+Restart ZENO after changing settings. Optional Codex coding workflows and
+user-requested online integrations are separate from this reasoning router; local
+mode does not make those integrations offline or change their billing terms.
+External Codex execution now defaults off (`CODING_ALLOW_EXTERNAL=false`). Only
+set it true after separately deciding to use that account/service; it is not
+covered by the free Gemini restriction. Existing coding users must opt back in.
 
 The desktop does not need an ngrok token. Leave `NGROK_AUTH_TOKEN` empty unless
 you deliberately configure a public tunnel. Remote authentication placeholders
@@ -267,7 +339,7 @@ reduced motion. Reduced motion disables cursor lighting; touch input never enabl
 
 See [the UI verification notes](ui-redesign.md) and
 [agent implementation notes](agent-task-upgrade.md). Local CLI and native desktop
-retain their contextual verified-task workflows, which require Gemini for goal
+retain their contextual verified-task workflows, which require configured local or cloud AI for goal
 planning. Do not run independent ZENO processes against the same desktop at once.
 
 

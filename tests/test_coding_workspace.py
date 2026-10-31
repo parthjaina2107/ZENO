@@ -16,6 +16,21 @@ from executor import coding_workspace as cw
 from executor.file_ops import FileOps
 
 
+@pytest.fixture(autouse=True)
+def enable_mocked_coding_service(monkeypatch):
+    monkeypatch.setattr(cw.config, 'CODING_ALLOW_EXTERNAL', True)
+
+
+@pytest.mark.asyncio
+async def test_external_coding_disabled_before_accessing_workspace(monkeypatch):
+    monkeypatch.setattr(cw.config, 'CODING_ALLOW_EXTERNAL', False)
+    resolve = MagicMock(side_effect=AssertionError('Workspace must not be read'))
+    monkeypatch.setattr(cw, 'resolve_workspace', resolve)
+    reply = await cw.CodingRunner(MagicMock()).run(None, None, None, None)
+    assert 'disabled' in reply
+    resolve.assert_not_called()
+
+
 def plan(*files):
     return cw.CodingPlan(status='ready', summary='Completed tutorial', question='',
                          files=[cw.ProposedFile(path=p, content=c) for p, c in files], suggested_checks=[])

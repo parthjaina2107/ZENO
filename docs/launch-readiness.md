@@ -143,3 +143,20 @@ quality, multilingual safety, responses to minors, dependency/crisis behavior an
 qualified human review remain pending. The synthetic review cases in evals are
 not completed provider evaluations. Conversation cannot guarantee monitoring,
 treatment or emergency response. Existing commercial/security gates remain open.
+
+## Local / free-tier reasoning verification
+
+On 2026-11-01, Ollama 0.40.13 with Qwen3 4B passed the explicit synthetic
+text, structured conversation routing and validated battery-plan smoke check.
+No planned action was executed and no cloud request or microphone recording was
+made. The RTX 3050 4 GB laptop used mixed CPU/GPU inference with an 8K context;
+this demonstrates local inference, not broad task quality or launch readiness.
+The automated suite passed 291 tests. The manual gates below remain open.
+
+- [ ] Validate free-tier project billing status, access, quotas and fallback with
+  the owner's account before enabling cloud calls; a saved confirmation flag is
+  not provider billing verification. Cloud is disabled by default.
+- [ ] Complete real microphone, local speech and task-quality evaluation on the
+  supported hardware. Synthetic text/model tests do not complete this gate.
+- [ ] Review local model distribution terms and changing cloud free-tier terms
+  before distributing a product. Repository licensing remains undecided.

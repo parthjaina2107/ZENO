@@ -109,9 +109,16 @@ class Config:
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    # Cloud is opt-in: model availability alone does not prove a free account.
+    LLM_MODE: str = os.getenv("LLM_MODE", "local").strip().lower()
+    GEMINI_FREE_TIER_CONFIRMED: bool = os.getenv("GEMINI_FREE_TIER_CONFIRMED", "false").lower() == "true"
+    LOCAL_LLM_ENABLED: bool = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b").strip()
+    OLLAMA_TIMEOUT_SECONDS: int = max(5, min(180, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90"))))
     CODING_CODEX_PATH: str = os.getenv("CODING_CODEX_PATH", "").strip()
     CODING_VSCODE_PATH: str = os.getenv("CODING_VSCODE_PATH", "").strip()
     CODING_MODEL: str = os.getenv("CODING_MODEL", "").strip()
+    CODING_ALLOW_EXTERNAL: bool = os.getenv("CODING_ALLOW_EXTERNAL", "false").lower() == "true"
     CODING_TIMEOUT_SECONDS: int = max(30, min(3600, int(os.getenv("CODING_TIMEOUT_SECONDS", "900"))))
     GEMINI_FALLBACK_MODELS: list = [
         "gemini-3.6-flash",
@@ -128,7 +135,7 @@ class Config:
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base").strip()
     STT_BACKEND: str = os.getenv("STT_BACKEND", "faster-whisper").strip().lower()
     STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "").strip()  # Empty: detect English/Hindi/etc.
-    STT_ALLOW_ONLINE_FALLBACK: bool = os.getenv("STT_ALLOW_ONLINE_FALLBACK", "true").lower() == "true"
+    STT_ALLOW_ONLINE_FALLBACK: bool = os.getenv("STT_ALLOW_ONLINE_FALLBACK", "false").lower() == "true"
     WAKE_WORD_ENABLED: bool = os.getenv("WAKE_WORD_ENABLED", "false").lower() == "true"
     VOICE_FOLLOWUP_SECONDS: int = max(5, min(120, int(os.getenv("VOICE_FOLLOWUP_SECONDS", "30"))))
     VOICE_BARGE_IN: bool = os.getenv("VOICE_BARGE_IN", "false").lower() == "true"
@@ -136,7 +143,7 @@ class Config:
     PHRASE_TIMEOUT: int = int(os.getenv("PHRASE_TIMEOUT", "10"))
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
-    TTS_BACKEND: str = os.getenv("TTS_BACKEND", "edge").strip().lower()
+    TTS_BACKEND: str = os.getenv("TTS_BACKEND", "sapi").strip().lower()
     TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-NeerjaNeural").strip()
     TTS_RATE: str = os.getenv("TTS_RATE", "-12%").strip()
     TTS_VOLUME: str = os.getenv("TTS_VOLUME", "-15%").strip()
@@ -289,8 +296,8 @@ class Config:
 
         if not cls.GEMINI_API_KEY:
             msg = (
-                "⚠️ GEMINI_API_KEY is not set. Gemini NLU will fall back to local keyword parsing. "
-                "Get a free API key at: https://aistudio.google.com/"
+                "GEMINI_API_KEY is not set. Local AI uses Ollama; direct commands use the built-in parser. "
+                "Cloud AI is optional and requires a confirmed billing-disabled Free-tier project."
             )
             if require_gemini:
                 raise ValueError(msg)

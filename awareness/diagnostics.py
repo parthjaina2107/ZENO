@@ -6,6 +6,9 @@ from .accounts import token_path
 
 def setup_report():
     lines = ['ZENO setup check (no microphone recording or mailbox requests)']
+    from brain.api_utils import cloud_allowed
+    lines.append(f'Reasoning mode: {config.LLM_MODE}; cloud calls: {"enabled by free-tier confirmation" if cloud_allowed() else "disabled"}')
+    lines.append(f'Local AI: {config.OLLAMA_MODEL}; enabled={config.LOCAL_LLM_ENABLED}; Ollama/model availability not tested.')
     lines.append('Reasoning key: ' + ('configured; not validated' if config.GEMINI_API_KEY else 'missing; set GEMINI_API_KEY in .env'))
     lines.append(f'Voice: {config.TTS_VOICE} ({config.TTS_BACKEND}); online neural speech falls back to Windows voice.')
     lines.append(f'Speech recognition: {config.STT_BACKEND}; model {config.WHISPER_MODEL}')

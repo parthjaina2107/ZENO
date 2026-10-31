@@ -8,6 +8,16 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+
+@pytest.fixture(autouse=True)
+def isolate_reasoning_providers(monkeypatch):
+    """Tests opt into mocked providers, never the developer's running local LLM."""
+    from config import config
+    monkeypatch.setattr(config, 'LLM_MODE', 'free-cloud-local')
+    monkeypatch.setattr(config, 'GEMINI_FREE_TIER_CONFIRMED', True)
+    monkeypatch.setattr(config, 'LOCAL_LLM_ENABLED', False)
+    monkeypatch.setattr(config, 'GEMINI_API_KEY', '')
+
 # Gracefully provide mock fallbacks for headless CI environments
 for mod_name in ["pyaudio", "win32com", "win32com.client"]:
     if mod_name not in sys.modules:

@@ -2,6 +2,11 @@
 
 > **ZENO**: Run supported computer tasks by voice—locally using your microphone or remotely from your smartphone—with validated plans, action permissions, and progress reporting.
 
+Local AI is now the default: Ollama runs `qwen3:4b`, while cloud calls stay off
+until a billing-disabled Gemini Free-tier project is explicitly confirmed.
+See [local/free-cloud setup](docs/setup.md#3-configure-your-api-key-and-preferences).
+Existing saved cloud keys do not enable cloud calls by themselves.
+
 ## Agent task mode
 
 ZENO now includes a compact state-reactive orb, an island **Assistant / Just talk**
@@ -27,7 +32,7 @@ or in need of more information. Task outcomes appear in the conversation.
 
 - Explicit sequences work offline, including `open notepad then type "Hello ZENO"`.
   Quote literal text; the remainder after `type` is treated as dictation.
-- With `GEMINI_API_KEY`, describe a goal such as “Find the text files in Downloads,
+- With local AI or confirmed free-tier cloud AI, describe a goal such as “Find the text files in Downloads,
   read the relevant meeting note, and save a summary in Documents/summary.txt”.
   ZENO can search/read first, then plan the dependent write from the returned content.
 - In task mode, routine app/URL opening, searches, telemetry, volume and media keys
@@ -99,9 +104,9 @@ checkout, dependencies, API configuration, microphone setup, first use and updat
    - **Simultaneous Operation**: Local and remote control can run at the same time.
 
 3. **ZENO Cognitive Brain (Conversational AI + Memory + Multimodal Vision)**:
-   - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds using the configured Gemini model via the official `google-genai` SDK, with timeouts and model fallback.
+   - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds using local Ollama, or confirmed free-tier Gemini with a local fallback and bounded timeouts.
    - **👁️ Multimodal Screen Vision**: Ask *"Look at my screen, what's wrong?"* or *"Explain what is open on my screen"*.
-     > **Privacy Notice**: Screen vision captures a local display screenshot and transmits the image to Google's Gemini API for multimodal comprehension.
+     > **Privacy Notice**: When free-cloud mode is enabled, screen vision sends the requested screenshot to Gemini. Local text-only mode provides basic window telemetry instead.
    - **💾 Short-Term Context**: Multi-turn conversational memory allows follow-ups without repeating context.
    - **🗃️ Persistent Long-Term Memory**: Teach ZENO facts (*"Remember that my project path is C:\Projects"*), recall them (*"What is my project path?"*), or forget them (*"Forget my project path"*). Uses atomic file replacement to prevent data corruption.
    - **Offline Local Fallback**: Fast regex-based rule parser with word boundary tokenization ensures common system queries work offline without an API key and prevents misroutes (e.g. "open instagram" is never confused for RAM usage).
@@ -169,7 +174,7 @@ The task runner requests one validated action at a time from Gemini, uses result
 
 This first task engine supports existing app/file/diagnostic operations and verified typing into Notepad after opening it. Notepad typing requires `pywinauto` from `requirements-optional.txt`; it focuses the actual editor, appends text, and reads it back before reporting success. It preserves existing outputs, and reports unverified outcomes instead of trusting the model's claim of success. App launches are checked against running process names. Browser navigation and volume changes do not yet have independent outcome verification. General task-mode keyboard/mouse automation, browser page reading, and arbitrary project test runners remain future work. Use Ctrl+C to interrupt a local task; the phone STOP control cancels remote tasks. An OS operation already started may finish.
 
-Task mode requires Gemini. The default model is `gemini-3.8-flash`, with configurable `GEMINI_MODEL` in `.env`; select a model your account can access. The optional live check `.venv\Scripts\python.exe scripts\task_smoke.py` opens Notepad and creates a new scratch file.
+Task mode supports local Ollama or explicitly enabled free-tier Gemini. The cloud default is `gemini-3.8-flash`, with configurable `GEMINI_MODEL` in `.env`; select a model your account can access. The optional live check `.venv\Scripts\python.exe scripts\task_smoke.py` opens Notepad and creates a new scratch file.
 
 ### 1. Requirements & Prerequisites
 - Windows 10/11
@@ -263,7 +268,7 @@ verification details and diagnostic errors remain in the console and task report
 Questions about battery, time and other observations still get an informative answer.
 Screen questions are interpreted rather than transcribed unless you ask for a readout.
 
-With a working Gemini connection, requests beyond simple literal commands are interpreted
+With a working local or enabled cloud model, requests beyond simple literal commands are interpreted
 using recent conversation and actual execution outcomes. You do not need to say `task:`.
 For example, say "Write a short poem about rain in Notepad". Missing details can trigger
 a clarification question; answer it naturally. "Why does my laptop restart?" is a question,

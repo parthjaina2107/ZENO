@@ -8,7 +8,7 @@ import time
 import re
 
 from config import config
-from .api_utils import call_gemini_with_fallback
+from .api_utils import reasoning_available, call_gemini_with_fallback
 from .nlu import SYSTEM_PROMPT
 from .planner import describe_action
 
@@ -164,8 +164,8 @@ class TaskRunner:
             from .nlu import NLUEngine
             initial_decision = NLUEngine(api_key="")._local_fallback_understand("open " + initial_open.group(1).strip())
         try:
-            if not self.brain.client:
-                raise RuntimeError("Task mode requires a configured Gemini API key.")
+            if not reasoning_available(self.brain.client):
+                raise RuntimeError("Task mode requires local AI or a confirmed free-tier cloud connection.")
             for _ in range(self.max_steps):
                 checkpoint()
                 if initial_decision is not None:

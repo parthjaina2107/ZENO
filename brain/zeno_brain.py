@@ -18,7 +18,7 @@ from .nlu import NLUEngine
 from .planner import ActionPlanner, PlannedAction
 from .memory import ZenoMemory
 from .vision import ScreenVision
-from .api_utils import call_gemini_with_fallback, last_api_failure, reasoning_failure_message
+from .api_utils import cloud_allowed, reasoning_available, call_gemini_with_fallback, last_api_failure, reasoning_failure_message
 from .agent import GoalPlanner
 from .interaction import is_direct_command, route_request
 
@@ -49,10 +49,11 @@ class ZenoBrain:
 
     def _init_chat_client(self):
         """Initialize Google GenAI client for conversational chat & reasoning."""
-        if self.api_key:
+        if self.api_key and cloud_allowed():
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.api_key)
+                self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,
+                                           http_options={'base_url': 'https://generativelanguage.googleapis.com'})
                 logger.info(f"{self.assistant_name} Conversational Chat client initialized.")
             except Exception as e:
                 logger.warning(f"Could not initialize GenAI chat client: {e}")
@@ -69,7 +70,7 @@ class ZenoBrain:
         """Tool-free companion generation with bounded provider calls."""
         from .companion import context, instructions, offline_reply
         self.conversation_unavailable = False
-        if self.client:
+        if reasoning_available(self.client):
             try:
                 response = await call_gemini_with_fallback(
                     client=self.client,
@@ -127,7 +128,7 @@ class ZenoBrain:
             return BrainResponse(kind='chat', message=(
                 'We can talk, explore ideas, or work through a problem. I can also run supported '
                 'computer tasks, such as opening apps, checking system status and working with permitted files. '
-                'The native desktop has a coding-workspace mode when Codex is installed and signed in. '
+                'The native desktop has a coding-workspace mode when its external Codex service is enabled, installed and signed in. '
                 'Choose Just talk for conversation only, or ask for an Agent task. Sensitive steps need your approval.'))
         if chat_text is None and social_opening(clean_text):
             chat_text = clean_text
@@ -206,7 +207,7 @@ class ZenoBrain:
         # ----------------------------------------------------------------------
         # 4. OS Automation Action intent
         # ----------------------------------------------------------------------
-        if self.client and (self.awaiting_clarification or not is_direct_command(clean_text)):
+        if reasoning_available(self.client) and (self.awaiting_clarification or not is_direct_command(clean_text)):
             try:
                 decision = await route_request(self, clean_text)
                 self.memory.add_turn("user", clean_text)
@@ -221,7 +222,7 @@ class ZenoBrain:
                                      data={"service_error": last_api_failure() or "invalid_response"})
 
         # Offline mode must not mistake a question containing 'restart' for a power command.
-        if not self.client and not is_direct_command(clean_text):
+        if not reasoning_available(self.client) and not is_direct_command(clean_text):
             from .companion import offline_reply
             reply = offline_reply(clean_text)
             self.memory.add_turn("user", clean_text)

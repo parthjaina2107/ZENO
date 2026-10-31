@@ -94,3 +94,11 @@ If planning fails, check `codex login status`, account usage, connectivity and t
 run event log. Upgrade an outdated CLI through its supported install method.
 Real provider calls, Windows sandbox behavior, realistic tutorial correctness and
 VS Code GUI interaction remain manual checks. Tests use fake providers/temp files.
+
+## External-service opt-in
+
+External coding execution defaults to disabled. `CODING_ALLOW_EXTERNAL=true` in
+`.env` is required in addition to the existing Codex setup and per-request approval.
+This service has separate account/billing terms; it is not included in ZENO's
+free-tier Gemini/local model routing. Leave it false for a local-only setup.
+Restart ZENO after changing it.

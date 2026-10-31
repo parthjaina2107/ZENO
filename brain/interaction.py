@@ -2,7 +2,7 @@
 import json
 import re
 
-from .api_utils import call_gemini_with_fallback
+from .api_utils import reasoning_available, call_gemini_with_fallback
 
 
 def is_direct_command(text):
@@ -111,7 +111,7 @@ async def outcome_reply(brain, request, records, status=None, detail=''):
     # Spend a model call only when there is something meaningful to interpret.
     observations = {'file_read', 'file_search', 'run_command', 'ui_inspect', 'list_apps'}
     interpret = status in {'failed', 'blocked', 'incomplete'} or failed or any(r['action'] in observations for r in records)
-    if brain.client and interpret and status != 'cancelled':
+    if reasoning_available(brain.client) and interpret and status != 'cancelled':
         try:
             response = await call_gemini_with_fallback(
                 brain.client,

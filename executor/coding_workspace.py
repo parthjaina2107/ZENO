@@ -377,6 +377,8 @@ class CodingRunner:
         self.needs_clarification = False
 
     async def run(self, request, approve, emit, control):
+        if not config.CODING_ALLOW_EXTERNAL:
+            return 'The external coding service is disabled. It has separate account and billing terms; local AI chat remains available.'
         root = resolve_workspace(request.workspace, self.file_ops)
         coding_executable()  # Fail before requesting permission if setup is missing.
         action = PlannedAction('coding_request', {'workspace': str(root), 'goal': request.goal},

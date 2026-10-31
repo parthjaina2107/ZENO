@@ -11,13 +11,14 @@ configuration before using private content.
 | --- | --- |
 | Desktop recording | Opens only after activation; PCM audio is held for transcription, and recording closes before reasoning/execution/speech |
 | Local faster-whisper | Processes audio on the computer using a cached model; setup downloads model files |
-| Google recognition fallback | Enabled in the example; captured audio can go to Google's online recognizer. Set `STT_ALLOW_ONLINE_FALLBACK=false` to disable fallback |
-| Gemini reasoning | Sends relevant requests, recent context, saved facts and selected tool observations to the configured Google service |
-| Screen interpretation | Captures a screenshot and sends it to Gemini when a screen question uses that feature |
+| Google recognition fallback | Disabled by default; if enabled, captured audio can go to Google's online recognizer. Set `STT_ALLOW_ONLINE_FALLBACK=false` to disable fallback |
+| Local Ollama reasoning | Sends relevant requests/context to the loopback server on this PC; model setup downloads weights, inference does not require cloud |
+| Gemini reasoning | Disabled by default; confirmed free-cloud mode sends relevant requests, recent context, saved facts and selected tool observations to Google; free-tier terms may permit product improvement use |
+| Screen interpretation | Sends requested screenshots to Gemini only in enabled free-cloud mode; local text mode cannot interpret images |
 | Edge neural speech | Sends the text to speak to Microsoft's online speech service via edge-tts; `TTS_BACKEND=sapi` selects installed local speech |
 | Gmail/Outlook | After sign-in, queries sender/subject/time metadata. The Gmail scope is broader than the fields currently fetched |
 | Windows notifications | Collects the notification text Windows exposes; this can include private previews |
-| AI update summaries | Explicit summary requests can send up to ten collected titles/previews to Gemini; routine polling does not call the LLM |
+| AI update summaries | Explicit summary requests send up to ten collected titles/previews to local Ollama or, when enabled, Gemini; routine polling does not call the LLM |
 | Spoken update details | A readout can send private previews to online TTS when enabled |
 | Remote browser/tunnel | Commands, results and approvals pass between the browser and running server; a configured ngrok tunnel adds an external service |
 
@@ -33,6 +34,7 @@ make Gemini, connected-mail or explicitly enabled remote features offline.
 
 | Default location | Contents / lifecycle |
 | --- | --- |
+| `%USERPROFILE%\.ollama\models` | Local reasoning model weights; remove through Ollama when no longer needed |
 | Project `.env` | API configuration and remote secrets; retained until you change/remove it |
 | `%LOCALAPPDATA%\ZENO\.env` if present | Older saved configuration fallback; not automatically removed by uninstalling a checkout |
 | `%LOCALAPPDATA%\ZENO\desktop.json` | Shortcut, input-device index and spoken-reply preference |
@@ -85,7 +87,7 @@ See [coding workspaces](coding-workspace.md) before approving sensitive source.
 
 ## Companion conversations
 
-Just talk uses the configured Gemini service with recent in-process context and
+Just talk uses local Ollama or explicitly enabled free-tier Gemini with recent in-process context and
 explicitly saved facts. ZENO adds no training-data capture or fine-tuning pipeline;
 provider policies still govern provider-side handling. Recent context is bounded
 to 12 entries. Explicit conversation-style preferences persist in the existing

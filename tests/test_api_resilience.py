@@ -9,11 +9,11 @@ from config import config
 
 @pytest.mark.asyncio
 async def test_provider_failure_is_specific_and_transport_retries_are_bounded(monkeypatch):
-    monkeypatch.setattr(config, 'GEMINI_FALLBACK_MODELS', ['fallback'])
+    monkeypatch.setattr(config, 'GEMINI_FALLBACK_MODELS', ['gemini-3.1-flash-lite'])
     client = MagicMock()
     client.models.generate_content.side_effect = Exception('503 UNAVAILABLE provider overloaded')
     original = {'response_mime_type': 'application/json'}
-    assert await call_gemini_with_fallback(client, 'prompt', primary_model='primary',
+    assert await call_gemini_with_fallback(client, 'prompt', primary_model='gemini-3.8-flash',
                                           max_retries=1, generation_config=original) is None
     assert last_api_failure() == 'unavailable'
     assert 'Google Gemini' in reasoning_failure_message()

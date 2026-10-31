@@ -1,4 +1,4 @@
-"""Bounded Gemini calls with explicit transport limits and safe diagnostics."""
+"""Free-tier cloud routing with a bounded, local-only Ollama fallback."""
 import asyncio
 import logging
 import re
@@ -8,6 +8,17 @@ from config import config
 
 logger = logging.getLogger('VoiceAgent.API')
 _last_failure = ContextVar('gemini_failure', default=None)
+# Reviewed against Google's standard inference pricing on 2026-10-31.
+# Account billing must ALSO be disabled; an API key cannot establish that.
+FREE_TIER_MODELS = frozenset({'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'})
+
+
+def cloud_allowed():
+    return config.LLM_MODE == 'free-cloud-local' and config.GEMINI_FREE_TIER_CONFIRMED
+
+
+def reasoning_available(client):
+    return config.LOCAL_LLM_ENABLED or (cloud_allowed() and client is not None)
 
 
 def last_api_failure():
@@ -34,6 +45,12 @@ def classify_failure(exc):
 
 def reasoning_failure_message():
     kind = last_api_failure()
+    if kind == 'local':
+        return 'Local AI is unavailable or could not finish. Start Ollama and check the downloaded model. Direct commands such as check battery still work. No actions were run.'
+    if kind == 'local_vision':
+        return 'The local text model cannot inspect images. Cloud vision is disabled or unavailable. No actions were run.'
+    if kind == 'cloud_disabled':
+        return 'Cloud AI is disabled until a billing-disabled Free-tier project is confirmed. Enable the local model to continue. No actions were run.'
     if kind == 'authentication':
         return 'Google rejected the Gemini credentials. Check your API key and project access. No actions were run.'
     if kind == 'quota':
@@ -48,6 +65,35 @@ def reasoning_failure_message():
 async def call_gemini_with_fallback(client, contents, primary_model=None, max_retries=2,
                                     initial_backoff=1.0, generation_config=None,
                                     timeout=12.0, total_timeout=36.0):
+    """Compatibility entry point for every reasoning path; never executes tools."""
+    _last_failure.set(None)
+    if cloud_allowed() and client is not None:
+        response = await _call_cloud(client, contents, primary_model, max_retries,
+                                     initial_backoff, generation_config, timeout, total_timeout)
+        if response is not None:
+            return response
+    else:
+        _last_failure.set('cloud_disabled')
+    if config.LOCAL_LLM_ENABLED:
+        if not isinstance(contents, str):
+            _last_failure.set('local_vision')
+            return None
+        from .local_llm import generate_local
+        try:
+            response = await generate_local(contents, generation_config)
+            _last_failure.set(None)
+            return response
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning('Local reasoning unavailable; check Ollama and the installed model')
+            _last_failure.set('local')
+    return None
+
+
+async def _call_cloud(client, contents, primary_model=None, max_retries=2,
+                      initial_backoff=1.0, generation_config=None,
+                      timeout=12.0, total_timeout=36.0):
     """Bound the fallback chain and SDK retries; return None with a per-call diagnosis.
 
     A transport timeout also bounds the synchronous worker after asyncio times out.
@@ -57,7 +103,11 @@ async def call_gemini_with_fallback(client, contents, primary_model=None, max_re
     if client is None:
         return None
     primary = primary_model or config.GEMINI_MODEL
-    models = list(dict.fromkeys([primary, *config.GEMINI_FALLBACK_MODELS]))
+    models = [model for model in dict.fromkeys([primary, *config.GEMINI_FALLBACK_MODELS])
+              if model in FREE_TIER_MODELS]
+    if not models:
+        _last_failure.set('model')
+        return None
     deadline = time.monotonic() + total_timeout
     failures = []
     for model in models:
@@ -73,6 +123,11 @@ async def call_gemini_with_fallback(client, contents, primary_model=None, max_re
                 request_config = dict(generation_config)
             else:
                 request_config = generation_config.model_dump(exclude_none=True)
+            # Only plain generation/JSON inference is permitted. No paid hosted
+            # tools, caching, service tiers or automatic SDK tool execution.
+            request_config = {key: value for key, value in request_config.items()
+                              if key in {'system_instruction', 'response_mime_type',
+                                         'response_schema', 'temperature', 'max_output_tokens'}}
             request_config['http_options'] = {
                 # Gemini rejects transport deadlines below ten seconds.
                 'timeout': max(10000, int(limit * 1000)),
@@ -83,7 +138,7 @@ async def call_gemini_with_fallback(client, contents, primary_model=None, max_re
                 response = await asyncio.wait_for(asyncio.to_thread(
                     client.models.generate_content, model=model, contents=contents,
                     config=request_config), timeout=limit)
-                if response:
+                if response and isinstance(getattr(response, 'text', None), str) and response.text.strip():
                     _last_failure.set(None)
                     return response
                 failure = 'request'
@@ -96,8 +151,8 @@ async def call_gemini_with_fallback(client, contents, primary_model=None, max_re
                                model, failure, attempt + 1, max_retries)
             failures.append(failure)
             _last_failure.set(failure)
-            if failure == 'authentication':
-                return None  # Another model cannot repair credentials.
+            if failure in {'authentication', 'quota'}:
+                return None  # Fall back locally instead of retrying quotas/keys.
             if failure not in {'timeout', 'unavailable', 'quota'} or attempt + 1 == max_retries:
                 break
             wait = min(initial_backoff * 2 ** attempt, max(0, deadline - time.monotonic()))

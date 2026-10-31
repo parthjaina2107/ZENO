@@ -131,8 +131,9 @@ no fixed cloud response time is guaranteed. Cancellation still drains workers.
   reselecting after restarting ZENO. Use typed requests as a fallback.
 - **Recognition slow or unavailable:** run `python main.py --doctor`; install
   `requirements-speech.txt` and run `python main.py --setup-speech` if needed.
-- **Reasoning unavailable:** the desktop uses the same configured Gemini key
-  and models as CLI. This feature does not switch providers or remove API limits.
+- **Reasoning unavailable:** the desktop uses the same local/free-cloud routing
+  as CLI. Start Ollama and ensure its model is downloaded. Cloud calls require
+  explicit free-tier confirmation; provider quotas still apply.
   `AI unavailable` means the reasoning request failed even if the dashboard is
   connected to the local controller. On an outage, the island offers **Retry**
   for the same request after it becomes idle. The failed request does not execute
