@@ -542,7 +542,7 @@ async def test_provider_outage_finishes_without_speaking_or_running_actions():
     engine.brain.planner.execute_action.assert_not_called()
 
 
-def test_mic_lights_are_input_transparent_and_stop_on_ready():
+def test_mic_island_stays_compact_and_stops_on_ready():
     pytest.importorskip('PySide6')
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
@@ -555,7 +555,21 @@ def test_mic_lights_are_input_transparent_and_stop_on_ready():
         assert not island.microphone_active and not island.lights.isVisible()
         island.handle_event('microphone', 'on')
         island.handle_event('state', 'Listening')
-        assert island.lights.isVisible() and island.lights.timer.isActive()
+        island.motion.setCurrentTime(island.motion.duration())
+        assert not island.expanded and island.header.isHidden()
+        assert island.width() == island._compact_width()
+        assert not island.lights.isVisible() and not island.lights.timer.isActive()
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QEnterEvent
+        island.enterEvent(QEnterEvent(QPointF(40, 30), QPointF(40, 30), QPointF(40, 30)))
+        assert not island.expanded
+        island.expand()
+        island.motion.setCurrentTime(island.motion.duration())
+        assert island.start.isVisible()
+        island.set_approval('pending', 'Review action')
+        island.collapse()
+        assert island.expanded
+        island.set_approval('', '')
         assert island.lights.windowFlags() & Qt.WindowType.WindowTransparentForInput
         assert island.lights.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
         island.handle_event('level', '.8')
@@ -564,7 +578,7 @@ def test_mic_lights_are_input_transparent_and_stop_on_ready():
         assert not island.lights.timer.isActive() and not island.lights.isVisible()
         island.reduced_motion = True
         island.handle_event('microphone', 'on')
-        assert island.lights.isVisible() and not island.lights.timer.isActive()
+        assert not island.expanded and not island.lights.isVisible()
         island.handle_event('state', 'Stopping')
         assert not island.microphone_active and not island.lights.isVisible()
         island.handle_event('state', 'Ready')
