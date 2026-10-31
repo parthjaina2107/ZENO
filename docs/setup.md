@@ -306,11 +306,12 @@ See [desktop controls](desktop.md).
 
 Restart desktop mode and refresh the browser to load the matte-black workspace
 and compact voice panel. No new dependencies or configuration migration are
-required. A screen-edge light and island rim appear only while the native audio
-stream is open, after activation. They do not grant microphone access or replace
-Windows permission indicators. An unavailable microphone never shows the active
-light. Stop/stream closure clears it. Reduce motion in Preferences retains a
-static microphone indicator while disabling pulses and sweeps. See the
+required. During actual capture, a wide, slim dark island shows **Listening** on
+its left and animated cyan bars on its right. Screen-edge lighting is removed.
+Click the listening island to reveal **Stop** and other controls; hovering does
+not expand it during capture. Approvals still open automatically. Stop/stream
+closure clears the listening view. Reduce motion keeps the indicator static.
+The island does not grant microphone access or replace Windows indicators. See the
 [interface and microphone lifecycle](desktop.md#reactive-notch-interface).
 
 ## OriginKit-inspired island update

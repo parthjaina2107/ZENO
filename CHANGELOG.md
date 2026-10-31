@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Replaced the microphone-active overlay with a reference-inspired slim black
+  listening island, left-aligned label, cyan glow and level-reactive bars.
+  Removed screen-edge lighting; click the listening island for controls, while
+  approvals remain automatic. Reduced motion keeps capture feedback static.
+  Setup and desktop guides updated: restart desktop mode; no new dependencies,
+  settings, accounts or migration. Live microphone/provider checks remain manual.
+
+
 - Added original JARVIS/Siri-inspired interaction refinements: Focused/Warm/Balanced
   assistant profiles, an island conversation-only toggle, focused Escape handling,
   a grounded capability guide, a state-reactive native orb and phase-specific copy.

@@ -209,7 +209,7 @@ class ActivityOverlay(QWidget):
     def _animate_reveal(self, value):
         start_width, start_height, start_reveal = self._animation_start
         self._reveal = start_reveal + (self._animation_target - start_reveal) * float(value)
-        end_width = self._expanded_width if self._animation_target else 300
+        end_width = self._expanded_width if self._animation_target else self._compact_width()
         end_height = self._expanded_height if self._animation_target else 68
         width = round(start_width + (end_width - start_width) * float(value))
         height = round(start_height + (end_height - start_height) * float(value))
@@ -220,9 +220,14 @@ class ActivityOverlay(QWidget):
         self.update()
 
     def _layout_contents(self):
+        self.header.setVisible(not self.microphone_active or self.expanded)
         self.header.setGeometry(24, 16, self.width() - 48, 36)
         # Fixed-height content is clipped by the growing window, never squashed.
         self.body.setGeometry(24, 72, self.width() - 48, getattr(self, '_expanded_height', 400) - 94)
+
+    def _compact_width(self):
+        screen = self.screen() or QApplication.primaryScreen()
+        return min(600, screen.availableGeometry().width() - 24) if self.microphone_active else 300
 
     def _finish_reveal(self):
         if not self.expanded:
@@ -235,7 +240,7 @@ class ActivityOverlay(QWidget):
         # Use the actual pointer position for hover state across the whole island.
         if inside != self._pointer_inside:
             self._pointer_inside = inside
-            if inside:
+            if inside and not self.microphone_active:
                 self.expand()
             else:
                 self._schedule_collapse()
@@ -244,9 +249,6 @@ class ActivityOverlay(QWidget):
         self._glow += ((1.0 if inside and not self.reduced_motion else 0.0) - self._glow) * 0.16
         if inside:
             self._pointer += (QPointF(local) - self._pointer) * 0.18
-        if self.microphone_active and self.lights.reduced_motion != self.reduced_motion:
-            self.lights.set_active(False)
-            self.lights.set_active(True, self.screen(), self.reduced_motion)
         if not self.reduced_motion:
             self._phase += 0.018
         self.bars.pointer = self.bars.mapFrom(self, self._pointer.toPoint())
@@ -258,7 +260,7 @@ class ActivityOverlay(QWidget):
             button.reduced_motion = self.reduced_motion
         if self.expanded:
             self.bars.update()
-        if self.expanded or self._glow > 0.01:
+        if self.expanded or self.microphone_active or self._glow > 0.01:
             self.update()
 
     def _schedule_collapse(self):
@@ -341,6 +343,9 @@ class ActivityOverlay(QWidget):
             self.approval_decided.emit(self.request_id, approved)
 
     def paintEvent(self, event):
+        if self.microphone_active and not self.expanded:
+            self._paint_listening_island()
+            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
@@ -387,6 +392,35 @@ class ActivityOverlay(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(surface, 30, 30)
 
+    def _paint_listening_island(self):
+        """Contained cyan activity, with actual capture levels driving the bars."""
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
+        shape = QPainterPath()
+        shape.addRoundedRect(surface, 22, 22)
+        p.setClipPath(shape)
+        p.fillPath(shape, QColor('#080e12'))
+        phase = 0 if self.reduced_motion else self._phase
+        glow = QRadialGradient(QPointF(self.width() - 18, 38), 108)
+        glow.setColorAt(0, QColor(24, 216, 223, round(125 + 25 * math.sin(phase * 2))))
+        glow.setColorAt(.45, QColor(15, 171, 185, 65))
+        glow.setColorAt(1, QColor(8, 14, 18, 0))
+        p.fillPath(shape, glow)
+        font = p.font()
+        font.setFamily('Segoe UI')
+        font.setPixelSize(16)
+        font.setBold(True)
+        p.setFont(font)
+        p.setPen(QColor('#f1f6f7'))
+        p.drawText(QRectF(30, 4, self.width() - 130, 59), Qt.AlignmentFlag.AlignVCenter, 'Listening')
+        p.setPen(Qt.PenStyle.NoPen)
+        for index in range(5):
+            motion = .5 + .5 * math.sin(phase * 8 + index * 1.15)
+            height = 5 if self.reduced_motion else 5 + 5 * motion + self.bars.level * (8 + 13 * motion)
+            p.setBrush(QColor('#9af5f1'))
+            p.drawRoundedRect(QRectF(self.width() - 88 + index * 8, 34 - height / 2, 4, height), 2, 2)
+
     def handle_event(self, kind, value):
         if kind == "state":
             if value in {'Ready', 'Stopping'}:
@@ -425,10 +459,14 @@ class ActivityOverlay(QWidget):
             self.bars.update()
             self.eyebrow.setText('LIVE CAPTURE' if self.microphone_active else 'JUST TALK' if self.chat_only else 'YOUR NEXT MOVE')
             self.privacy.setText('Mic on' if self.microphone_active else 'Mic off')
-            self.lights.set_active(self.microphone_active, self.screen(), self.reduced_motion)
+            self.lights.set_active(False)
             if self.microphone_active:
-                self.expand()
+                self.position_at_top()
+                self.collapse()
                 self.raise_()
+            elif not self.expanded:
+                self._transition(0.0)
+            self._layout_contents()
             self.update()
         elif kind == 'service_error':
             self.service_error = True
@@ -448,7 +486,8 @@ class ActivityOverlay(QWidget):
             self.caption.setText("Recognition was uncertain. Choose Type a request to review and send this draft.")
 
     def enterEvent(self, event):
-        self.expand()
+        if not self.microphone_active:
+            self.expand()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -456,6 +495,9 @@ class ActivityOverlay(QWidget):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
+        if self.microphone_active and not self.expanded and event.button() == Qt.MouseButton.LeftButton:
+            self.expand()
+            return
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 54:
             self.motion.stop()
             self._drag_offset = event.globalPosition().toPoint() - self.pos()

@@ -155,24 +155,19 @@ and room; test a harmless command such as “what time is it” after setup.
 
 ## Reactive notch interface
 
-The island uses matte-black surfaces, a soft cursor spotlight and a colored
-listening rim inspired by the Glance reference. The dashboard keeps its own
-window and uses the same dark utility panels, compact voice card and muted
-controls. Color is concentrated in active microphone feedback.
+During actual microphone capture, the native island becomes a slim, top-centered
+black bar with **Listening** on the left, five cyan activity bars and a contained
+cyan glow on the right. It animates smoothly from the existing pill; measured
+microphone levels drive the bar heights. The previous full-screen edge lighting
+is removed. Hover does not open the listening bar; click it to reveal **Stop**
+and the other controls. Pending approvals always remain expanded.
 
-Voice activation first shows **Opening microphone**. The colored rim, microphone
-label, level meter and screen-edge light start only after the audio stream opens.
-The entrance bloom settles into a gentle pulse that responds to the measured
-microphone level. The edge light is transparent to mouse input and does not take
-keyboard focus. It follows the screen containing the island. Closing capture,
-Stop, cancellation and errors clear the light; speaking a reply does not turn it
-on. This is capture feedback, not an OS permission dialog or permission grant.
-
-Reduced motion removes the entrance pulse, moving rim and changing edge-light
-animation while retaining a static active indicator. No extra packages, automatic
-startup or continuous microphone listener are added. Restart desktop mode and
-refresh the web dashboard to load the design. Native microphone permissions and
-recognition accuracy remain manual checks; UI previews use simulated levels.
+Opening microphone does not claim live capture. Stream closure, Stop and Ready
+clear the listening view. Reduced motion keeps the glow and bars static. The
+window does not take keyboard focus. This is capture feedback, not an OS
+permission grant. Restart desktop mode to load the change; no new dependencies
+or configuration migration are needed. Hardware/provider checks remain manual;
+UI verification uses simulated capture events and levels.
 
 ## OriginKit-inspired island
 
