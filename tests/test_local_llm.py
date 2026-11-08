@@ -203,3 +203,32 @@ async def test_update_summary_uses_local_without_cloud_client(monkeypatch):
     service._remember_briefing = MagicMock()
     assert await service.summarize(None) == 'Synthetic reminder summary.'
     local.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_screen_query_sends_pixels_only_to_local_vision(monkeypatch, tmp_path):
+    from PIL import Image
+    from brain.zeno_brain import ZenoBrain
+    import base64
+    import json
+    import io
+    calls = []
+    def handle(request):
+        calls.append(request.url.path)
+        data = json.loads(request.content)
+        assert data['model'] == config.OLLAMA_VISION_MODEL
+        if request.url.path == '/api/show':
+            return httpx.Response(200, json={'capabilities': ['vision']})
+        assert Image.open(io.BytesIO(base64.b64decode(data['images'][0]))).size == (100, 80)
+        return httpx.Response(200, json={'done': True, 'response': 'A test dialog.'})
+    mock_transport(monkeypatch, handle)
+    monkeypatch.setattr(config, 'LLM_MODE', 'local')
+    monkeypatch.setattr(config, 'LOCAL_LLM_ENABLED', True)
+    monkeypatch.setattr(config, 'MEMORY_FILE', str(tmp_path / 'memory.json'))
+    brain = ZenoBrain(api_key='')
+    monkeypatch.setattr(brain.vision, 'capture_screen', lambda: Image.new('RGB', (100, 80)))
+    assert not brain.vision.is_vision_query('do not read my screen')
+    assert not brain.vision.is_vision_query('type read my screen')
+    result = await brain.think('explain the error on my screen', agent_mode=True)
+    assert result.kind == 'vision' and result.message == 'A test dialog.'
+    assert calls == ['/api/show', '/api/generate']
+    assert not brain.memory.short_term_history

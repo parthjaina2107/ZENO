@@ -14,9 +14,9 @@ configuration before using private content.
 | Google recognition fallback | Disabled by default; if enabled, captured audio can go to Google's online recognizer. Set `STT_ALLOW_ONLINE_FALLBACK=false` to disable fallback |
 | Local Ollama reasoning | Sends relevant requests/context to the loopback server on this PC; model setup downloads weights, inference does not require cloud |
 | Gemini reasoning | Disabled by default; confirmed free-cloud mode sends relevant requests, recent context, saved facts and selected tool observations to Google; free-tier terms may permit product improvement use |
-| Screen interpretation | Sends requested screenshots to Gemini only in enabled free-cloud mode; local text mode cannot interpret images |
+| Screen interpretation | Interprets requested screenshots using a local Ollama vision model or Gemini in enabled free-cloud mode |
 | Edge neural speech | Sends the text to speak to Microsoft's online speech service via edge-tts; `TTS_BACKEND=sapi` selects installed local speech |
-| Gmail/Outlook | After sign-in, queries sender/subject/time metadata. The Gmail scope is broader than the fields currently fetched |
+| Gmail/Outlook | Polls inbox metadata. Explicit Gmail commands can read message text and, with compose permission, save drafts and send reviewed messages |
 | Windows notifications | Collects the notification text Windows exposes; this can include private previews |
 | AI update summaries | Explicit summary requests send up to ten collected titles/previews to local Ollama or, when enabled, Gemini; routine polling does not call the LLM |
 | Spoken update details | A readout can send private previews to online TTS when enabled |
@@ -101,3 +101,20 @@ Assistant profile choices are explicit preferences stored in the same memory fil
 as conversation style. They affect model instructions, not voice recordings or
 model weights. The island mode is session-only. No new training capture, analytics
 or data destination is added by the orb/profile controls.
+
+
+Explicit Gmail searches fetch up to five sender/subject/date results from Gmail.
+Reading a numbered result fetches up to 6,000 characters of mail text. The mailbox
+handler keeps numbered search results in session memory and returns replies to the
+interface and configured speaker. These results bypass action planning and saved
+conversation memory. Background Gmail polling continues to collect metadata only.
+
+On-demand screen reading captures one primary-monitor screenshot. Local vision
+sends it to Ollama on loopback. Opt-in cloud vision can send it to Gemini.
+Screen replies are displayed or spoken and bypass saved assistant memory.
+
+With optional Gmail compose permission, ZENO saves the reviewed message in
+your Google account and sends it when you provide the draft's confirmation code.
+AI-assisted writing sends the topic you supply to the configured reasoning model.
+The draft preview is visible to the requesting interface and may be spoken aloud.
+Paired remote controllers can use these mailbox features on the host account.

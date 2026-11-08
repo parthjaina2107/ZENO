@@ -1,5 +1,6 @@
 """Local-only Ollama transport; no downloads, cloud models or tool execution."""
 import asyncio
+import base64
 from types import SimpleNamespace
 
 import httpx
@@ -19,11 +20,11 @@ def _schema(value):
     return value
 
 
-async def generate_local(contents, generation_config=None):
+async def generate_local(contents, generation_config=None, *, image_bytes=None):
     # A text-only model must never pretend to have inspected an image.
     if not isinstance(contents, str):
         raise ValueError('Local text model does not support image inputs')
-    model = config.OLLAMA_MODEL
+    model = config.OLLAMA_VISION_MODEL if image_bytes is not None else config.OLLAMA_MODEL
     if not model or 'cloud' in model.lower() or '/' in model or '\\' in model:
         raise ValueError('Select a downloaded local Ollama model')
     options = generation_config or {}
@@ -50,6 +51,10 @@ async def generate_local(contents, generation_config=None):
             metadata = info.json()
             if metadata.get('remote_host') or metadata.get('remote_model'):
                 raise ValueError('Cloud-backed Ollama models are disabled')
+            if image_bytes is not None:
+                if 'vision' not in metadata.get('capabilities', []):
+                    raise ValueError('The selected model cannot interpret images')
+                payload['images'] = [base64.b64encode(image_bytes).decode('ascii')]
             response = await client.post('/api/generate', json=payload)
             response.raise_for_status()
             result = response.json()

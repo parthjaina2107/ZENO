@@ -276,6 +276,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
     brain = copy.copy(brain)
+    brain.gmail_mailbox = None
     brain.pending_folder_location = None
     brain.awaiting_clarification = False
     brain.memory = copy.copy(brain.memory)

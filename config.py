@@ -115,6 +115,7 @@ class Config:
     GEMINI_FREE_TIER_CONFIRMED: bool = os.getenv("GEMINI_FREE_TIER_CONFIRMED", "false").lower() == "true"
     LOCAL_LLM_ENABLED: bool = os.getenv("LOCAL_LLM_ENABLED", "true").lower() == "true"
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b").strip()
+    OLLAMA_VISION_MODEL: str = os.getenv("OLLAMA_VISION_MODEL", "qwen3-vl:2b").strip()
     OLLAMA_TIMEOUT_SECONDS: int = max(5, min(180, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "90"))))
     CODING_CODEX_PATH: str = os.getenv("CODING_CODEX_PATH", "").strip()
     CODING_VSCODE_PATH: str = os.getenv("CODING_VSCODE_PATH", "").strip()

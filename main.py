@@ -450,7 +450,8 @@ def main():
     )
     parser.add_argument("--text", action="store_true", help="Use console text input instead of the microphone")
     parser.add_argument('--briefing', action='store_true', help='Check sources and print a briefing without starting the microphone')
-    parser.add_argument('--connect', choices=['gmail', 'outlook'], help='Connect a read-only inbox account')
+    parser.add_argument('--connect', choices=['gmail', 'outlook'], help='Connect an inbox account (read-only by default)')
+    parser.add_argument('--gmail-compose', action='store_true', help='Request permission to draft and send with --connect gmail')
     parser.add_argument('--credentials', help='Google Desktop OAuth client JSON file for --connect gmail')
     parser.add_argument('--voice-preview', action='store_true', help='Play the configured voice without starting the assistant')
     parser.add_argument('--voice', help='Neural voice name, for example en-IN-NeerjaNeural')
@@ -461,6 +462,9 @@ def main():
     # start_zeno.bat handles window visibility and forwards the original argv.
     parser.add_argument("--background", "-b", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+
+    if args.gmail_compose and args.connect != 'gmail':
+        parser.error('--gmail-compose requires --connect gmail')
 
     if args.voice:
         config.TTS_VOICE = args.voice
@@ -490,7 +494,7 @@ def main():
     if args.connect:
         from awareness.accounts import connect_account
         try:
-            connect_account(args.connect, args.credentials)
+            connect_account(args.connect, args.credentials, compose=args.gmail_compose)
         except Exception as exc:
             print(str(exc) if isinstance(exc, (ValueError, RuntimeError)) else 'Connection failed: ' + type(exc).__name__)
             return 1

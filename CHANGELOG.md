@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Gmail supports saving drafts with dictated text or an AI-written subject and
+  body. A draft preview and its session-specific code control sending.
+  Existing read-only connections can opt in using `--connect gmail --gmail-compose`.
+- Added on-demand local screenshot interpretation using Ollama's vision API.
+  Install the vision model and restart ZENO. The default `OLLAMA_VISION_MODEL`
+  is `qwen3-vl:2b`. Screen replies bypass planner memory. Setup, environment
+  and privacy documentation updated.
+
+- Added on-demand read-only Gmail searches and numbered email reads through the
+  desktop, CLI and remote command handler. Results bypass OS action planning and
+  persistent chat memory. Background polling continues to fetch metadata.
+  Setup and privacy guides updated. Restart ZENO after updating. Existing
+  gmail.readonly connections work, and expired connections need Google sign-in
+  again. No new dependency or scope is required.
+
 - Fixed negative and hypothetical requests turning into actions, ambiguous voice
   answers granting permission, and remote folder clarifications losing their
   plan approval. Remote approvals now require the matching action ID. Busy,

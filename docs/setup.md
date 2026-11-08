@@ -142,8 +142,13 @@ a bounded retry chain. Local inference has a separate 90-second default deadline
 
 Simple supported commands still use the local parser first. Chat, interpretation
 and task planning can use the downloaded model; all actions retain parameter
-validation and permission checks. Qwen3 4B is a text model: local-only screen
-requests report basic window telemetry, not visual understanding. Cloud vision
+validation and permission checks. Qwen3 4B handles text requests. To enable local screen interpretation, run
+`ollama pull qwen3-vl:2b` with the installed Ollama runtime. If you installed the
+portable runtime under `%LOCALAPPDATA%\ZENO\ollama`, use its `ollama.exe`.
+Set `OLLAMA_VISION_MODEL` to select a different installed vision-capable model.
+Start ZENO and ask “read my screen” or “explain the error on my screen”. ZENO
+captures one primary-monitor image per request. Local mode sends the image to
+the loopback Ollama service for inference. Cloud vision
 requires the explicitly enabled free-cloud mode. Free-tier cloud requests can
 send conversation context, requested file contents or explicitly requested screen
 images to Google; its free-tier terms may allow product improvement use.
@@ -511,3 +516,31 @@ shortcut for this session. Dashboard modes remain independent. Escape works whil
 the island has focus, stopping a request or collapsing idle UI. No new packages,
 accounts, environment variables or voice models are needed. Existing speech and
 approval settings are retained. See [assistant controls and preview](assistant-experience.md).
+
+
+## On-demand Gmail requests
+
+Connect your Google account using the Gmail steps above, then restart ZENO to load
+the current command handler. Ask `check my emails`, `show unread emails`,
+`search my emails for invoice` or `emails from alice@example.com`. Say
+`read email 1` after searching to read that result. Up to five matches are returned
+per search and numbered reads fetch up to 6,000 text characters. The existing
+`gmail.readonly` scope covers these reads. If Gmail reports an expired connection,
+rerun `python main.py --connect gmail` and finish the new Google sign-in page.
+Requests work through the brain's command handler even with background awareness
+disabled.
+
+To enable drafting and sending, run the following in the project environment and
+approve both Gmail permissions on Google's page.
+
+```powershell
+.\.venv\Scripts\python.exe main.py --connect gmail --gmail-compose
+```
+
+Ask `write an email to alex@example.com about rescheduling our call` for AI assistance,
+or dictate exact wording with `draft an email to alex@example.com subject Meeting body Can we meet Friday?`.
+ZENO saves the draft to Gmail and displays the recipient, subject and body.
+To send, say `send draft` followed by the six-digit code in that preview.
+The code is specific to the current draft and session. `Cancel send` clears
+the pending confirmation and leaves the draft in Gmail.
+See [Gmail details](awareness.md#direct-gmail-inbox-connection).

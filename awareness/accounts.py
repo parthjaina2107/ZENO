@@ -1,4 +1,4 @@
-"""Explicit read-only account connection. OAuth tokens use Windows user encryption."""
+"""Explicit account connection with optional Gmail compose access. OAuth tokens use Windows user encryption."""
 import json
 import os
 from pathlib import Path
@@ -7,6 +7,7 @@ import sys
 from config import config
 
 GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
 OUTLOOK_SCOPES = ['Mail.ReadBasic']
 
 
@@ -39,7 +40,8 @@ def load_token(provider):
 def gmail_credentials():
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
-    credentials = Credentials.from_authorized_user_info(json.loads(load_token('gmail')), GMAIL_SCOPES)
+    saved = json.loads(load_token('gmail'))
+    credentials = Credentials.from_authorized_user_info(saved, saved.get('scopes') or GMAIL_SCOPES)
     if not credentials.valid:
         transport = Request()
         def bounded_request(*args, **kwargs):
@@ -61,19 +63,26 @@ def outlook_app():
         authority='https://login.microsoftonline.com/common', token_cache=cache), cache
 
 
-def connect_account(provider, credentials_path=None):
+def connect_account(provider, credentials_path=None, *, compose=False):
     if provider == 'gmail':
         from google_auth_oauthlib.flow import InstalledAppFlow
         credentials_path = credentials_path or config.DATA_DIR / 'accounts' / 'google-client.json'
         if not credentials_path or not Path(credentials_path).is_file():
             raise ValueError('Provide your Google Desktop OAuth client JSON with --credentials. See docs/awareness.md.')
-        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, GMAIL_SCOPES)
+        scopes = GMAIL_SCOPES + ([GMAIL_COMPOSE_SCOPE] if compose else [])
+        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         print('Complete Google sign-in in your browser within 10 minutes. Keep ZENO running until it confirms connection.', flush=True)
         try:
             credentials = flow.run_local_server(host='127.0.0.1', port=0,
                 timeout_seconds=600, access_type='offline', prompt='consent')
         except TimeoutError as exc:
             raise RuntimeError('Google sign-in timed out. Run python main.py --connect gmail again and use the new browser tab.') from exc
+        if compose:
+            granted = credentials.granted_scopes or credentials.scopes or []
+            if isinstance(granted, str):
+                granted = granted.split()
+            if not set(scopes).issubset(granted):
+                raise RuntimeError('Google did not grant both Gmail permissions. The previous connection was kept.')
         save_token('gmail', credentials.to_json())
     else:
         app, cache = outlook_app()
@@ -85,4 +94,4 @@ def connect_account(provider, credentials_path=None):
         if 'access_token' not in result:
             raise RuntimeError('Microsoft sign-in was not completed.')
         save_token('outlook', cache.serialize())
-    print(provider.title() + ' connected with read-only access.')
+    print('Gmail connected for reading, drafting and sending.' if compose else provider.title() + ' connected with read-only access.')

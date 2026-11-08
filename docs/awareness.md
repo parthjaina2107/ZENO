@@ -64,7 +64,7 @@ be unavailable. ZENO then falls back to the installed Windows Zira voice. Set
 | `Remind me in 10 minutes to submit my work` | Save a reminder; minutes and hours are supported |
 | `Focus mode` / `Pause updates` | Collect changes without proactive speech |
 | `Resume updates` | Resume grouped spoken updates |
-| `Could you check my emails please?` | Collected Gmail/Outlook updates and explicit missing-connection status |
+| `Could you check my emails please?` | Fresh Gmail results or a connection status message |
 | `Any WhatsApp updates?` | Matching Windows notifications, not full chat access |
 | `Tell me more` after a briefing | Reads previews from that briefing; context expires after five minutes |
 | `Show my reminders` | Lists up to five pending reminders |
@@ -133,9 +133,30 @@ The browser sign-in window lasts ten minutes. Keep the command running until it 
 connection. A refused localhost/127.0.0.1 callback can mean the listener has expired or
 stopped: restart the connect command and use its **new** sign-in page, not an old callback URL.
 
+After connecting, ask ZENO to check Gmail directly. These requests fetch current
+results independently of the background notification cache.
+
+- `check my emails` lists up to five recent inbox matches.
+- `show unread emails` filters unread inbox messages.
+- `emails from alice@example.com` searches by sender.
+- `search my emails for invoice` accepts Gmail search terms.
+- `read email 1` retrieves the text of the first result from your last search.
+
+Search results include sender, subject and date. Reading a numbered result fetches
+up to 6,000 characters of message text. Attachments are skipped. Search results and
+mail text stay outside action-planning history and saved conversation memory. The
+interface displays the reply and spoken replies may read it aloud when enabled.
+Each remote connection maintains its own numbered results. Just talk retains its
+conversation behavior. To enable actual Gmail drafts and sends, reconnect using
+`python main.py --connect gmail --gmail-compose`. Google requests
+`gmail.compose` alongside `gmail.readonly`. Dictate a recipient, subject and body
+or ask ZENO to write an email to an address about a topic. The recipient comes
+from your command. Review the saved draft and send using its displayed six-digit
+code in the same ZENO session. A changed draft must be reviewed again in Gmail.
+
 Sign in through Google's browser page. ZENO requests `gmail.readonly` and polls only sender,
-subject and timestamp metadata for up to 50 inbox messages received in the last day. It
-does not read message bodies, send mail, delete mail, or mark messages read. A high-volume
+subject and timestamp metadata for up to 50 inbox messages received in the last day. This background polling fetches metadata. Explicit numbered read requests fetch message
+text. Reading uses GET and preserves read/unread labels. Explicit composing and sending use the Gmail drafts API. A high-volume
 inbox can exceed this polling window; this is not a complete mailbox archive.
 Follow Google's [Python quickstart](https://developers.google.com/workspace/gmail/api/quickstart/python)
 for OAuth setup. A Gemini API key alone cannot authorize access to Gmail.
@@ -146,8 +167,7 @@ and your support/contact address, choose an external testing audience, and add y
 own Gmail address as a test user. Under **Clients**, create a **Desktop app** client
 named ZENO Desktop. Download the JSON outside the Git repository and use its local
 path in the command above. Google may require reconnection as testing tokens expire;
-do not treat that as an empty inbox. Review the consent screen yourself. The requested
-`gmail.readonly` scope is broader than the metadata that this implementation fetches.
+do not treat that as an empty inbox. Review the consent screen yourself. Background polling fetches metadata. Explicit reads can retrieve numbered message bodies.
 
 ## Direct Outlook inbox connection
 

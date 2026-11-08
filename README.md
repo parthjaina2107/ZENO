@@ -109,7 +109,7 @@ checkout, dependencies, API configuration, microphone setup, first use and updat
 3. **ZENO Cognitive Brain (Conversational AI + Memory + Multimodal Vision)**:
    - **General Conversational Intelligence**: Ask general questions, request explanations, or chat naturally. ZENO responds using local Ollama, or confirmed free-tier Gemini with a local fallback and bounded timeouts.
    - **👁️ Multimodal Screen Vision**: Ask *"Look at my screen, what's wrong?"* or *"Explain what is open on my screen"*.
-     > **Privacy Notice**: When free-cloud mode is enabled, screen vision sends the requested screenshot to Gemini. Local text-only mode provides basic window telemetry instead.
+     > **Privacy Notice**: When free-cloud mode is enabled, screen vision sends the requested screenshot to Gemini. Local mode uses the installed Ollama vision model for on-demand screen reading and interpretation.
    - **💾 Short-Term Context**: Multi-turn conversational memory allows follow-ups without repeating context.
    - **🗃️ Persistent Long-Term Memory**: Teach ZENO facts (*"Remember that my project path is C:\Projects"*), recall them (*"What is my project path?"*), or forget them (*"Forget my project path"*). Uses atomic file replacement to prevent data corruption.
    - **Offline Local Fallback**: Fast regex-based rule parser with word boundary tokenization ensures common system queries work offline without an API key and prevents misroutes (e.g. "open instagram" is never confused for RAM usage).

@@ -45,6 +45,7 @@ class ZenoBrain:
         self.client = None
         self.awaiting_clarification = False
         self.pending_folder_location = None
+        self.gmail_mailbox = None
         self.awareness = None
         self._init_chat_client()
 
@@ -108,6 +109,7 @@ class ZenoBrain:
         from .companion import conversation_text, social_opening, CLEAR_REQUESTS, STYLES, PROFILES
         chat_text = conversation_text(clean_text)
         if lowered in CLEAR_REQUESTS or (chat_text is not None and chat_text.lower().rstrip('.!?') in CLEAR_REQUESTS):
+            self.gmail_mailbox = None
             self.pending_folder_location = None
             self.memory.clear_short_term()
             self.awaiting_clarification = False
@@ -143,6 +145,19 @@ class ZenoBrain:
             return BrainResponse(kind='chat', message=reply,
                                  data={'conversation_only': True, 'service_error': 'unavailable'}
                                  if self.conversation_unavailable else {'conversation_only': True})
+
+        tool_text = re.sub(r"^(?:task|agent(?: task)?)\s*:\s*", "", clean_text, flags=re.I)
+        if self.vision.is_vision_query(tool_text):
+            result = await self.vision.analyze_screen(tool_text)
+            return BrainResponse(kind="vision", message=result["message"], data=result)
+
+        from awareness.gmail import GmailMailbox, mail_request
+        request = mail_request(tool_text)
+        if request is not None:
+            if self.gmail_mailbox is None:
+                self.gmail_mailbox = GmailMailbox()
+            reply = await self.gmail_mailbox.respond(request, self.client)
+            return BrainResponse(kind="chat", message=reply, data={"mail_read_only": request[0] in {"read", "search"}})
 
         if self.awareness is not None:
             import asyncio
@@ -224,16 +239,6 @@ class ZenoBrain:
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply_msg)
             return BrainResponse(kind="memory", message=reply_msg, data=memory_intent)
-
-        # ----------------------------------------------------------------------
-        # 3. Screen Vision intent
-        # ----------------------------------------------------------------------
-        if self.vision.is_vision_query(clean_text):
-            vision_result = await self.vision.analyze_screen(clean_text)
-            reply_msg = vision_result.get("message", "Screen inspection complete.")
-            self.memory.add_turn("user", clean_text)
-            self.memory.add_turn("zeno", reply_msg)
-            return BrainResponse(kind="vision", message=reply_msg, data=vision_result)
 
         # ----------------------------------------------------------------------
         # 4. OS Automation Action intent
