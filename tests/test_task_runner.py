@@ -82,3 +82,30 @@ async def test_explicit_initial_app_instruction_cannot_be_skipped(tmp_path, monk
     report = await engine.run("Open Notepad, then report the result", AsyncMock(), AsyncMock())
     assert report.steps[0]["action"] == "open_app"
     engine.brain.planner.executor.system.open_app.assert_called_once_with("notepad")
+
+
+@pytest.mark.asyncio
+async def test_task_retry_verifies_matching_file_without_writing(tmp_path, monkeypatch):
+    path = tmp_path / "done.txt"
+    path.write_text("Saved")
+    engine = runner(tmp_path, monkeypatch, [
+        {"action": "file_create", "parameters": {"path": str(path), "content": "Saved"}},
+        {"finish": True},
+    ])
+    executor = MagicMock(side_effect=AssertionError("Matching file should be verified in place"))
+    monkeypatch.setattr(engine.brain.planner, "execute_action", executor)
+    result = await engine.run("Save the report", AsyncMock(), AsyncMock())
+    assert result.status == "completed" and result.steps[0]["verified"]
+    executor.assert_not_called()
+
+
+def test_folder_move_verifies_actual_destination(tmp_path, monkeypatch):
+    engine = runner(tmp_path, monkeypatch, [])
+    folder = tmp_path / "before"
+    folder.mkdir()
+    target = tmp_path / "after"
+    action = engine.brain.planner.plan({"understood": True, "action": "file_move", "parameters": {
+        "source": str(folder), "destination": str(target)}})[0]
+    result = engine.brain.planner.execute_action(action)
+    assert result.success and target.is_dir()
+    assert engine.verify(action, result)[0]

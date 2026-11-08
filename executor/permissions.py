@@ -225,7 +225,7 @@ class PermissionManager:
         # This request is owned by the correct device; consume it exactly once.
         self._pending_remote_requests.pop(request_id, None)
 
-        if action_id is not None and expected_action_id:
+        if approved and expected_action_id:
             if action_id != expected_action_id:
                 logger.warning(
                     f"Action ID mismatch for request '{request_id}': expected '{expected_action_id}', got '{action_id}'"

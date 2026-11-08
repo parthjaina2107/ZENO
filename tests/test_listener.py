@@ -102,3 +102,7 @@ def test_local_silence_does_not_trigger_google(monkeypatch):
     assert listener._transcribe_audio(MagicMock()) is None
     listener._recognizer.recognize_google.assert_not_called()
 
+
+@pytest.mark.parametrize("phrase", ["not sure", "do not approve", "do not do it", "what if I say yes?", "yes?"])
+def test_uncertain_or_negated_language_cannot_authorize(phrase):
+    assert parse_confirmation(phrase) is not True

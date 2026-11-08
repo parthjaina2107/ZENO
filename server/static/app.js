@@ -315,7 +315,14 @@ function handle(data) {
       renderActivity();
       break;
     case "command_finished":
-      if (busy && !activeTask) finish("responded");
+      if (busy && !activeTask) {
+        const status = data.status || "responded";
+        if (status === "failed" || status === "blocked") {
+          $("taskState").textContent = status.toUpperCase();
+          $("taskTitle").textContent = status === "blocked" ? "Request blocked." : "Command failed.";
+        }
+        finish(status);
+      }
       break;
     case "response":
       message(data.message);
@@ -332,7 +339,6 @@ function handle(data) {
       break;
     case "screenshot":
       message(data.message || "Your desktop screenshot.", "agent", data.data);
-      if (!activeTask) finish("responded");
       break;
     case "permission_request":
       permission = data;
@@ -634,10 +640,11 @@ $("motion").checked =
   storage.get("zeno_motion") === "true" ||
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 $("language").value = storage.get("zeno_language") || "en-US";
-function preferences() {
+function preferences(changed = "motion") {
+  if (changed === "motion") storage.set("zeno_motion", $("motion").checked);
+  $("motion").checked = storage.get("zeno_motion") === "true" || systemReducedMotion.matches;
   if (desktopMode) send({type: "motion", reduced: $("motion").checked});
   storage.set("zeno_speech", $("speech").checked);
-  storage.set("zeno_motion", $("motion").checked);
   storage.set("zeno_language", $("language").value);
   document.body.classList.toggle("reduce-motion", $("motion").checked);
   if (!$("speech").checked) window.speechSynthesis?.cancel();
@@ -648,7 +655,7 @@ function preferences() {
 }
 for (const id of ["speech", "motion", "language"])
   $(id).addEventListener("change", () => {
-    preferences();
+    preferences(id);
     notify("Preference saved.");
   });
 document.body.classList.toggle("reduce-motion", $("motion").checked);
@@ -767,9 +774,10 @@ if (desktopMode) {
   workspaceLabel.style.cssText = "display:none;margin:12px 0;font-size:13px;color:var(--muted)";
   const workspaceInput = document.createElement("input");
   workspaceInput.id = "codingWorkspace";
+  workspaceInput.className = "workspace-input";
   workspaceInput.type = "text";
   workspaceInput.placeholder = "C:\\Users\\HP\\OneDrive\\Desktop\\etc";
-  workspaceInput.style.cssText = "display:block;width:100%;margin-top:8px;padding:12px;background:rgba(255,255,255,.04);color:inherit;border:1px solid #555;border-radius:12px";
+  workspaceInput.style.cssText = "display:block;width:100%;margin-top:8px;padding:12px";
   workspaceLabel.append(workspaceInput);
   document.querySelector(".composer-top").after(workspaceLabel);
   $("mode").addEventListener("change", () => {
@@ -880,4 +888,9 @@ window.addEventListener("blur", clearPointerLight);
 window.addEventListener("scroll", clearPointerLight, { passive: true });
 $("motion").addEventListener("change", clearPointerLight);
 finePointer.addEventListener("change", clearPointerLight);
-systemReducedMotion.addEventListener("change", clearPointerLight);
+systemReducedMotion.addEventListener("change", () => {
+  $("motion").checked = systemReducedMotion.matches || storage.get("zeno_motion") === "true";
+  document.body.classList.toggle("reduce-motion", $("motion").checked);
+  if (desktopMode) send({type: "motion", reduced: $("motion").checked});
+  clearPointerLight();
+});

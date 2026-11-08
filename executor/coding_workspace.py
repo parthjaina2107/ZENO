@@ -17,14 +17,21 @@ from pydantic import BaseModel, ConfigDict, Field
 from config import config
 from brain.planner import ActionResult, PlannedAction
 from .file_ops import FileOps
+from .file_publication import publish_new
 
 TEXT = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.ipynb', '.md', '.txt',
         '.html', '.css', '.scss', '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs',
         '.sql', '.yaml', '.yml', '.toml', '.xml', '.csv', '.r', '.sh', '.ps1', '.bat'}
 SKIP = {'.git', '.venv', 'venv', 'node_modules', '__pycache__', '.codex', '.ssh', '.aws',
-        'dist', 'build', '.next', '.env', 'credentials.json', 'token.json', 'secrets.json', '__tutorial_context__'}
+        'dist', 'build', '.next', '.env', 'credentials.json', 'google-client.json', 'token.json', 'secrets.json',
+        'zeno_memory.json', 'paired_devices.json', 'accounts', 'task_reports', 'screenshots', '__tutorial_context__'}
 MAX_FILE = 200_000
 MAX_TOTAL = 8_000_000
+
+
+def excluded_name(name):
+    name = name.lower()
+    return name in SKIP or name.startswith((".env", "client_secret"))
 
 
 def digest(data):
@@ -63,13 +70,15 @@ def target_path(root, relative):
     if path.is_absolute() or not path.parts:
         raise ValueError('Proposed files must have a relative project path.')
     for part in path.parts:
-        if (part in {'.', '..'} or part.lower() in SKIP or part.lower().startswith('.env')
+        if (part in {'.', '..'} or excluded_name(part)
                 or ':' in part or part.rstrip(' .') != part
                 or part.split('.')[0].upper() in {'CON', 'PRN', 'AUX', 'NUL', *{'COM'+str(i) for i in range(1,10)}, *{'LPT'+str(i) for i in range(1,10)}}):
             raise ValueError('Restricted or ambiguous project path: ' + relative)
     result = (root / path).resolve()
     if not result.is_relative_to(root):
         raise ValueError('Proposed file escapes the selected workspace.')
+    if any(excluded_name(part) for part in result.relative_to(root).parts):
+        raise ValueError("Restricted project file.")
     if result.suffix.lower() not in TEXT:
         raise ValueError('Only supported text/source files can be changed.')
     if result.exists() and (not result.is_file() or result.stat().st_nlink > 1):
@@ -82,14 +91,14 @@ def snapshot(root):
     total = 0
     seen = 0
     for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = [name for name in sorted(dirs) if name.lower() not in SKIP and not (Path(directory)/name).is_symlink()
+        dirs[:] = [name for name in sorted(dirs) if not excluded_name(name) and not (Path(directory)/name).is_symlink()
                    and (Path(directory)/name).resolve().is_relative_to(root)]
         for name in sorted(files):
             seen += 1
             if seen > 5000:
                 raise ValueError('This workspace is too large. Choose the tutorial/project subfolder.')
             path = Path(directory) / name
-            if path.is_symlink() or not path.resolve().is_relative_to(root) or name.lower().startswith('.env') or name.lower() in SKIP:
+            if path.is_symlink() or not path.resolve().is_relative_to(root) or excluded_name(name):
                 continue
             if path.suffix.lower() not in TEXT or path.stat().st_size > MAX_FILE:
                 continue
@@ -113,14 +122,14 @@ def stage_documents(root, staging):
     import xml.etree.ElementTree as ET
     total, count = 0, 0
     for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = [name for name in dirs if name.lower() not in SKIP and
+        dirs[:] = [name for name in dirs if not excluded_name(name) and
                    not (Path(directory) / name).is_symlink() and
                    (Path(directory) / name).resolve().is_relative_to(root)]
         for name in files:
             path = Path(directory) / name
             if path.suffix.lower() not in {'.pdf', '.docx'}:
                 continue
-            if path.is_symlink() or not path.resolve().is_relative_to(root):
+            if excluded_name(name) or path.is_symlink() or not path.resolve().is_relative_to(root) or path.stat().st_nlink > 1:
                 continue
             count += 1
             if count > 30 or path.stat().st_size > 10_000_000:
@@ -200,23 +209,22 @@ def apply_plan(root, plan, originals, directory):
                 backup.write_bytes(before)
             path.parent.mkdir(parents=True, exist_ok=True)
             data = change.content.encode('utf-8')
-            if before is None:
-                with path.open('xb') as stream:
+            handle, temporary = tempfile.mkstemp(prefix='.zeno-', dir=path.parent)
+            try:
+                with os.fdopen(handle, 'wb') as stream:
                     stream.write(data)
-            else:
-                handle, temporary = tempfile.mkstemp(prefix='.zeno-', dir=path.parent)
-                try:
-                    with os.fdopen(handle, 'wb') as stream:
-                        stream.write(data)
-                        stream.flush()
-                        os.fsync(stream.fileno())
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                if before is None:
+                    # Atomically publish a fully written file, refusing collisions.
+                    publish_new(temporary, path)
+                else:
                     if path.read_bytes() != before:
                         raise ValueError('File changed before replacement: ' + entry['path'])
                     os.replace(temporary, path)
-                finally:
-                    if Path(temporary).exists():
-                        Path(temporary).unlink()
-            written.append(entry)
+                written.append(entry)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
             if digest(path.read_bytes()) != entry['after_sha256']:
                 raise ValueError('Saved content failed verification: ' + entry['path'])
     except Exception:
@@ -315,8 +323,10 @@ def propose(goal, staging, directory, control, on_progress=None):
     )
     flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
     with (directory / 'agent-events.jsonl').open('wb') as events:
+        private_keys = {"ACCESS_TOKEN", "JWT_SECRET_KEY", "NGROK_AUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY"}
+        environment = {k: v for k, v in os.environ.items() if k.upper() not in private_keys}
         process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=events, stderr=subprocess.STDOUT,
-                                   cwd=staging, creationflags=flags, start_new_session=os.name != 'nt')
+                                   env=environment, cwd=staging, creationflags=flags, start_new_session=os.name != 'nt')
         tree = None
         try:
             tree = ProcessTree(process)  # Assign before sending any task to the process.

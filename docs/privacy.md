@@ -45,7 +45,7 @@ make Gemini, connected-mail or explicitly enabled remote features offline.
 | Project `audit_log.jsonl` | Action parameters, permission decisions and execution results; no built-in retention limit |
 | Project `task_reports` | Goal details and task evidence; no built-in retention limit |
 | Project `screenshots` | Screenshots requested through the screenshot tool; no built-in retention limit |
-| Project `paired_devices.json` | Remote paired-device state |
+| Project `paired_devices.json` | Remote paired-device state. The adjacent `paired_devices.lock` coordinates writes. |
 | Project `voiceagent.log` | Diagnostics; default rotating files are 5 MiB with five backups |
 
 `ZENO_DATA_DIR`, `MEMORY_FILE` and `LOG_FILE` can change some of these locations.

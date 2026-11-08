@@ -81,6 +81,8 @@ class TaskExecutor:
                 return self.system.run_command(cmd)
 
             # === FILE OPERATIONS ===
+            elif act_type == "folder_create":
+                return self.file.folder_create(params.get('path', ''))
             elif act_type == "file_create":
                 path = params.get("path", "")
                 content = params.get("content", "")
@@ -112,6 +114,9 @@ class TaskExecutor:
             # === SYSTEM & POWER ===
             elif act_type == "screenshot":
                 return self.system.screenshot()
+
+            elif act_type == "volume_mute":
+                return self.system.volume_mute(params["muted"])
 
             elif act_type == "volume_set":
                 lvl = params.get("level", 50)

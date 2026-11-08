@@ -4,7 +4,9 @@ App management, process control, system power states, volume, screenshots,
 mouse/keyboard input, and safe command execution.
 """
 
+from contextlib import contextmanager
 import os
+import re
 import subprocess
 import socket
 import logging
@@ -34,14 +36,20 @@ except ImportError:
 
 logger = logging.getLogger("VoiceAgent.SystemOps")
 
+@contextmanager
 def _get_pycaw_volume():
-    """Helper to get pycaw volume endpoint, isolated for testability and fallback."""
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-    from comtypes import CLSCTX_ALL
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    volume = interface.QueryInterface(IAudioEndpointVolume)
-    return volume
+    """Use the audio endpoint on the calling worker's COM apartment."""
+    import comtypes
+    from pycaw.pycaw import AudioUtilities
+
+    comtypes.CoInitialize()
+    try:
+        device = AudioUtilities.GetSpeakers()
+        if device is None:
+            raise RuntimeError("No default Windows audio endpoint.")
+        yield device.EndpointVolume
+    finally:
+        comtypes.CoUninitialize()
 
 
 # Critical Windows processes that must NEVER be killed
@@ -78,6 +86,31 @@ APP_EXECUTABLE_MAP = {
 }
 
 
+def installed_application(name: str):
+    """Resolve a launch target without searching the current working directory."""
+    system = Path(os.environ.get("SystemRoot", "C:/Windows"))
+    directories = [system / "System32", system]
+    directories.extend(Path(p.strip('"')) for p in os.get_exec_path() if p)
+    for directory in directories:
+        if directory.is_absolute() and directory.resolve() != Path.cwd().resolve():
+            candidate = directory / name
+            if candidate.is_file():
+                return candidate
+    if os.name == "nt":
+        import winreg
+        app = "Code.exe" if name == "code.cmd" else name
+        key = r"Software\Microsoft\Windows\CurrentVersion\App Paths" + "\\" + app
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, key) as entry:
+                    candidate = Path(os.path.expandvars(winreg.QueryValueEx(entry, "")[0].strip('"')))
+                if candidate.is_absolute() and candidate.is_file() and candidate.suffix.lower() == ".exe":
+                    return candidate
+            except OSError:
+                continue
+    return None
+
+
 class SystemOps:
     def __init__(self):
         self._last_opened_app = None
@@ -107,28 +140,24 @@ class SystemOps:
     def open_app(self, app_name: str) -> ActionResult:
         """Launch an application by friendly name or executable name."""
         name_clean = app_name.strip().lower()
-        target = APP_EXECUTABLE_MAP.get(name_clean, app_name.strip())
-        self._last_opened_app = name_clean
+        self._last_opened_app = None
+        known = {value.lower(): value for value in APP_EXECUTABLE_MAP.values()}
+        target = APP_EXECUTABLE_MAP.get(name_clean) or known.get(name_clean)
+        if target is None:
+            if not re.fullmatch(r"[\w -]+(?:\.exe)?", name_clean):
+                return ActionResult(False, "Specify an installed application name.", error="INVALID_APP")
+            target = name_clean.removesuffix(".exe") + ".exe"
 
         try:
-            if target.startswith("ms-settings:"):
+            if target == "ms-settings:":
                 os.startfile(target)
-                return ActionResult(success=True, message=f"Opened Windows Settings.")
-
-            # Attempt 1: startfile
-            try:
-                os.startfile(target)
-                return ActionResult(success=True, message=f"Launched '{app_name}' successfully.")
-            except Exception:
-                pass
-
-            # Launch a single executable; an app name must never become a shell script.
-            try:
-                subprocess.Popen([target], shell=False)
-                return ActionResult(success=True, message=f"Started '{app_name}'.")
-            except Exception as exc:
-                return ActionResult(success=False, message=f"Could not launch '{app_name}'.", error=str(exc))
-
+            else:
+                executable = installed_application(target)
+                if executable is None:
+                    return ActionResult(False, "Application executable was not found.", error="APP_NOT_FOUND")
+                os.startfile(str(executable))
+            self._last_opened_app = name_clean
+            return ActionResult(True, f"Requested launch of '{app_name}'.")
         except Exception as e:
             logger.error(f"Failed to open app '{app_name}': {e}")
             return ActionResult(success=False, message=f"Failed to open '{app_name}'.", error=str(e))
@@ -137,12 +166,17 @@ class SystemOps:
         """Close an application process gracefully by name."""
         import psutil
         clean_name = process_name.strip().lower()
-        if not clean_name.endswith(".exe") and not "." in clean_name:
-            target_name = f"{clean_name}.exe"
-        else:
-            target_name = clean_name
+        if not clean_name:
+            return ActionResult(False, "Specify an application to close.", error="INVALID_ARGUMENTS")
+        target_name = APP_EXECUTABLE_MAP.get(clean_name, clean_name)
+        if target_name.endswith(".cmd"):
+            target_name = target_name.removesuffix(".cmd") + ".exe"
+        if target_name == "ms-settings:":
+            target_name = "systemsettings.exe"
+        if "." not in target_name:
+            target_name += ".exe"
 
-        if target_name in PROTECTED_PROCESSES:
+        if clean_name in PROTECTED_PROCESSES or target_name in PROTECTED_PROCESSES:
             return ActionResult(
                 success=False,
                 message=f"Access denied: '{target_name}' is a protected Windows system process.",
@@ -152,15 +186,15 @@ class SystemOps:
         terminated_count = 0
         for proc in psutil.process_iter(['pid', 'name']):
             try:
-                pname = proc.info['name'].lower()
-                if pname == target_name or clean_name in pname:
+                pname = (proc.info['name'] or '').lower()
+                if pname == target_name:
                     proc.terminate()
                     terminated_count += 1
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
 
         if terminated_count > 0:
-            return ActionResult(success=True, message=f"Closed {terminated_count} instance(s) of '{process_name}'.")
+            return ActionResult(success=True, message=f"Requested closure of {terminated_count} instance(s) of '{process_name}'.")
         else:
             return ActionResult(
                 success=False,
@@ -194,18 +228,20 @@ class SystemOps:
         mode_clean = mode.strip().lower()
 
         try:
-            if mode_clean == "shutdown":
-                subprocess.run("shutdown /s /t 5", shell=True)
-                return ActionResult(success=True, message="Computer is shutting down in 5 seconds.")
-            elif mode_clean == "restart":
-                subprocess.run("shutdown /r /t 5", shell=True)
-                return ActionResult(success=True, message="Computer is restarting in 5 seconds.")
-            elif mode_clean == "sleep":
-                subprocess.run("rundll32.exe powrprof.dll,SetSuspendState 0,1,0", shell=True)
-                return ActionResult(success=True, message="Putting computer to sleep.")
-            elif mode_clean == "lock":
-                subprocess.run("rundll32.exe user32.dll,LockWorkStation", shell=True)
-                return ActionResult(success=True, message="Workstation locked.")
+            if mode_clean in {"shutdown", "restart"}:
+                flag = "/s" if mode_clean == "shutdown" else "/r"
+                exe = Path(os.environ["SystemRoot"]) / "System32" / "shutdown.exe"
+                subprocess.run([str(exe), flag, "/t", "5"], check=True, timeout=10)
+                return ActionResult(True, f"Windows accepted the {mode_clean} request for five seconds from now.")
+            elif mode_clean in {"lock", "sleep"}:
+                import ctypes
+                if mode_clean == "lock":
+                    ok = ctypes.windll.user32.LockWorkStation()
+                else:
+                    ok = ctypes.windll.powrprof.SetSuspendState(False, False, False)
+                if not ok:
+                    return ActionResult(False, f"Windows rejected the {mode_clean} request.", error="POWER_FAILED")
+                return ActionResult(True, f"Windows accepted the {mode_clean} request.")
             else:
                 return ActionResult(
                     success=False,
@@ -215,29 +251,33 @@ class SystemOps:
         except Exception as e:
             return ActionResult(success=False, message=f"Power command failed: {e}", error=str(e))
 
+    def volume_mute(self, muted: bool) -> ActionResult:
+        try:
+            with _get_pycaw_volume() as endpoint:
+                endpoint.SetMute(muted, None)
+                if bool(endpoint.GetMute()) != muted:
+                    raise RuntimeError("The audio endpoint did not confirm the requested state.")
+            return ActionResult(True, "Volume muted." if muted else "Volume unmuted.")
+        except Exception as exc:
+            return ActionResult(False, "Could not set the system mute state.", error=str(exc))
+
     def volume_set(self, level: int) -> ActionResult:
         """Set Windows system volume (0-100)."""
         level = max(0, min(100, int(level)))
         try:
             try:
-                volume = _get_pycaw_volume()
-                scalar = level / 100.0
-                volume.SetMasterVolumeLevelScalar(scalar, None)
+                with _get_pycaw_volume() as volume:
+                    volume.SetMasterVolumeLevelScalar(level / 100.0, None)
                 return ActionResult(success=True, message=f"System volume set to {level}%.")
-            except (ImportError, Exception) as pycaw_err:
+            except Exception as pycaw_err:
                 logger.debug(f"pycaw not available or failed ({pycaw_err}), falling back to keys")
-                if pyautogui:
-                    if level == 0:
-                        pyautogui.press("volumemute")
-                        return ActionResult(success=True, message="Volume muted.")
-                
-                # Approximate volume adjustment via media keys or powershell
+                # Lower the level first. A mute key would toggle an already muted device.
                 ps_script = f"""
                 $obj = New-Object -ComObject WScript.Shell
                 1..50 | ForEach-Object {{ $obj.SendKeys([char]174) }}
-                1..{int(level / 2)} | ForEach-Object {{ $obj.SendKeys([char]175) }}
+                for ($i = 0; $i -lt {int(level / 2)}; $i++) {{ $obj.SendKeys([char]175) }}
                 """
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], timeout=5)
+                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], timeout=5, check=True)
                 return ActionResult(success=True, message=f"System volume adjusted to approximately {level}%.")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to adjust volume: {e}", error=str(e))
@@ -408,20 +448,29 @@ class SystemOps:
     def run_command(self, command: str) -> ActionResult:
         """Execute safe shell command with allowlist, shell=False, 30s timeout and output capture."""
         import shlex
-        clean_cmd = command.strip()
+        clean_cmd = command.strip(" \t")
         if not clean_cmd:
             return ActionResult(success=False, message="Empty command provided.", error="EMPTY_COMMAND")
 
-        # Parse command tokens
         try:
             tokens = shlex.split(clean_cmd, posix=False)
-        except Exception:
-            tokens = clean_cmd.split()
+        except ValueError:
+            return ActionResult(False, "Unbalanced command quotes.", error="INVALID_ARGUMENTS")
 
         if not tokens:
             return ActionResult(success=False, message="Empty command provided.", error="EMPTY_COMMAND")
 
-        first_token = tokens[0].lower().rstrip(".exe")
+        if any(c in clean_cmd for c in '\r\n\x00'):
+            return ActionResult(False, "Shell expressions are unsupported.", error="BLOCKED_COMMAND")
+        args = []
+        for part in tokens[1:]:
+            if len(part) >= 2 and part[0] == part[-1] and part[0] in {'"', "'"}:
+                args.append(part[1:-1])
+            elif any(c in part for c in '&|<>^;'):
+                return ActionResult(False, "Shell expressions are unsupported.", error="BLOCKED_COMMAND")
+            else:
+                args.append(part)
+        first_token = tokens[0].lower().removesuffix(".exe")
 
         # Security Layer: Blocked commands blacklist
         lowered = clean_cmd.lower()
@@ -434,25 +483,41 @@ class SystemOps:
                 )
 
         # Security Layer: Allowlist of first tokens
-        allowed = getattr(config, "ALLOWED_COMMANDS", {
-            "dir", "ipconfig", "whoami", "ping", "hostname", "netstat",
-            "systeminfo", "tasklist", "route", "tracert", "nslookup",
-            "arp", "getmac", "curl", "echo"
-        })
-        if first_token not in allowed:
+        if first_token not in config.ALLOWED_COMMANDS:
             return ActionResult(
                 success=False,
                 message=f"Command '{first_token}' is not in the allowed list of safe commands.",
                 error="COMMAND_NOT_ALLOWED"
             )
 
-
-        # Prepare arguments for execution with shell=False
-        cmd_builtins = {"dir", "echo", "type", "cls", "ver", "copy", "mkdir", "md"}
-        if first_token in cmd_builtins:
-            exec_args = ["cmd.exe", "/c"] + tokens
-        else:
-            exec_args = tokens
+        if first_token == "echo":
+            output = clean_cmd[len(tokens[0]):].lstrip()
+            if len(args) == 1:
+                output = args[0]
+            return ActionResult(True, output, output=output)
+        if first_token == "dir":
+            paths = [part for part in args if part.lower() != "/b"]
+            if len(paths) > 1:
+                return ActionResult(False, "Use dir with one directory.", error="INVALID_ARGUMENTS")
+            try:
+                folder = Path(paths[0] if paths else ".")
+                output = "\n".join(sorted(item.name for item in folder.iterdir()))[:2000]
+                return ActionResult(True, output or "Empty directory.", output=output)
+            except (ValueError, OSError) as exc:
+                return ActionResult(False, "Directory listing failed.", error=str(exc))
+        readonly = {"route": [["print"]], "ipconfig": [[], ["/all"]], "arp": [["-a"]]}
+        if first_token in readonly and [arg.lower() for arg in args] not in readonly[first_token]:
+            return ActionResult(False, "Use a read-only diagnostic invocation.", error="INVALID_ARGUMENTS")
+        if first_token == "curl":
+            if len(args) != 1 or not args[0].lower().startswith(("http://", "https://")):
+                return ActionResult(False, "Use curl with one HTTP or HTTPS URL.", error="INVALID_ARGUMENTS")
+            args = ["-q", "--globoff", "--", args[0]]
+        if first_token == "nslookup" and (not args or any(a.startswith("-") for a in args)):
+            return ActionResult(False, "Use nslookup with a host name.", error="INVALID_ARGUMENTS")
+        executable = first_token
+        if os.name == "nt":
+            executable = str(Path(os.environ["SystemRoot"]) / "System32" / (first_token + ".exe"))
+        exec_args = [executable, *args]
 
         try:
             res = subprocess.run(

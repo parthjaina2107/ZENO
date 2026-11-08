@@ -196,7 +196,9 @@ def test_propose_uses_read_only_schema_and_parses_fake_cli(tmp_path, monkeypatch
     actual_popen = subprocess.Popen
     recorded = []
     payload = plan(('answer.py', 'answer = 42\n')).model_dump_json()
+    monkeypatch.setenv('ACCESS_TOKEN', 'synthetic-remote-token')
     def spawn(args, **kwargs):
+        assert 'ACCESS_TOKEN' not in kwargs['env']
         recorded.extend(args)
         output = args[args.index('--output-last-message') + 1]
         script = 'import sys,pathlib; sys.stdin.read(); pathlib.Path(sys.argv[1]).write_text(sys.argv[2],encoding="utf-8")'
@@ -236,3 +238,22 @@ def test_cancel_terminates_fake_coding_process(tmp_path, monkeypatch):
         timer.cancel()
     assert processes[0].poll() is not None
     assert not list(staging.iterdir())
+
+
+def test_new_file_sync_failure_leaves_no_partial_output(tmp_path, monkeypatch):
+    def reject_sync(fd):
+        raise OSError("disk full")
+    monkeypatch.setattr(cw.os, "fsync", reject_sync)
+    with pytest.raises(OSError, match="disk full"):
+        cw.apply_plan(tmp_path, plan(("new.py", "pass")), {}, tmp_path / "run")
+    assert not (tmp_path / "new.py").exists()
+    assert not list(tmp_path.glob(".zeno-*"))
+
+
+def test_project_snapshot_excludes_account_and_runtime_files(tmp_path):
+    for name in ["client_secret_dev.json", "google-client.json", "zeno_memory.json", "paired_devices.json", "main.py"]:
+        (tmp_path / name).write_text("{}")
+    assert list(cw.snapshot(tmp_path)) == ["main.py"]
+    for name in ["client_secret_dev.json", "google-client.json", "zeno_memory.json"]:
+        with pytest.raises(ValueError):
+            cw.target_path(tmp_path, name)

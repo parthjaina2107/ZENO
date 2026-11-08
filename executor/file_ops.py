@@ -4,16 +4,39 @@ Safe file creation, deletion via Recycle Bin (send2trash), copy/move, search, an
 with path validation against allowed user directories and system protection.
 """
 
+import errno
 import os
-import glob
 import shutil
+import tempfile
+from itertools import islice
 from pathlib import Path
 import logging
 from typing import Optional, List, Dict, Any
 from brain.planner import ActionResult
 from config import config
+from user_paths import user_folder
+from .file_publication import stage_new_file
 
 logger = logging.getLogger("VoiceAgent.FileOps")
+
+
+def _copy_to_new_path(source: Path, destination: Path):
+    """Copy to an exact destination. Publish only into a free name."""
+    if source.is_dir():
+        if destination.is_relative_to(source):
+            raise ValueError("A folder cannot be copied inside itself.")
+        if destination.exists():
+            raise FileExistsError(str(destination))
+        if os.name == "nt":
+            with tempfile.TemporaryDirectory(dir=destination.parent, prefix=".zeno-") as temporary:
+                staged = Path(temporary) / "tree"
+                shutil.copytree(source, staged, symlinks=True)
+                os.rename(staged, destination)
+        else:
+            shutil.copytree(source, destination, symlinks=True)
+    else:
+        with stage_new_file(destination) as staged:
+            shutil.copy2(source, staged)
 
 
 class FileOps:
@@ -32,13 +55,12 @@ class FileOps:
 
         clean = path_str.strip()
         # Handle desktop/documents/downloads shortcuts
-        home = Path.home()
         if clean.lower().startswith("desktop/") or clean.lower().startswith("desktop\\") or clean.lower() == "desktop":
-            clean = str(home / "Desktop" / clean[7:].lstrip("\\/"))
+            clean = str(user_folder('desktop') / clean[7:].lstrip("\\/"))
         elif clean.lower().startswith("documents/") or clean.lower().startswith("documents\\") or clean.lower() == "documents":
-            clean = str(home / "Documents" / clean[9:].lstrip("\\/"))
+            clean = str(user_folder('documents') / clean[9:].lstrip("\\/"))
         elif clean.lower().startswith("downloads/") or clean.lower().startswith("downloads\\") or clean.lower() == "downloads":
-            clean = str(home / "Downloads" / clean[9:].lstrip("\\/"))
+            clean = str(user_folder('downloads') / clean[9:].lstrip("\\/"))
 
         target = Path(clean).expanduser().resolve()
         target_str = str(target).lower()
@@ -64,6 +86,21 @@ class FileOps:
 
         return True, target, None
 
+    def folder_create(self, path: str) -> ActionResult:
+        valid, target, error = self._resolve_and_validate_path(path)
+        if not valid or target is None:
+            return ActionResult(success=False, message=error or 'Invalid folder path.', error='PATH_VALIDATION_FAILED')
+        try:
+            existed = target.is_dir()
+            target.mkdir(parents=True, exist_ok=True)
+            return ActionResult(success=True,
+                                message=f'Folder "{target.name}" already exists.' if existed else f'Created folder "{target.name}".',
+                                output={'path': str(target), 'verified': target.is_dir(), 'created': not existed})
+        except FileExistsError:
+            return ActionResult(success=False, message='A file already uses that name. Choose a different folder name.', error='PATH_EXISTS')
+        except OSError:
+            return ActionResult(success=False, message='Windows could not create this folder. Check the location and your access.', error='FOLDER_CREATE_FAILED')
+
     def file_create(self, path: str, content: str = "") -> ActionResult:
         """Create a new file or write content to a file safely."""
         valid, target, err = self._resolve_and_validate_path(path)
@@ -72,13 +109,15 @@ class FileOps:
 
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            with open(target, "w", encoding="utf-8") as f:
-                f.write(content)
+            with stage_new_file(target) as staged:
+                written = staged.write_bytes(content.encode("utf-8"))
             return ActionResult(
                 success=True,
                 message=f"Created file at: {target} ({len(content)} characters written).",
-                output={"path": str(target), "bytes": len(content)}
+                output={"path": str(target), "bytes": written}
             )
+        except FileExistsError:
+            return ActionResult(False, "A file already exists at that path. Choose a new name.", error="PATH_EXISTS")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to create file: {e}", error=str(e))
 
@@ -120,8 +159,23 @@ class FileOps:
 
         try:
             d_target.parent.mkdir(parents=True, exist_ok=True)
-            res = shutil.move(str(s_target), str(d_target))
-            return ActionResult(success=True, message=f"Moved '{s_target.name}' to: {res}")
+            if d_target.exists() and (not d_target.is_dir() or (d_target / s_target.name).exists()):
+                return ActionResult(False, "Destination already exists.", error="PATH_EXISTS")
+            res = d_target / s_target.name if d_target.is_dir() else d_target
+            if os.name == "nt":
+                try:
+                    os.rename(s_target, res)
+                except OSError as exc:
+                    if exc.errno != errno.EXDEV and getattr(exc, "winerror", None) != 17:
+                        raise
+                    _copy_to_new_path(s_target, res)
+                    if s_target.is_dir():
+                        shutil.rmtree(s_target)
+                    else:
+                        s_target.unlink()
+            else:
+                res = shutil.move(str(s_target), str(d_target))
+            return ActionResult(success=True, message=f"Moved '{s_target.name}' to: {res}", output={"path": str(res)})
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to move file: {e}", error=str(e))
 
@@ -139,12 +193,14 @@ class FileOps:
             return ActionResult(success=False, message=f"Source not found: {s_target}", error="SOURCE_NOT_FOUND")
 
         try:
-            d_target.parent.mkdir(parents=True, exist_ok=True)
-            if s_target.is_dir():
-                res = shutil.copytree(str(s_target), str(d_target), dirs_exist_ok=True)
-            else:
-                res = shutil.copy2(str(s_target), str(d_target))
-            return ActionResult(success=True, message=f"Copied '{s_target.name}' to: {res}")
+            res = d_target / s_target.name if s_target.is_file() and d_target.is_dir() else d_target
+            if s_target.is_dir() and res.is_relative_to(s_target):
+                return ActionResult(False, "A folder cannot be copied inside itself.", error="INVALID_DESTINATION")
+            res.parent.mkdir(parents=True, exist_ok=True)
+            _copy_to_new_path(s_target, res)
+            return ActionResult(success=True, message=f"Copied '{s_target.name}' to: {res}", output={"path": str(res)})
+        except FileExistsError:
+            return ActionResult(False, "Destination already exists. Choose a new name.", error="PATH_EXISTS")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to copy file: {e}", error=str(e))
 
@@ -162,11 +218,11 @@ class FileOps:
 
         try:
             with open(target, "r", encoding="utf-8", errors="replace") as f:
-                lines = [f.readline() for _ in range(max_lines)]
+                lines = list(islice(f, max(0, max_lines)))
                 content = "".join(lines)
             return ActionResult(
                 success=True,
-                message=f"Read {len(lines)} lines from {target.name}.",
+                message=f"Read {len(lines)} {'line' if len(lines) == 1 else 'lines'} from {target.name}.",
                 output=content
             )
         except Exception as e:
@@ -182,9 +238,11 @@ class FileOps:
             return ActionResult(success=False, message=f"Directory not found: {target_dir}", error="DIR_NOT_FOUND")
 
         try:
+            if ".." in Path(pattern).parts or Path(pattern).is_absolute():
+                return ActionResult(False, "Use a search pattern inside the selected directory.", error="INVALID_PATTERN")
             matches = []
             for p in target_dir.glob(pattern):
-                if p.is_file():
+                if p.is_file() and p.resolve().is_relative_to(target_dir):
                     matches.append({"name": p.name, "path": str(p), "size_bytes": p.stat().st_size})
                 if len(matches) >= 50:
                     break

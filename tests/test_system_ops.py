@@ -2,6 +2,8 @@
 Tests for Step 3.5 (Windows details) and Step 3.6 (Clipboard restore).
 """
 
+from contextlib import nullcontext
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -37,7 +39,7 @@ def test_volume_set_tries_pycaw_first():
     mock_devices = MagicMock()
     mock_devices.Activate.return_value = MagicMock()
 
-    with patch("executor.system_ops._get_pycaw_volume", return_value=mock_volume) as mock_get:
+    with patch("executor.system_ops._get_pycaw_volume", return_value=nullcontext(mock_volume)) as mock_get:
         result = ops.volume_set(75)
         mock_get.assert_called_once()
         mock_volume.SetMasterVolumeLevelScalar.assert_called_once_with(0.75, None)
@@ -87,3 +89,46 @@ def test_type_text_restores_clipboard_on_error():
         # Should still try to restore clipboard
         restore_calls = [c for c in mock_clip.copy.call_args_list if c.args[0] == "precious_data"]
         assert len(restore_calls) >= 1
+
+
+def test_unknown_launch_targets_never_reach_the_shell(monkeypatch):
+    ops = SystemOps()
+    launch = MagicMock()
+    monkeypatch.setattr("executor.system_ops.os.startfile", launch, raising=False)
+    for target in ["C:/temp/example.cmd", "example.bat", "ms-msdt:example", "test.exe /command"]:
+        assert not ops.open_app(target).success
+    launch.assert_not_called()
+
+
+def test_mute_and_unmute_are_idempotent():
+    endpoint = MagicMock()
+    ops = SystemOps()
+    with patch("executor.system_ops._get_pycaw_volume", return_value=nullcontext(endpoint)):
+        for muted in [True, True, False, False]:
+            endpoint.GetMute.return_value = muted
+            assert ops.volume_mute(muted).success
+            endpoint.SetMute.assert_called_with(muted, None)
+
+
+def test_os_and_browser_dispatch_errors_propagate():
+    import subprocess
+    from executor.browser_ops import BrowserOps
+    with patch("executor.browser_ops.webbrowser.open", return_value=False):
+        assert not BrowserOps().open_url("https://example.com").success
+        assert not BrowserOps().web_search("test").success
+    with patch("executor.system_ops.subprocess.run", side_effect=subprocess.CalledProcessError(1, "shutdown")) as run:
+        assert not SystemOps().shutdown("restart").success
+        assert run.call_args.kwargs["check"] is True
+
+
+def test_app_lookup_ignores_executable_in_working_directory(tmp_path, monkeypatch):
+    from executor.system_ops import installed_application
+    installed, working = tmp_path / "bin", tmp_path / "work"
+    installed.mkdir()
+    working.mkdir()
+    for directory in [installed, working]:
+        (directory / "sample.exe").write_bytes(b"synthetic")
+    monkeypatch.chdir(working)
+    import os
+    monkeypatch.setenv("PATH", os.pathsep.join([str(working), str(installed)]))
+    assert installed_application("sample.exe") == installed / "sample.exe"

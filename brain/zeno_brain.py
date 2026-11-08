@@ -44,6 +44,7 @@ class ZenoBrain:
         self.goal_planner = GoalPlanner(self.nlu, self.planner)
         self.client = None
         self.awaiting_clarification = False
+        self.pending_folder_location = None
         self.awareness = None
         self._init_chat_client()
 
@@ -107,6 +108,7 @@ class ZenoBrain:
         from .companion import conversation_text, social_opening, CLEAR_REQUESTS, STYLES, PROFILES
         chat_text = conversation_text(clean_text)
         if lowered in CLEAR_REQUESTS or (chat_text is not None and chat_text.lower().rstrip('.!?') in CLEAR_REQUESTS):
+            self.pending_folder_location = None
             self.memory.clear_short_term()
             self.awaiting_clarification = False
             return BrainResponse(kind='chat', message='Cleared the conversation context for this session. Saved facts and copies in the interface or provider are unchanged.')
@@ -133,6 +135,7 @@ class ZenoBrain:
         if chat_text is None and social_opening(clean_text):
             chat_text = clean_text
         if chat_text is not None:
+            self.pending_folder_location = None
             self.awaiting_clarification = False
             reply = await self._generate_conversational_reply(chat_text)
             self.memory.add_turn('user', chat_text)
@@ -155,12 +158,40 @@ class ZenoBrain:
         # 0. Emergency Stop / Abort intent (Pre-NLU kill switch)
         # ----------------------------------------------------------------------
         if lowered in ("stop", "cancel", "cancel everything", "abort", "halt", "kill", "emergency stop"):
+            self.pending_folder_location = None
             reply = "Emergency stop acknowledged. Stopping all actions."
             self.memory.add_turn("user", clean_text)
             self.memory.add_turn("zeno", reply)
             return BrainResponse(kind="abort", message=reply)
 
         task_match = re.match(r"^(?:agent(?:\s+task)?|task)(?:\s*:\s*|\s+)(.+)$|^(?:do this task|complete this task)\s*[:,]?\s+(.+)$", clean_text, re.I | re.S)
+        from .folder_intent import folder_request, folder_name
+        folder_text = next((part for part in task_match.groups() if part), clean_text) if task_match else clean_text
+        folder = folder_request(folder_text)
+        folder_agent = bool(agent_mode or task_match)
+        if folder is None and self.pending_folder_location:
+            name = folder_name(clean_text)
+            explicit_name = re.match(r'^(?:call it|name it|name the folder|call the folder)\s+', clean_text, re.I)
+            # Multi-word names can be supplied with "call it ...". A new command takes precedence.
+            bare_name = len(clean_text.split()) == 1 and not is_direct_command(clean_text)
+            if name and (explicit_name or bare_name):
+                location, pending_agent = self.pending_folder_location
+                folder_agent = folder_agent or pending_agent
+                folder = {'location': location, 'name': name}
+            self.pending_folder_location = None
+        if folder:
+            self.awaiting_clarification = False
+            self.memory.add_turn('user', clean_text)
+            if not folder['name']:
+                self.pending_folder_location = (folder['location'], folder_agent)
+                question = f'What should I name the folder in {folder["location"]}? For a name with spaces, say "call it" followed by the name.'
+                self.memory.add_turn('zeno', question)
+                return BrainResponse(kind='chat', message=question)
+            self.pending_folder_location = None
+            command = {'understood': True, 'action': 'folder_create',
+                       'parameters': {'path': folder['location'] + '/' + folder['name']}}
+            return BrainResponse(kind='action', message='Creating the folder.',
+                                 actions=self.planner.plan(command), data={**command, 'agent_mode': folder_agent})
         if agent_mode or task_match:
             goal = next((part for part in task_match.groups() if part), clean_text) if task_match else clean_text
             return BrainResponse(kind="task", message=goal, data={"goal": goal})
@@ -207,7 +238,9 @@ class ZenoBrain:
         # ----------------------------------------------------------------------
         # 4. OS Automation Action intent
         # ----------------------------------------------------------------------
-        if reasoning_available(self.client) and (self.awaiting_clarification or not is_direct_command(clean_text)):
+        from .nlu import split_commands
+        direct = all(is_direct_command(part) for part in split_commands(clean_text))
+        if reasoning_available(self.client) and (self.awaiting_clarification or not direct):
             try:
                 decision = await route_request(self, clean_text)
                 self.memory.add_turn("user", clean_text)
@@ -222,7 +255,7 @@ class ZenoBrain:
                                      data={"service_error": last_api_failure() or "invalid_response"})
 
         # Offline mode must not mistake a question containing 'restart' for a power command.
-        if not reasoning_available(self.client) and not is_direct_command(clean_text):
+        if not reasoning_available(self.client) and not direct:
             from .companion import offline_reply
             reply = offline_reply(clean_text)
             self.memory.add_turn("user", clean_text)
@@ -246,6 +279,8 @@ class ZenoBrain:
         # ----------------------------------------------------------------------
         # 5. Conversational Reasoning / Q&A Fallback
         # ----------------------------------------------------------------------
+        if action_type == "blocked":
+            return BrainResponse(kind="chat", message=nlu_result["confirmation_message"])
         chat_reply = await self._generate_conversational_reply(clean_text)
         self.memory.add_turn("user", clean_text)
         self.memory.add_turn("zeno", chat_reply)

@@ -34,7 +34,8 @@ from brain.interaction import action_record, outcome_reply
 from executor.task_executor import TaskExecutor
 from logging.handlers import RotatingFileHandler
 from executor.permissions import PermissionManager
-from executor.agent_runner import AgentRunner, coordinator
+from executor.agent_runner import TaskRun, coordinator
+from desktop.control import RunControl
 from brain.planner import describe_action
 from voice.listener import parse_confirmation
 from awareness.service import AwarenessService
@@ -162,14 +163,23 @@ class VoiceAgentApp:
         """End-to-end processing pipeline for a spoken or typed command."""
         print(f"\n👤 [User]: \"{user_text}\"")
 
-        # Step 1: Cognitive Processing via ZENO Brain
-        brain_resp = await self.brain.think(user_text)
+        run = TaskRun(user_text, "local")
+        if not coordinator.begin(run):
+            self.speaker.speak("ZENO is busy with another request.")
+            return
+        try:
+            await self._run_local_command(user_text, RunControl(run.cancelled))
+        finally:
+            coordinator.finish(run)
+
+    async def _run_local_command(self, user_text, control):
+        brain_resp = await control.wait(self.brain.think(user_text))
 
         if brain_resp.kind == "task":
             async def progress(message):
                 print(f"[Task] {message}")
             report = await TaskRunner(self.brain, self.permissions).run(
-                brain_resp.message, self.approve_local_task, progress)
+                brain_resp.message, self.approve_local_task, progress, control=control)
             print(report.summary())
             print(f"Task report: {report.report_path}")
             if getattr(self, 'awareness', None):
@@ -207,7 +217,7 @@ class VoiceAgentApp:
                 if action.action_type in getattr(config, "AUTO_APPROVE_ACTIONS", set()) and action.risk_level == "low":
                     self.permissions.log_decision(action, True, source="auto", reason="Auto-approved safe read-only action")
                 else:
-                    approved = await self.approve_local_task(action)
+                    approved = await control.wait(self.approve_local_task(action))
                     if not approved:
                         cancel_msg = f"Cancelled: '{action.description}' was not approved."
                         print(f"❌ {cancel_msg}")
@@ -218,7 +228,7 @@ class VoiceAgentApp:
 
             # Step 4: Execution
             print(f"⚡ [Executing]: {action.description}...")
-            result = await asyncio.to_thread(self.planner.execute_action, action)
+            result = await control.call(self.planner.execute_action, action)
             self.permissions.log_result(action, result, source="local")
             records.append(action_record(action, result))
 
@@ -448,6 +458,8 @@ def main():
     parser.add_argument('--setup-speech', action='store_true', help='Download and validate the local faster-whisper model')
     parser.add_argument('--wake-word', action='store_true', help='Require Hey ZENO before opening a short voice conversation')
     parser.add_argument('--desktop', action='store_true', help='Open the native Windows press-to-talk app (no remote server)')
+    # start_zeno.bat handles window visibility and forwards the original argv.
+    parser.add_argument("--background", "-b", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     if args.voice:

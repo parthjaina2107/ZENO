@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+from user_paths import user_folder
 
 # Base Directory
 BASE_DIR = Path(__file__).resolve().parent
@@ -156,7 +157,7 @@ class Config:
     AGENT_TIMEOUT: int = max(10, int(os.getenv("AGENT_TIMEOUT", "180")))
     AGENT_AUTO_ACTIONS: set = {
         "system_info", "list_apps", "open_app", "open_url", "web_search",
-        "volume_set", "media_control", "wait",
+        "volume_set", "volume_mute", "media_control", "wait",
     }
 
     # Auto-Approve Policy (safe read-only actions skip confirmation)
@@ -205,10 +206,12 @@ class Config:
         "open_url": "low",
         "web_search": "low",
         "volume_set": "low",
+        "volume_mute": "low",
         "type_text": "medium",
         "keyboard_shortcut": "medium",
         "mouse_click": "medium",
         "file_create": "medium",
+        "folder_create": "medium",
         "file_move": "medium",
         "file_copy": "medium",
         "file_search": "low",
@@ -231,6 +234,9 @@ class Config:
     # By default, file ops are constrained within user directories
     USER_HOME = Path.home()
     ALLOWED_DIRS = [
+        str(user_folder('desktop')),
+        str(user_folder('documents')),
+        str(user_folder('downloads')),
         str(USER_HOME / "Documents"),
         str(USER_HOME / "Desktop"),
         str(USER_HOME / "Downloads"),

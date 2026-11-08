@@ -6,7 +6,20 @@ from fastapi.testclient import TestClient
 from server.app import app
 from server.auth import auth_manager
 
-client = TestClient(app)
+import pytest
+from server.pairing import DeviceRegistry
+
+client = TestClient(app, client=("127.0.0.1", 50000))
+
+
+@pytest.fixture(autouse=True)
+def isolate_devices(tmp_path, monkeypatch):
+    from importlib import import_module
+    monkeypatch.setattr(import_module("server.app"), "device_registry", DeviceRegistry(tmp_path / "devices.json"))
+    from config import config
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(config, "MEMORY_FILE", str(tmp_path / "memory.json"))
+    monkeypatch.setattr(auth_manager, "_attempts", {})
 
 
 def test_health_endpoint():
@@ -132,7 +145,7 @@ def test_websocket_command_approval_no_deadlock():
         assert req_id is not None
 
         # Client sends approval
-        ws.send_json({"type": "permission_response", "request_id": req_id, "approved": True})
+        ws.send_json({"type": "permission_response", "request_id": req_id, "action_id": msg1["action_id"], "approved": True})
 
         # Server must process approval and send success response without deadlocking
         msg2 = ws.receive_json()
@@ -204,3 +217,84 @@ def test_remote_routine_multistep_executes_without_permission_prompts():
     permissions.request_plan_review_remote.assert_not_called()
 
 
+def test_proxy_headers_from_a_direct_peer_cannot_rotate_lockout_identity():
+    direct = TestClient(app, client=("192.0.2.123", 50000))
+    for i in range(11):
+        result = direct.post("/auth", data={"token": "invalid"}, headers={
+            "X-Forwarded-For": f"198.51.100.{i}", "X-Forwarded-Proto": "https"})
+    assert result.status_code == 429
+
+
+def test_expired_lockout_gives_a_fresh_attempt_window():
+    import time
+    auth_manager._attempts["test-peer"] = {"count": 10, "lockout_until": time.time() - 1}
+    assert not auth_manager.verify_passphrase("bad", "test-peer")
+    assert auth_manager._attempts["test-peer"]["count"] == 1
+    assert not auth_manager.is_locked_out("test-peer")[0]
+
+
+def test_repair_cannot_revive_prior_token_and_audit_skips_damaged_rows(tmp_path, monkeypatch):
+    from importlib import import_module
+    from config import config
+    server = import_module("server.app")
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    data = {"token": auth_manager.access_token, "device_id": "repeat"}
+    old = client.post("/auth", data=data).json()["jwt_token"]
+    assert server.device_registry.revoke("repeat")
+    new = client.post("/auth", data=data).json()["jwt_token"]
+    for endpoint in ["/health", "/api/devices", "/api/audit"]:
+        assert client.get(endpoint, headers={"Authorization": "Bearer " + old}).status_code == 401
+    path = tmp_path / "audit_log.jsonl"
+    path.write_bytes(b"x" * (5 * 1024 * 1024) + b'\n{"event":"a"}\nbroken\n[]\n{"event":"b"}\n')
+    result = client.get("/api/audit", headers={"Authorization": "Bearer " + new}).json()
+    assert result == {"events": [{"event": "a"}, {"event": "b"}], "skipped": 2, "truncated": True}
+
+
+def test_idle_socket_expires_after_authentication(monkeypatch):
+    import time
+    import jwt
+    from starlette.websockets import WebSocketDisconnect
+    import importlib
+    server = importlib.import_module("server.app")
+    record = server.device_registry.pair("short", "short", "test")
+    expires = time.time() + 1.5
+    token = jwt.encode({"sub": "test", "device_id": "short", "generation": record["generation"], "exp": expires},
+                       auth_manager.secret_key, algorithm=auth_manager.algorithm)
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "auth", "token": token})
+        assert ws.receive_json()["type"] == "auth_ok"
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 4001
+
+
+def test_registry_keeps_concurrent_worker_changes(tmp_path):
+    import subprocess
+    import sys
+    path = tmp_path / "devices.json"
+    registry = DeviceRegistry(path)
+    registry.pair("revoked", "existing", "local")
+    code = """
+import importlib.util
+import sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("pairing_worker", "server/pairing.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+registry = module.DeviceRegistry(Path(sys.argv[1]))
+for i in range(12):
+    registry.pair(sys.argv[2] + str(i), "worker", "localhost")
+    registry.touch("revoked", "localhost")
+"""
+    workers = [subprocess.Popen([sys.executable, "-c", code, str(path), prefix]) for prefix in ["a", "b", "c"]]
+    try:
+        assert registry.revoke("revoked")
+        for worker in workers:
+            assert worker.wait(timeout=30) == 0
+    finally:
+        for worker in workers:
+            if worker.poll() is None:
+                worker.kill()
+                worker.wait()
+    assert len(registry.list_safe()) == 37
+    assert not registry.is_active("revoked")

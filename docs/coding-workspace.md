@@ -55,7 +55,9 @@ This does not permit an entire home folder or drive root.
 
 1. Consent is requested before reading/sending supported workspace context.
 2. A temporary snapshot excludes common dependencies, `.git`, `.env*` files and
-   named credential files. PDF/DOCX text is added as context. These filters are
+   named credential files, including `google-client.json` and `client_secret*`. ZENO account,
+   memory, report and paired-device data are excluded. The coding process also omits ZENO remote
+   access, JWT, ngrok and Google AI credentials from its inherited environment. PDF/DOCX text is added as context. These filters are
    not a secret scanner: source can still contain private data.
 3. Codex uses its read-only sandbox, high reasoning effort and JSON output schema.
    The prompt prohibits network use, outside-folder reads, installs and project

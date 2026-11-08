@@ -74,3 +74,48 @@ async def test_local_loop_listens_for_stop_during_execution():
     await asyncio.wait_for(app.run_local_loop(), 2)
     assert started.is_set()
     assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_local_call_keeps_ownership_until_worker_returns():
+    import threading
+    from unittest.mock import AsyncMock
+    from executor.agent_runner import coordinator
+    from brain.planner import ActionResult
+    app = VoiceAgentApp.__new__(VoiceAgentApp)
+    app.speaker = MagicMock()
+    app.permissions = MagicMock()
+    app.brain = MagicMock()
+    action = PlannedAction("system_info", {"type": "battery"}, requires_permission=False)
+    app.brain.think = AsyncMock(return_value=MagicMock(kind="action", actions=[action, action]))
+    app.planner = MagicMock()
+    started, release = threading.Event(), threading.Event()
+    def worker(action):
+        started.set()
+        assert release.wait(5)
+        return ActionResult(True, "Observed")
+    app.planner.execute_action.side_effect = worker
+    task = asyncio.create_task(app.process_user_command("local probe"))
+    try:
+        assert await asyncio.to_thread(started.wait, 3)
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert coordinator.active.source == "local" and not task.done()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    app.planner.execute_action.assert_called_once()
+    assert coordinator.active is None
+
+
+@pytest.mark.parametrize("flag", ["-b", "--background"])
+def test_legacy_launcher_arguments_reach_the_cli(flag, monkeypatch):
+    import main
+    agent = MagicMock()
+    monkeypatch.setattr(main, "VoiceAgentApp", agent)
+    monkeypatch.setattr("brain.ollama_runtime.start_local_runtime", lambda: None)
+    monkeypatch.setattr("sys.argv", ["main.py", "--mode", "all", flag, "--port", "4321"])
+    main.main()
+    agent.assert_called_once_with(mode="all", port=4321)
+    agent.return_value.run.assert_called_once()

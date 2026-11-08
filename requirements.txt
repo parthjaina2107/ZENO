@@ -5,12 +5,13 @@ pyaudio==0.2.14
 
 # AI Brain
 google-genai==2.25.0
+pyasn1>=0.6.5
 
 # System Automation & Monitoring
 pyautogui==0.9.54
 psutil==7.2.2
 pyperclip==1.11.0
-pillow==12.3.0
+pillow==13.0.0
 send2trash==2.1.0
 pywin32==312
 pycaw==20260927
@@ -21,7 +22,7 @@ uvicorn[standard]==0.54.0
 websockets==16.1.1
 python-multipart==0.0.32
 jinja2==3.1.6
-python-jose[cryptography]==3.5.0
+PyJWT==2.15.1
 httpx==0.28.1
 
 # Security & Config

@@ -24,6 +24,9 @@ VS Code to open. This uses a separately signed-in Codex CLI. Generated code and
 runtime tests are not executed automatically. See
 [coding workspace setup and limits](docs/coding-workspace.md).
 
+Separate experiment: [Aurora standalone lyric companion](standalone/aurora/README.md)
+has its own launcher and setup; it is not integrated into ZENO.
+
 Say **“Zeno, task open Notepad then type Hello ZENO”**, type
 `task: check battery then check cpu usage`, or enable **Agent task mode** in the phone UI.
 ZENO turns the request into validated actions, shows its plan, executes a phase,
@@ -146,10 +149,13 @@ uv pip install --python .venv/Scripts/python.exe -r requirements-desktop.txt
 ```
 
 Or double-click `Start-ZENO.cmd` after installing dependencies. Hover over the
-island for compact voice/text controls; move away to collapse it. Choose
+island for compact voice/text controls; move away to collapse an idle panel. Typing and approvals keep it open. Choose
 **Dashboard** to open the full glass workspace in a separate window. Both share
 the native controller. **Preferences** on the island opens Preferences inside that same black dashboard,
-including shortcut and microphone controls. See the [upgrade steps](docs/setup.md#persistent-desktop-island-and-separate-dashboard).
+including shortcut and microphone controls. See the [upgrade steps](docs/setup.md#persistent-desktop-island-and-separate-dashboard)
+and [native Dynamic Island design and preview](docs/island-21st.md).
+The [liquid-glass UI](docs/liquid-glass.md) covers the workspace, settings,
+dialogs, audit page and island.
 
 Choose your own shortcut in dashboard Preferences: press it once to listen, speak and pause
 to send, then press **the same shortcut while busy to stop**. The microphone is

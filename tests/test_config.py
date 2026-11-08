@@ -53,10 +53,12 @@ def test_ensure_secrets_creates_random_values(tmp_path):
 
 
 def test_token_forged_with_old_default_secret_rejected():
-    from jose import jwt
+    import jwt
     from server.auth import AuthManager
     am = AuthManager()
     am.secret_key = "new-random-secret-key-123456789012"
     old_default_secret = "voiceagent-jwt-super-secret-key"
-    forged = jwt.encode({"sub": "mobile_client", "role": "controller"}, old_default_secret, algorithm="HS256")
+    import pytest
+    with pytest.warns(jwt.InsecureKeyLengthWarning):
+        forged = jwt.encode({"sub": "mobile_client", "role": "controller"}, old_default_secret, algorithm="HS256")
     assert am.verify_session_token(forged) is None

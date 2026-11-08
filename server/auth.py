@@ -5,10 +5,10 @@ and brute-force rate-limiting protection.
 """
 
 import time
-import hashlib
+import hmac
 import logging
 from typing import Optional, Dict, Any
-from jose import jwt, JWTError
+import jwt
 from config import config, ensure_secrets, KNOWN_DEFAULT_ACCESS_TOKENS, KNOWN_DEFAULT_JWT_SECRETS
 
 logger = logging.getLogger("VoiceAgent.Auth")
@@ -40,6 +40,8 @@ class AuthManager:
         lockout_until = record.get("lockout_until", 0)
         if now < lockout_until:
             return True, int(lockout_until - now)
+        if lockout_until:
+            self._attempts.pop(client_id, None)
         return False, 0
 
     def record_attempt(self, client_id: str, success: bool):
@@ -70,11 +72,11 @@ class AuthManager:
             return False
 
         # Constant-time comparison
-        valid = hashlib.sha256(candidate.strip().encode()).digest() == hashlib.sha256(self.access_token.encode()).digest()
+        valid = hmac.compare_digest(candidate.strip().encode(), self.access_token.encode())
         self.record_attempt(client_id, valid)
         return valid
 
-    def create_session_token(self, client_id: str = "remote-user", device_id: str = "") -> str:
+    def create_session_token(self, client_id: str = "remote-user", device_id: str = "", generation: str = "") -> str:
         """Create a 24-hour JWT session token."""
         now = int(time.time())
         expires = now + (self.expiration_hours * 3600)
@@ -84,6 +86,7 @@ class AuthManager:
             "exp": expires,
             "role": "controller",
             "device_id": device_id,
+            "generation": generation,
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
@@ -94,7 +97,7 @@ class AuthManager:
         try:
             payload = jwt.decode(token_str, self.secret_key, algorithms=[self.algorithm])
             return payload
-        except JWTError as e:
+        except jwt.InvalidTokenError as e:
             logger.debug(f"Invalid session token: {e}")
             return None
 

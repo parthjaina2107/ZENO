@@ -1,5 +1,28 @@
 # Windows setup guide
 
+## Separate Aurora prototype
+
+The independent music-lyrics prototype lives in `standalone/aurora`. Follow its
+[own setup guide](../standalone/aurora/README.md) and launcher; it has a separate
+environment and does not use ZENO accounts, keys or services. Its optional Windows
+media bridge supports optional LRCLIB lookup, local lyrics/preset storage, desktop
+overlay and opt-in tray/startup operation. Spotify play/pause and a YouTube Music
+sample with automatic lyrics were checked; full player smoke tests remain pending;
+an unsigned local portable build is available. ZENO installation and upgrades do
+not require Aurora dependencies. Aurora's guide documents its separate storage,
+online metadata transmission and startup removal.
+Aurora hosts desktop ambience below the icons in Explorer's wallpaper layer
+(`--desktop` or **Show desktop ambience**), remembered between launches. Restart
+Aurora after updating to remove the older canvas that covered icons. It runs while
+Aurora is open and preserves your saved wallpaper/lock screen. Unknown shell layouts
+leave ambience hidden; toggle it again after Explorer recreates its desktop.
+`--player Spotify.exe` selects Spotify explicitly. New tracks fetch automatically;
+temporary lookup failures retry with backoff. Search accepts matching title, lead
+artist and duration across album releases without requiring version selection.
+The reference-inspired Edge light appearance is selected once on upgrade: dark
+centre, perimeter glow and floating lyrics. Restart Aurora to apply it; old styles
+remain in the style selector. No dependency, account or wallpaper-setting changes.
+
 This guide covers the source-based development preview. There is no signed ZENO
 installer yet. Follow these steps in PowerShell as your normal Windows user.
 Administrator privileges are not required for the usual installation.
@@ -202,10 +225,10 @@ without a terminal.
    blocks it, review microphone access for desktop apps in Windows Settings.
 4. Press your shortcut once. Wait for **Listening**, say **“what time is it”**,
    then pause naturally. There are 15 seconds to begin and 25 seconds per phrase.
-   A small floating panel appears near the bottom of the screen containing your
-   pointer, even when the settings window is hidden. It shows microphone activity,
-   the recognized command after transcription, and progress without taking focus.
-   It disappears four seconds after the request finishes.
+   The island appears at the top of the screen. Click the listening pill for
+   controls. Hover over the idle pill to see the transcript and progress.
+   It returns to its compact size when you move away. An open draft or pending
+   approval keeps the panel expanded.
    In **Voice & microphone**, choose the pause before sending: **Quick (0.6s)**,
    **Balanced (0.9s)** or **Relaxed (1.4s)**. Quick is the new default, including
    for existing settings files. Choose Relaxed if your phrases get cut short.
@@ -284,6 +307,14 @@ git pull --ff-only
 .\.venv\Scripts\python.exe main.py --desktop
 ```
 
+This update upgrades Pillow and replaces python-jose with PyJWT for HS256 remote
+sessions. Update the virtual environment before starting ZENO. In an existing
+ZENO-only virtual environment, remove the retired packages with
+`.\.venv\Scripts\python.exe -m pip uninstall -y python-jose ecdsa`. For a uv-managed
+environment use `uv pip uninstall --python .venv/Scripts/python.exe python-jose ecdsa`
+after installing the updated requirements with uv. Keep your existing access token
+and JWT signing key. Existing unexpired device-generation sessions remain valid.
+
 If Git reports local changes or refuses the pull, preserve and resolve your edits
 before continuing. Do not reset or overwrite them. Compare the updated
 `.env.example` with your own `.env` and add new settings manually. Do not replace
@@ -325,17 +356,30 @@ The web dashboard is served by the same FastAPI process as `/auth`, `/ws`, and
 `http://127.0.0.1:8765` (or your configured `SERVER_PORT`). Your normal `.env`
 configuration supplies provider keys; never copy them into frontend code.
 
-After upgrading, restart ZENO and refresh the browser. Older sessions may need
-one fresh sign-in to pair the browser. The UI creates a random browser device ID,
+After upgrading, restart ZENO and refresh the browser. Sessions issued before the device-generation upgrade require
+one fresh sign-in. Existing paired-device records upgrade at sign-in. Keep the
+project directory writable for the registry and its adjacent `paired_devices.lock`. The UI creates a random browser device ID,
 submits it with the access token, and sends the returned JWT as the first
-WebSocket message. Revoked devices cannot submit further commands or approvals.
+WebSocket message. Expiration closes an open connection. Revoking and later
+re-pairing the same device leaves its earlier sessions invalid.
+
+Terminal commands run a single allowlisted diagnostic. Use `run command hostname`
+or `run command echo Hello ZENO` for a local check. Shell chains and redirection
+are rejected. Use `route print`, `arp -a`, or `ipconfig /all` for read-only
+network diagnostics. File creation and copying require a free destination name. Closing an app matches
+its exact executable or known app name, such as `close Microsoft Edge`.
 
 Agent task mode supports explicit offline sequences and bounded model planning.
+For a multi-word folder name, answer the clarification with `call it Project Notes`.
+A remote agent folder request still needs plan approval after that answer. An approval
+must include both the request ID and action ID. Refresh older browser clients after
+upgrading. Local spoken approvals accept an explicit answer such as `yes` or `go ahead`.
 Single command mode preserves the configured routine-action policy. Browser voice
 input produces an editable draft: review it and press Run. Voice capture requires
 a browser that supports SpeechRecognition and microphone access; typing remains
 available. Browser preferences include spoken replies, recognition language, and
-reduced motion. Reduced motion disables cursor lighting; touch input never enables it.
+reduced motion. Changes to the operating system motion preference apply while
+the dashboard is open. Reduced motion disables cursor lighting.
 
 See [the UI verification notes](ui-redesign.md) and
 [agent implementation notes](agent-task-upgrade.md). Local CLI and native desktop
@@ -345,10 +389,18 @@ planning. Do not run independent ZENO processes against the same desktop at once
 
 ## Persistent desktop island and separate dashboard
 
+Launch ZENO with normal window visibility using `Start-ZENO.cmd` or the command
+below; forcing the GUI process into Windows hidden-window mode can hide the
+dashboard even when the island appears. If this happens, quit ZENO and relaunch
+normally. **Open workspace** also restores an existing minimized dashboard.
+Restart after updating to load this restoration fix; no installation or migration
+is required. If dashboard construction fails, the island shows a message and
+the application log records the error for diagnosis; the button can retry.
+
 `main.py --desktop` and `Start-ZENO.cmd` start the compact island. Hover opens its
 quick-access panel, not the dashboard. Moving the pointer away collapses it after
-550 ms, unless an approval needs your answer. Draft text is retained; running
-work continues. Cursor lighting follows the pointer across the island controls.
+550 ms. The panel stays open while you type or review an approval. On shorter
+displays, scroll the panel to reach all controls. Drafts survive an explicit collapse. Cursor lighting follows the pointer across the island controls.
 
 Choose **Open workspace** on the island or **Open dashboard** in the tray to open the
 full workspace in a separate resizable window. Closing it leaves the island
@@ -387,6 +439,32 @@ The island does not grant microphone access or replace Windows indicators. See t
 [interface and microphone lifecycle](desktop.md#reactive-notch-interface).
 
 ## OriginKit-inspired island update
+
+The current [liquid-metal outer shell](island-21st.md) uses a black center and
+moving chrome reflections across all island sizes. Quit ZENO from its tray menu
+and reopen `Start-ZENO.cmd` to load it. **Reduce motion** keeps the metal static.
+This changes only local native drawing; no shader/npm package, account, setting
+or saved-data migration is required.
+
+The island also adapts the supplied [GlowCard spotlight](island-21st.md): pointer
+movement lights nearby edges and action tiles. Quit from the tray and restart
+with `Start-ZENO.cmd` or `.\.venv\Scripts\python.exe main.py --desktop` to load it.
+Dashboard **Reduce motion** disables this effect for the session. No dependency
+installation, React build, account, configuration or data migration is needed.
+
+The current [liquid-glass treatment](liquid-glass.md) also applies to the workspace,
+settings, dialogs and audit page. Restart desktop mode and refresh open browser
+pages after updating. Keep `server/static/liquid-glass.css` with the bundled UI;
+the native dashboard embeds it locally. No React, Tailwind, npm installation,
+new account, environment setting or saved-data migration is required.
+
+The newer [21st.dev-inspired island](island-21st.md) supersedes the earlier
+visual treatment below. Quit ZENO from the tray and restart with
+`.\.venv\Scripts\python.exe main.py --desktop` (or `Start-ZENO.cmd`) to load it.
+No dependency installation, account, environment or settings migration is needed.
+The listening pill is now 360px wide, capped to the available screen width;
+hover still opens idle controls, and clicking opens controls during capture.
+Dashboard **Reduce motion** also disables orb drift and waveform motion.
 
 Restart desktop mode to load the redesigned native island. **Open workspace**
 opens the existing dashboard separately; **Preferences** opens its settings page.

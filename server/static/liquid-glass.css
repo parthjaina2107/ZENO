@@ -1,0 +1,155 @@
+/* Adapted from the supplied LiquidButton: layered inset reflections, frosted
+   surfaces and a small press response. Labels are never filtered or displaced. */
+:root {
+  --liquid-edge: #ffffff35;
+  --liquid-focus: #b8d6ff;
+  --liquid-shadow: 0 2px 6px #00000028, 0 0 12px #00000020,
+    inset 3px 3px .5px -3.5px #ffffff50,
+    inset -3px -3px .5px -3.5px #ffffffb0,
+    inset 1px 1px 1px -.5px #ffffff65,
+    inset -1px -1px 1px -.5px #ffffff35,
+    inset 0 0 6px 6px #ffffff08, inset 0 0 2px 2px #ffffff08;
+}
+body {
+  background: radial-gradient(ellipse at 9% 4%, #55586b30, transparent 42%),
+    radial-gradient(ellipse at 95% 55%, #43445b22, transparent 48%), #0b0b10;
+  background-attachment: fixed;
+}
+/* A solid dark foundation keeps text legible even without backdrop-filter. */
+.glass, .rail, .composer, .task-panel, .media, header {
+  background: linear-gradient(135deg, #ffffff0b, #ffffff02 44%, #ffffff06), #15151bdf;
+  border: 1px solid var(--liquid-edge);
+  border-radius: 22px;
+  box-shadow: var(--liquid-shadow), 0 16px 40px #00000024;
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  backdrop-filter: blur(20px) saturate(125%);
+}
+.hero.voice-hero {
+  background: radial-gradient(ellipse at 0% 0%, #9ebcff14, transparent 65%),
+    linear-gradient(130deg, #ffffff0c, #ffffff02), #111117e8;
+}
+.glass.pointer-lit {
+  border-color: #ffffff65;
+  box-shadow: var(--liquid-shadow), 0 12px 32px #00000030;
+}
+/* Shared button treatment also covers dynamically inserted desktop controls. */
+button {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid #ffffff2b;
+  border-radius: 999px;
+  color: #efeff5;
+  background: linear-gradient(160deg, #ffffff12, #ffffff04 50%, #ffffff0b), #1d1d25b8;
+  box-shadow: var(--liquid-shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: box-shadow 250ms, background-color 250ms, border-color 250ms,
+    transform 250ms cubic-bezier(.1,.4,.2,1), opacity 200ms;
+}
+button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 30% 0%, #ffffff18, transparent 65%),
+    linear-gradient(175deg, #ffffff08, transparent 45%, #ffffff05);
+}
+button:hover:not(:disabled) {
+  filter: none;
+  border-color: #ffffff60;
+  background-color: #343440c9;
+  box-shadow: var(--liquid-shadow), 0 4px 18px #00000030;
+}
+button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--liquid-focus);
+  outline-offset: 3px;
+}
+button.primary {
+  border-radius: 999px;
+  color: #111118;
+  background: linear-gradient(165deg, #ffffffed, #d8dae4e8);
+  border-color: #ffffffb0;
+  box-shadow: var(--liquid-shadow), inset 0 1px 0 #ffffff, 0 3px 14px #00000025;
+}
+button.primary:hover:not(:disabled) { background-color: #fff; filter: brightness(1.06); }
+.nav { border-radius: 14px; background-color: #ffffff02; }
+.nav.active { background: linear-gradient(130deg, #ffffff20, #ffffff09); box-shadow: var(--liquid-shadow); }
+.profile { padding: 12px 8px; margin-top: 12px; border-radius: 16px; }
+.profile::before { content: ""; }
+@media (min-width: 741px) and (max-width: 980px) {
+  .profile::after { content: "Y"; font-size: 13px; pointer-events: none; }
+}
+.voice-button { padding: 10px 14px; }
+.suggestions button { border-radius: 16px; background-color: #ffffff04; }
+.text-button { padding: 9px 14px; }
+.media-controls .icon-button { border: 1px solid #ffffff24; }
+.stop:not(:disabled), #approvalStop, #quitDesktop {
+  color: #ffd5d9;
+  background-color: #4b252d55;
+  border-color: #ffb1bc40;
+}
+.token-field, .search-box, select, .workspace-input, .desktop-island #desktopShortcut,
+.desktop-island #desktopMicrophone, .desktop-island #desktopPause {
+  color: #efeff5;
+  background: linear-gradient(165deg, #ffffff08, #ffffff02), #131319c9;
+  border: 1px solid #ffffff30;
+  border-radius: 14px;
+  box-shadow: inset 0 1px 3px #00000030, inset 0 -1px 0 #ffffff12;
+}
+.mode select, .search-box input, .token-field input { box-shadow: none; background: transparent; }
+option { background: #24242d; color: #f5f5f7; }
+.message, .message.user, .device-icon, .task-symbol, .empty-icon, .pill {
+  background: linear-gradient(145deg, #ffffff0a, #ffffff03);
+  border: 1px solid #ffffff20;
+  box-shadow: inset 0 1px 0 #ffffff0c;
+}
+.switch { box-shadow: inset 0 2px 4px #00000035, inset 0 0 0 1px #ffffff12; }
+.switch::before { box-shadow: 0 1px 4px #00000050, inset 0 1px 1px #ffffff80; }
+.switch:checked { background: #a9c8ef70; }
+dialog.glass {
+  background: linear-gradient(145deg, #ffffff12, #ffffff03), #1b1b24ed !important;
+  box-shadow: var(--liquid-shadow), 0 30px 100px #00000088 !important;
+  border-radius: 26px;
+}
+dialog::backdrop { background: #0808109c; backdrop-filter: blur(14px); }
+.liquid-filter { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+/* The supplied SVG optics is scoped to a decorative hover layer, never text.
+   Browsers without SVG backdrop support retain the CSS reflection and blur. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  body:has(.liquid-filter):not(.reduce-motion) button:hover:not(:disabled)::before {
+    -webkit-backdrop-filter: url("#zeno-liquid-glass") blur(1px);
+    backdrop-filter: url("#zeno-liquid-glass") blur(1px);
+  }
+}
+body.reduce-motion button, body.reduce-motion button::before { transition: none; }
+body.reduce-motion button:active:not(:disabled) { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  button, button::before { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
+@media (forced-colors: active) {
+  button, .glass, header { border: 1px solid ButtonText; box-shadow: none; }
+  button::before { display: none; }
+}
+@media (max-width: 740px) {
+  .shell, .desktop-island .shell { padding-bottom: 96px; }
+  .desktop-island .rail { top: auto; bottom: 12px; height: 62px; padding: 7px; }
+  .setting { flex-wrap: wrap; }
+  .setting > div:first-child { flex: 1 1 220px; }
+  .profile { margin-top: 0; }
+}
+/* Standalone authenticated audit view shares the same surfaces and controls. */
+.audit-page { color-scheme: dark; color: #efeff5; font: 14px 'Segoe UI', sans-serif;
+  max-width: 1000px; margin: 32px auto; padding: 0 20px; }
+.audit-page h1 { color: #f5f5f7; font-weight: 500; letter-spacing: -.8px; }
+.audit-page button { color: #efeff5; padding: 10px 20px; cursor: pointer; }
+.audit-page .audit-table { overflow-x: auto; padding: 12px 20px; margin-top: 24px; }
+.audit-page table { width: 100%; border-collapse: collapse; }
+.audit-page th, .audit-page td { padding: 14px 10px; text-align: left;
+  border-bottom: 1px solid #ffffff18; vertical-align: top; overflow-wrap: anywhere; }
+.audit-page th, .audit-page #status { color: #b5b5c2; }

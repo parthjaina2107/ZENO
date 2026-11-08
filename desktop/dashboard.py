@@ -28,9 +28,11 @@ def dashboard_html():
     # Deferred scripts retain their order; app.js receives qt.webChannelTransport.
     html = html.replace('<script defer', '<script defer src="qrc:///qtwebchannel/qwebchannel.js"></script><script defer', 1)
     extra = (STATIC / "island.css").read_text(encoding="utf-8")
+    liquid = (STATIC / "liquid-glass.css").read_text(encoding="utf-8")
+    html = html.replace('<link rel="stylesheet" href="' + STATIC.as_uri() + '/liquid-glass.css" />', '')
     preferences = (ROOT / 'desktop/preferences.html').read_text(encoding='utf-8')
     html = html.replace('<div class="settings glass">', preferences + '<div class="settings glass">', 1)
-    return html.replace('</head>', '<style>' + extra + '</style></head>')
+    return html.replace('</head>', '<style>' + extra + '\n' + liquid + '</style></head>')
 
 
 class LocalAssetsOnly(QWebEngineUrlRequestInterceptor):

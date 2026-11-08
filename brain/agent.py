@@ -29,6 +29,9 @@ class GoalPlanner:
         self.planner = planner
 
     async def decide(self, goal: str, observations: list[dict]) -> AgentDecision:
+        from .nlu import excludes_execution, split_commands
+        if any(excludes_execution(part) for part in split_commands(goal)):
+            return AgentDecision(status="clarify", message="Give an explicit command if you want me to act.")
         if not reasoning_available(self.nlu.client):
             if observations:
                 failed = any(not item["success"] for item in observations)

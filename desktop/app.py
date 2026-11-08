@@ -1,5 +1,6 @@
 """Desktop coordinator: one black dashboard and one compact island."""
 import sys
+import logging
 
 from PySide6.QtCore import QObject, Qt, QLockFile
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -54,6 +55,15 @@ class DesktopApplication(QObject):
         self.tray = QSystemTrayIcon(app_icon(), self)
         self.tray.setToolTip('ZENO - microphone off')
         menu = QMenu()
+        menu.setStyleSheet("""
+            QMenu { color: #f0f1f7; font: 12px 'Segoe UI'; padding: 7px;
+                    background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #30323e,stop:0.5 #171820,stop:1 #252733);
+                    border: 1px solid #626675; border-radius: 12px; }
+            QMenu::item { padding: 9px 24px 9px 14px; border-radius: 7px; border: 1px solid transparent; }
+            QMenu::item:selected { background: #ffffff18; border-color: #8b94ad; }
+            QMenu::item:disabled { color: #757985; }
+            QMenu::separator { height: 1px; background: #ffffff24; margin: 5px 10px; }
+        """)
         menu.addAction('Open dashboard', self.open_dashboard)
         menu.addAction('Preferences', self.reveal)
         menu.addAction('Show island', self.overlay.show)
@@ -111,14 +121,26 @@ class DesktopApplication(QObject):
         if self.closing:
             return
         if self.dashboard is None:
-            from .dashboard import DashboardWindow
-            self.dashboard = DashboardWindow(self.overlay)
-            self.dashboard.bridge.conversation_requested.connect(self.listen_conversation)
-            self.dashboard.bridge.settings_request.connect(self.handle_settings)
-            self.dashboard.bridge.quit_requested.connect(self.request_quit)
-            self.dashboard.bridge.capture_changed.connect(self.set_capture)
-            self.dashboard.setWindowIcon(app_icon())
-        self.dashboard.show()
+            try:
+                from .dashboard import DashboardWindow
+                dashboard = DashboardWindow(self.overlay)
+                dashboard.bridge.conversation_requested.connect(self.listen_conversation)
+                dashboard.bridge.settings_request.connect(self.handle_settings)
+                dashboard.bridge.quit_requested.connect(self.request_quit)
+                dashboard.bridge.capture_changed.connect(self.set_capture)
+                dashboard.setWindowIcon(app_icon())
+                self.dashboard = dashboard
+            except Exception:
+                logging.getLogger('VoiceAgent.Desktop').exception('Could not open the workspace')
+                if not self.overlay.request_id:
+                    self.overlay.caption.setText('The workspace could not open. Restart ZENO; if this continues, check the desktop dependencies and application log.')
+                self.overlay.expand()
+                return
+        # show() leaves an existing minimized window minimized on Windows.
+        if self.dashboard.isMinimized():
+            self.dashboard.showNormal()
+        else:
+            self.dashboard.show()
         self.dashboard.raise_()
         self.dashboard.activateWindow()
 

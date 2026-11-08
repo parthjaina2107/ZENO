@@ -2,6 +2,89 @@
 
 ## Unreleased
 
+- Fixed negative and hypothetical requests turning into actions, ambiguous voice
+  answers granting permission, and remote folder clarifications losing their
+  plan approval. Remote approvals now require the matching action ID. Busy,
+  oversized and failed browser requests show a terminal result.
+- The local CLI and remote executor now share command ownership in combined
+  mode. Cancellation waits for a started system action. Folder moves verify the
+  path actually used. Browser and Windows operation failures reach the caller.
+  Mute and unmute request the corresponding Windows audio state.
+- App launch resolves installed executable names. Coding snapshots filter Google
+  OAuth client files and ZENO runtime data. The legacy background launcher now
+  accepts its forwarded launcher flag, and CI installs the PDF test dependency.
+- Setup reviewed and updated. Reinstall requirements in the ZENO environment,
+  remove retired python-jose and ecdsa packages, and refresh remote clients.
+  PyJWT uses the existing HS256 key and device claims. The Pillow, oauthlib and
+  pyasn1 dependency versions include advisory fixes.
+
+- Fixed command chaining, diagnostic executable selection and file destination
+  collisions. File creation and coding edits publish fully written files.
+  Literal terminal commands work offline and return the diagnostic output.
+  Closing an app targets its exact executable. Explicit remote agent folder
+  requests use plan approval.
+- Remote sessions now expire while connected. Re-pairing cannot reactivate an
+  older token. Device updates serialize across workers, expired login lockouts
+  reset, and each connection has its own clarification and chat history.
+  The audit dashboard reads a bounded tail and reports unreadable records.
+- The island stays open during typing, scrolls on shorter displays and keeps
+  its controls on screen during expansion. The dashboard follows live system
+  motion changes. Setup reviewed and updated. Restart ZENO to load these fixes
+  and sign in again on remote browsers. No new packages are required.
+
+- Thinned the island's chrome border again, from 1.5px to 0.75px, with proportional
+  bevel strokes. Setup reviewed: drawing-only adjustment; restart desktop mode
+  to load it. No dependencies, configuration or migration changes.
+
+- Halved the island's chrome band from 3px to 1.5px, including its bevel strokes.
+  Reflections now travel around the complete perimeter in a faster, seamless
+  approximately 12-second loop, with matching start/end colors. Reduced motion
+  remains static. Setup reviewed: only drawing changes; restart desktop mode to
+  load them. No dependency, configuration or migration change is needed.
+
+- Restyled only the native island's outer shell after the Joly UI Liquid Metal
+  Button reference: black center, narrow chrome frame, flowing silver/slate
+  reflections and a pointer-driven white glint. Compact, listening and expanded
+  views share the finish. Reduced motion fixes the reflections in place; inner
+  liquid-glass controls and spotlight tiles are retained. Setup reviewed/updated:
+  restart desktop mode; no shader/npm package, setting, account or data migration.
+  Native previews are synthetic; microphone/provider checks remain manual.
+
+- Fixed Open workspace leaving a minimized dashboard minimized. The island and
+  tray now restore the existing dashboard, and construction failures are logged
+  and shown in the island instead of failing silently. Added button-driven first
+  open, minimized/closed-window reopening and failed-open retry checks. Setup
+  reviewed/updated: quit and restart through Start-ZENO.cmd; launch the GUI with
+  normal window visibility. No dependencies, settings or data migration.
+
+- Added the supplied GlowCard/spotlight-card treatment to the native Dynamic
+  Island shell, live voice card and controls. One existing pointer timer drives
+  a soft radial wash, colored edge bloom and white hotspot; hue follows horizontal
+  screen position. Reduced motion disables the spotlight, disabled controls stay
+  quiet, and microphone/approval/focus behavior is retained. Setup reviewed:
+  restart desktop mode; no dependencies, configuration, accounts or migration.
+  Added synthetic native spotlight previews; live hardware/provider checks remain
+  manual.
+
+- Applied the supplied LiquidButton glass treatment throughout ZENO's workspace,
+  activity, settings, sign-in/approval dialogs, audit page, native tray and island.
+  Shared web styling adds frosted layers, inset reflections, focus rings and
+  bounded hover refraction; original Qt painting gives native controls matching
+  reflective edges. Text remains unfiltered, reduced motion disables press/hover
+  motion, and mobile navigation/settings adapt to narrow widths. Setup reviewed:
+  restart desktop mode and refresh browser pages; no npm runtime, dependency,
+  account, configuration or data migration. Hardware/provider checks stay manual.
+
+- Restyled the native island with an Apple-inspired black pill, soft eased
+  expansion, an aurora orb, rounded action tiles and a compact 360px listening
+  view. Adapted the Dynamic Island patterns found on 21st.dev into original Qt
+  painting; no React source, remote assets or new dependencies are shipped.
+  Waveforms use measured capture levels and reduced motion keeps them static.
+  Existing approvals, commands, focus rules and dashboard routing are retained.
+  Setup reviewed and updated: restart desktop mode; no account, configuration or
+  data migration. Added reproducible synthetic native previews; live hardware
+  and provider checks remain manual.
+
 - Added local Ollama reasoning and opt-in free-tier Gemini-to-local routing.
   Cloud calls default off; an existing key alone no longer enables them. Free
   cloud requires explicit confirmation of a billing-disabled Free-tier project,
@@ -71,6 +154,50 @@
   restart/refresh; no extra dependencies or settings migration. Visual previews
   simulate microphone activity; no live mic/provider success is claimed.
 
+
+- Added Aurora's reference-inspired Edge light style: dark desktop, animated
+  perimeter glow, stacked floating lyrics, subtle clock and compact song footer.
+  The mini-overlay defaults to transparent. Timed words retain their actual
+  timestamps across visual rows; reduced motion disables drifting/pulsing. Select
+  Edge light once on upgrade, retaining older styles and per-song presets. Setup
+  reviewed/updated; restart required, no new dependencies or ZENO migration.
+
+- Fixed Aurora desktop ambience covering icons: host its window below Explorer's
+  icon layer, supporting classic WorkerW and Windows 11 raised desktops. Invalid
+  layouts hide the canvas; no icon/wallpaper settings or Explorer restarts required.
+  Restart Aurora to replace the old overlay. New-song lookups now survive cooldowns
+  and automatically retry transient failures with capped backoff. Equivalent
+  recordings on different album releases are selected automatically. Setup and
+  diagnostics updated; no new dependencies, credentials or ZENO migration.
+
+- Fixed Aurora lyric lookup for direct endpoint failures with one bounded search
+  fallback. Accept up to five seconds of duration difference while retaining title,
+  artist and album checks. The reported Spotify recording had available lyrics but
+  a four-second provider duration mismatch and a direct endpoint 503.
+  Added a shared click-through desktop ambience canvas, cover artwork, brighter
+  artwork palettes and late-artwork retries. Player choice and desktop visibility
+  persist; `--desktop` and `--player` are documented in setup. No wallpaper, startup
+  or ZENO settings are changed by installation. Provider availability still varies.
+
+- Extended standalone Aurora with opt-in LRCLIB lookup, strict recording matching,
+  bounded/cancellable requests, cached/imported lyrics and per-song presets. Added
+  enhanced-LRC word highlighting, smooth artwork palette transitions, draggable
+  translucent overlay, source selection, tray and opt-in Windows startup. Added
+  unsigned portable build and isolated smoke commands. Setup reviewed/updated for
+  Aurora storage, privacy, startup and build paths; no ZENO migration or credentials
+  changed. Spotify play/pause and YouTube Music in Chrome were checked; the latter
+  loaded artwork and 47 timed lyric lines through the full app path. Fixed selected
+  player preservation when recreating the reader and tolerated malformed cache origins;
+  full player smoke tests and distribution rights remain pending. Secure Windows
+  lock-screen replacement is unsupported, not marked complete.
+
+- Added an independent Aurora desktop prototype under `standalone/aurora`, with
+  silent sample lyrics, local LRC imports, artwork-derived colours, appearance
+  controls, fullscreen and an optional Windows media-session reader. It has its
+  own environment/launcher and no ZENO runtime dependency. Setup reviewed and
+  linked to its guide; no ZENO environment variables or account migration needed.
+  Online lyrics and partial player verification were subsequently added above;
+  secure lock-screen rendering remains unsupported. This is not a product release.
 
 - Fixed unbounded SDK retry work behind reasoning timeouts: pass transport
   timeouts and disable nested retries; bound the fallback chain to a 36-second

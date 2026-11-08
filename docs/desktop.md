@@ -88,7 +88,7 @@ Closing the dashboard hides that window without stopping the island or a task.
 Move the pointer away to collapse the island after 550 milliseconds, followed by
 a smooth resize. Cursor position is checked across all child controls, avoiding
 stuck hover states. The silver highlight follows the cursor with smoothing.
-Leaving while typing preserves the draft; choose Type a request again to resume.
+Leaving while typing keeps the editor open. Minimize explicitly to save the draft for later.
 Leaving during a task collapses the panel without cancelling work; Stop remains
 available in the pill. Pending approvals deliberately keep the panel expanded.
 Hover does not take keyboard focus; choosing Type a request does.
@@ -157,8 +157,9 @@ and room; test a harmless command such as “what time is it” after setup.
 ## Reactive notch interface
 
 During actual microphone capture, the native island becomes a slim, top-centered
-black bar with **Listening** on the left, five cyan activity bars and a contained
-cyan glow on the right. It animates smoothly from the existing pill; measured
+black pill with **Listening** and a green capture dot on the left, nine mint/lilac
+activity bars and a contained glow on the right. Its width is capped at 360px
+and constrained to the available screen. It animates from the existing pill; measured
 microphone levels drive the bar heights. The previous full-screen edge lighting
 is removed. Hover does not open the listening bar; click it to reveal **Stop**
 and the other controls. Pending approvals always remain expanded.
@@ -172,19 +173,23 @@ UI verification uses simulated capture events and levels.
 
 ## OriginKit-inspired island
 
-The native island now uses a compact status pill, reflective brand mark, a
-ribbon-lit voice card, pointer-reactive capsule field, two quick-action tiles and
-a small footer. **Type a request** focuses the input; **Open workspace** opens
+The current [liquid-glass UI](liquid-glass.md) adds frosted surfaces and layered
+reflections across both the dashboard and island. Restart desktop mode to load it.
+
+The earlier OriginKit treatment has been replaced by the
+[21st.dev-inspired Native Dynamic Island](island-21st.md). It uses a black status
+pill, an aurora orb, a state-aware voice card, two quick-action tiles and a small
+footer. **Type a request** focuses the input; **Open workspace** opens
 the separate black dashboard. **Preferences** opens dashboard Preferences and
 **Minimize** returns to the pill. Hover-away collapse and request-bound approvals
 retain their existing behavior. The panel grows to fit typed input and approval
 controls, within the available screen size.
 
-These are original Qt adaptations of OriginKit's visual/motion references, not
+These are original Qt adaptations of community visual/motion references, not
 embedded web components. Runtime drawing is local. Lucide icons are bundled with
 their upstream license; no web downloads or new packages are needed. Reduced
-motion stops ribbon drift, pointer rings and button hover transitions while
-retaining static capture indicators. See [reference and validation notes](originkit-island.md).
+motion stops orb drift, pointer glow and button hover transitions while
+retaining static capture indicators. See [reference and validation notes](island-21st.md).
 
 ## Coding tasks
 

@@ -23,7 +23,7 @@ class BrowserOps:
             if opened:
                 return ActionResult(success=True, message=f"Opened browser at: {target}")
             else:
-                return ActionResult(success=True, message=f"Dispatched URL to system browser: {target}")
+                return ActionResult(False, "The browser could not open this URL.", error="BROWSER_UNAVAILABLE")
         except Exception as e:
             logger.error(f"Failed to open URL '{target}': {e}")
             return ActionResult(success=False, message=f"Failed to open URL: {e}", error=str(e))
@@ -34,7 +34,8 @@ class BrowserOps:
         encoded = urllib.parse.quote_plus(clean_query)
         search_url = f"https://www.google.com/search?q={encoded}"
         try:
-            webbrowser.open(search_url, new=2)
+            if not webbrowser.open(search_url, new=2):
+                return ActionResult(False, "The browser could not open the search.", error="BROWSER_UNAVAILABLE")
             return ActionResult(success=True, message=f"Searching Google for: '{clean_query}'")
         except Exception as e:
             logger.error(f"Failed to execute web search: {e}")

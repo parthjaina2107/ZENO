@@ -57,7 +57,8 @@ def parse_confirmation(text: Optional[str]) -> Optional[bool]:
     if has_deny:
         return False
 
-    if has_approve:
+    affirmative = " ".join(cleaned.strip(" .!,").split())
+    if affirmative in APPROVE_TOKENS or affirmative in APPROVE_PHRASES:
         return True
 
     return None

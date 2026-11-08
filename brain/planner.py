@@ -50,6 +50,9 @@ class WebSearchParams(BaseModel):
 class VolumeParams(BaseModel):
     level: conint(ge=0, le=100)
 
+class VolumeMuteParams(BaseModel):
+    muted: bool
+
 class TypeTextParams(BaseModel):
     text: str = Field(..., min_length=1)
 
@@ -106,10 +109,12 @@ ACTION_PARAM_MODELS: Dict[str, Type[BaseModel]] = {
     "open_url": OpenUrlParams,
     "web_search": WebSearchParams,
     "volume_set": VolumeParams,
+    "volume_mute": VolumeMuteParams,
     "type_text": TypeTextParams,
     "keyboard_shortcut": KeyboardShortcutParams,
     "mouse_click": MouseClickParams,
     "file_create": FileCreateParams,
+    "folder_create": FileDeleteParams,
     "file_delete": FileDeleteParams,
     "file_move": FileMoveParams,
     "file_copy": FileCopyParams,
@@ -189,6 +194,8 @@ def describe_action(action: PlannedAction) -> str:
     elif act_type == "file_delete":
         path = params.get("path", "")
         return f'Delete file: "{path}"'
+    elif act_type == "folder_create":
+        return f'Create folder: "{params.get("path", "")}"'
     elif act_type == "file_create":
         path = params.get("path", "")
         return f'Create file: "{path}"'
@@ -230,6 +237,8 @@ def describe_action(action: PlannedAction) -> str:
     elif act_type == "web_search":
         query = params.get("query", "")
         return f'Search web for: "{query}"'
+    elif act_type == "volume_mute":
+        return "Mute system volume" if params["muted"] else "Unmute system volume"
     elif act_type == "volume_set":
         lvl = params.get("level", 50)
         return f'Set volume to {lvl}%'

@@ -58,7 +58,7 @@ class AgentRunner:
         run = TaskRun(goal, self.source)
         if not coordinator.begin(run):
             await self.emit({"type": "response", "message": "ZENO is busy with another task. Stop it or wait for completion."})
-            return
+            return "blocked"
         terminal_status = "failed"
         terminal_message = "Task failed."
         async def event(status, message, **extra):
@@ -86,11 +86,12 @@ class AgentRunner:
 
         try:
             seen = set()
-            rounds = config.AGENT_MAX_ROUNDS if agent_mode else 1
+            explicit_plan = bool(actions)
+            rounds = config.AGENT_MAX_ROUNDS if agent_mode and not explicit_plan else 1
             for round_index in range(rounds):
                 if run.cancelled.is_set():
                     raise asyncio.CancelledError
-                if agent_mode:
+                if agent_mode and not explicit_plan:
                     await event("planning", "Planning the next steps from actual results…")
                     decision = await guarded(self.brain.goal_planner.decide(goal, run.observations))
                     if decision.status != "plan":
@@ -144,7 +145,7 @@ class AgentRunner:
                         if not await guarded(self.approve(action)):
                             terminal_status, terminal_message = "cancelled", "Task cancelled: action was denied or timed out."
                             await self.emit({"type": "response", "message": terminal_message, "kind": "cancelled"})
-                            return
+                            return terminal_status
                     if run.cancelled.is_set():
                         raise asyncio.CancelledError
                     await event("running", describe_action(action), step=len(run.observations) + 1)
@@ -181,7 +182,7 @@ class AgentRunner:
                         failed = True
                         terminal_message = result.message
                         break  # Replan from failure; do not execute dependent steps.
-                if not agent_mode:
+                if explicit_plan or not agent_mode:
                     terminal_status = "failed" if failed else "completed"
                     terminal_message = "Task stopped at a failed step." if failed else "All planned steps completed."
                     break
@@ -202,3 +203,4 @@ class AgentRunner:
                 self.brain.memory.add_turn("user", goal)
                 self.brain.memory.add_turn("zeno", terminal_message)
             await event(terminal_status, terminal_message)
+        return terminal_status

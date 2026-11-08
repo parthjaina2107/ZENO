@@ -10,21 +10,24 @@ def is_direct_command(text):
     text = text.strip().rstrip('.!?')
     if re.fullmatch(r'type\s+.+', text, re.I):
         return not re.search(r'\b(that|it|the same|previous|above|instead)\b', text, re.I)
-    if re.fullmatch(r'(?:open|launch|start) notepad(?:,? and|,| then) (?:type|write) .+', text, re.I):
+    if re.fullmatch(r'(?:open|launch|start) notepad(?:,? and(?: then)?|,| then) (?:type|write) .+', text, re.I):
         return not re.search(r'\b(that|it|previous|instead)\b|\bwrite (?:a|an|the)\b', text, re.I)
     from executor.system_ops import APP_EXECUTABLE_MAP
-    from .nlu import KNOWN_WEBSITES
+    from .nlu import KNOWN_WEBSITES, RE_CMD, RE_SEARCH
+    if RE_CMD.fullmatch(text) or RE_SEARCH.fullmatch(text):
+        return True
     apps = '|'.join(re.escape(name) for name in {*APP_EXECUTABLE_MAP, *KNOWN_WEBSITES})
     if re.fullmatch(rf'(?:open|launch|start|close) (?:{apps})', text, re.I):
         return True
     patterns = (
         r'(?:open|visit|go to) https?://\S+',
         r'(?:set |change |turn )?(?:the )?volume (?:to )?\d+(?: percent|%)?',
-        r'mute(?: (?:the )?(?:sound|volume))?',
+        r'(?:mute|unmute)(?: (?:the )?(?:sound|volume))?',
         r'(?:take|capture) (?:a )?screenshot(?: please)?',
         r'(?:shutdown|shut down|restart|reboot|lock)(?: (?:my |the )?(?:computer|pc|laptop|screen))?',
         r'(?:check|get|show|what is|what\x27s) (?:my |the )?(?:battery(?: level| percentage)?|cpu usage|ram usage|disk space|ip address|current time|time)',
         r'what time is it',
+        r'pause music|play music|resume music|pause playback|play pause|skip this song|next song|next track|previous song|stop music',
     )
     return any(re.fullmatch(pattern, text, re.I) for pattern in patterns)
 
@@ -89,8 +92,19 @@ async def outcome_reply(brain, request, records, status=None, detail=''):
     brain.memory.add_turn('tool', json.dumps(evidence, ensure_ascii=False, default=str)[:12000])
     failed = next((r for r in records if not r['success']), None)
     if status in {'failed', 'blocked', 'cancelled', 'incomplete'} or failed:
-        reply = ('I stopped before completing your request. Details are in the console.'
-                 if records else 'I couldn\'t carry out that request. Details are in the console.')
+        reason = str((failed or {}).get('message') or detail).lower()
+        if 'outside permitted' in reason or 'access denied' in reason:
+            reply = 'That location is outside the permitted folders. Use Desktop, Documents or Downloads and give me the folder or file name.'
+        elif 'reasoning' in reason or 'model' in reason or 'timeout' in reason:
+            reply = 'Local AI could not finish planning the next step. Try a shorter, specific request. Completed steps have not been undone.'
+        elif 'already' in reason and ('exists' in reason or 'name' in reason):
+            reply = 'That name is already in use. Choose a different name to preserve the existing item.'
+        elif failed and failed['action'] == 'run_command':
+            reply = failed['message'][:500]
+        elif 'unsupported' in reason or 'unknown action' in reason or 'cannot yet' in reason:
+            reply = 'That task needs an action I cannot currently perform. Try a supported file, folder or app command.'
+        else:
+            reply = 'I could not complete the task. Open the workspace to review the last step, or try a more specific request.'
         if status == 'cancelled':
             reply = 'Cancelled.'
         elif failed and failed.get('error') == 'NOTEPAD_INPUT_FAILED':
@@ -99,7 +113,7 @@ async def outcome_reply(brain, request, records, status=None, detail=''):
         reply = 'I attempted your request, but couldn\'t confirm the result.'
     elif not records:
         reply = 'No actions were completed.'
-    elif all(r['action'] == 'system_info' for r in records):
+    elif all(r['action'] in {'system_info', 'folder_create', 'run_command'} for r in records):
         reply = ' '.join(r['message'] for r in records)[:500]
     elif any(r['action'] == 'type_text' for r in records):
         reply = 'The text is in Notepad.'
@@ -109,8 +123,9 @@ async def outcome_reply(brain, request, records, status=None, detail=''):
         reply = 'Done.'
 
     # Spend a model call only when there is something meaningful to interpret.
-    observations = {'file_read', 'file_search', 'run_command', 'ui_inspect', 'list_apps'}
-    interpret = status in {'failed', 'blocked', 'incomplete'} or failed or any(r['action'] in observations for r in records)
+    observations = {'file_read', 'file_search', 'ui_inspect', 'list_apps'}
+    # Failure reporting must not depend on the same model that just failed.
+    interpret = not failed and status not in {'failed', 'blocked', 'incomplete'} and any(r['action'] in observations for r in records)
     if reasoning_available(brain.client) and interpret and status != 'cancelled':
         try:
             response = await call_gemini_with_fallback(

@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QVariantAnimation, QEasin
 from PySide6.QtGui import QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QPainterPath, QConicalGradient
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
 from .light_engine import MicrophoneLights
-from .island_components import ActivityBars, BrandMark, GlassButton
+from .island_components import ActivityBars, BrandMark, GlassButton, paint_metal_shell
 
 
 class ActivityOverlay(QWidget):
@@ -34,6 +34,7 @@ class ActivityOverlay(QWidget):
         self.expanded_size = (480, 400)
         self._glow = 0.0
         self._pointer = QPointF(150, 34)
+        self._spotlight_hue = 220.0
         self._phase = 0.0
         self._pointer_inside = False
         self.reduced_motion = False
@@ -45,7 +46,7 @@ class ActivityOverlay(QWidget):
         self.setMouseTracking(True)
         self.motion = QVariantAnimation(self)
         self.motion.setDuration(380)
-        self.motion.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.motion.setEasingCurve(QEasingCurve.Type.OutQuint)
         self.motion.valueChanged.connect(self._animate_reveal)
         self.motion.finished.connect(self._finish_reveal)
         self.ambient = QTimer(self)
@@ -53,10 +54,10 @@ class ActivityOverlay(QWidget):
         self.ambient.timeout.connect(self._track_pointer)
         self.setStyleSheet("""
             * { font-family: 'Segoe UI'; }
-            QLabel { color: #e4eaf5; background: transparent; border: none; font-size: 12px; }
-            QLineEdit { color: #e8efff; background: rgba(16,24,40,230); border: 1px solid rgba(129,157,209,65);
-                        border-radius: 12px; padding: 11px 14px; font-size: 12px; }
-            QLineEdit:focus { border-color: #9aaee7; }
+            QLabel { color: #f2f2f4; background: transparent; border: none; font-size: 12px; }
+            QLineEdit { color: #f5f5f7; background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #282a35,stop:1 #15161e); border: 1px solid #616574;
+                        border-radius: 16px; padding: 12px 14px; font-size: 12px; }
+            QLineEdit:focus { border-color: #a5c9ff; }
             QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; border: none; }
             QScrollBar:vertical { background: transparent; width: 4px; }
             QScrollBar::handle:vertical { background: #3f516e; border-radius: 2px; min-height: 24px; }
@@ -68,9 +69,9 @@ class ActivityOverlay(QWidget):
         header.setSpacing(8)
         self.mark = BrandMark()
         self.title = QLabel("zeno")
-        self.title.setStyleSheet("font-weight: 700; font-size: 15px; letter-spacing: -0.5px;")
+        self.title.setStyleSheet("font-weight: 600; font-size: 16px; letter-spacing: -0.6px;")
         self.status = QLabel("Ready")
-        self.status.setStyleSheet("color: #7f90ac; font-size: 10px;")
+        self.status.setStyleSheet("color: #a1a1aa; font-size: 11px;")
         self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.start = GlassButton('Talk', 'mic', primary=True)
         self.start.setFixedWidth(78)
@@ -81,6 +82,11 @@ class ActivityOverlay(QWidget):
         header.addWidget(self.status, 1)
         header.addWidget(self.start)
         self.body = QWidget(self)
+        self.body_scroll = QScrollArea(self)
+        self.body_scroll.setWidgetResizable(True)
+        self.body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.body_scroll.setWidget(self.body)
+        self.body_scroll.hide()
         self.body_opacity = QGraphicsOpacityEffect(self.body)
         self.body.setGraphicsEffect(self.body_opacity)
         body = QVBoxLayout(self.body)
@@ -88,11 +94,11 @@ class ActivityOverlay(QWidget):
         body.setSpacing(12)
         self.bars = ActivityBars(self)
         body.addWidget(self.bars)
-        self.eyebrow = QLabel('YOUR NEXT MOVE')
-        self.eyebrow.setStyleSheet('color: #687b9c; font-size: 9px; letter-spacing: 1.8px; padding-top: 2px;')
+        self.eyebrow = QLabel('AT YOUR COMMAND')
+        self.eyebrow.setStyleSheet('color: #a1a1aa; font-size: 9px; letter-spacing: 1.8px; padding-top: 4px;')
         body.addWidget(self.eyebrow)
-        self.caption = QLabel('What would you like to do?\nSpeak a thought, or make it a quick command.')
-        self.caption.setStyleSheet('font-size: 14px; color: #c3cde0; padding: 0px 1px;')
+        self.caption = QLabel('A little space.\nFor your next big idea.')
+        self.caption.setStyleSheet('font-size: 19px; font-weight: 500; color: #efeff2; padding: 0px 1px;')
         self.caption.setTextFormat(Qt.TextFormat.PlainText)
         self.caption.setWordWrap(True)
         self.caption.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -122,9 +128,9 @@ class ActivityOverlay(QWidget):
         self.approval_row.hide()
         actions = QHBoxLayout()
         actions.setSpacing(10)
-        self.type_button = GlassButton('Type a request', 'keyboard', 'A shortcut to getting it done')
+        self.type_button = GlassButton('Type a request', 'keyboard', 'Put a thought in motion')
         self.type_button.clicked.connect(self.enable_typing)
-        self.dashboard_button = GlassButton('Open workspace', 'layout-dashboard', 'Your full dashboard')
+        self.dashboard_button = GlassButton('Open workspace', 'layout-dashboard', 'The bigger picture')
         self.dashboard_button.clicked.connect(self.dashboard_requested.emit)
         actions.addWidget(self.type_button, 1)
         actions.addWidget(self.dashboard_button, 1)
@@ -140,7 +146,7 @@ class ActivityOverlay(QWidget):
         self.collapse_button = GlassButton('Minimize', 'chevron-up', quiet=True)
         self.collapse_button.clicked.connect(self.collapse)
         self.privacy = QLabel('Mic off')
-        self.privacy.setStyleSheet('color: #64738e; font-size: 10px;')
+        self.privacy.setStyleSheet('color: #a1a1aa; font-size: 10px;')
         footer.addWidget(self.settings_button)
         footer.addWidget(self.mode_button)
         footer.addStretch()
@@ -169,11 +175,13 @@ class ActivityOverlay(QWidget):
     def expand(self):
         self.dismiss.stop()
         self.body.layout().activate()
-        target_height = max(400, 94 + self.body.minimumSizeHint().height())
+        self.body.setMinimumHeight(self.body.minimumSizeHint().height())
+        target_height = max(400, 94 + self.body.minimumHeight())
         resized_content = self.expanded_size[1] != target_height
         self.expanded_size = (480, target_height)
         if not self.expanded or resized_content:
             self.expanded = True
+            self.body_scroll.show()
             self.body.show()
             self._transition(1.0)
         self.show()
@@ -214,7 +222,11 @@ class ActivityOverlay(QWidget):
         width = round(start_width + (end_width - start_width) * float(value))
         height = round(start_height + (end_height - start_height) * float(value))
         self.setFixedSize(width, height)
-        self.move(round(self._anchor_x - width / 2), self.y())
+        screen = self.screen() or QApplication.primaryScreen()
+        area = screen.availableGeometry()
+        x = max(area.left(), min(round(self._anchor_x - width / 2), area.right() + 1 - width))
+        y = max(area.top(), min(self.y(), area.bottom() + 1 - height))
+        self.move(x, y)
         self._layout_contents()
         self.body_opacity.setOpacity(max(0.0, (self._reveal - 0.25) / 0.75))
         self.update()
@@ -223,15 +235,16 @@ class ActivityOverlay(QWidget):
         self.header.setVisible(not self.microphone_active or self.expanded)
         self.header.setGeometry(24, 16, self.width() - 48, 36)
         # Fixed-height content is clipped by the growing window, never squashed.
-        self.body.setGeometry(24, 72, self.width() - 48, getattr(self, '_expanded_height', 400) - 94)
+        self.body_scroll.setGeometry(24, 72, self.width() - 48, getattr(self, '_expanded_height', 400) - 94)
 
     def _compact_width(self):
         screen = self.screen() or QApplication.primaryScreen()
-        return min(600, screen.availableGeometry().width() - 24) if self.microphone_active else 300
+        return min(360 if self.microphone_active else 300, screen.availableGeometry().width() - 24)
 
     def _finish_reveal(self):
         if not self.expanded:
             self.body.hide()
+            self.body_scroll.hide()
 
     def _track_pointer(self):
         local = self.mapFromGlobal(QCursor.pos())
@@ -249,26 +262,36 @@ class ActivityOverlay(QWidget):
         self._glow += ((1.0 if inside and not self.reduced_motion else 0.0) - self._glow) * 0.16
         if inside:
             self._pointer += (QPointF(local) - self._pointer) * 0.18
+            screen = self.screen() or QApplication.primaryScreen()
+            area = screen.availableGeometry()
+            xp = max(0.0, min(1.0, (QCursor.pos().x() - area.left()) / max(1, area.width())))
+            self._spotlight_hue = (220 + xp * 200) % 360
         if not self.reduced_motion:
             self._phase += 0.018
         self.bars.pointer = self.bars.mapFrom(self, self._pointer.toPoint())
         self.bars.presence = self._glow if not self.reduced_motion else 0
+        self.bars.spotlight_hue = self._spotlight_hue
         self.bars.reduced_motion = self.reduced_motion
         if self.expanded and not self.reduced_motion:
             self.bars.phase += .018
         for button in (self.start, self.type_button, self.dashboard_button, self.settings_button, self.mode_button, self.collapse_button, self.allow, self.deny):
             button.reduced_motion = self.reduced_motion
+            button.pointer = QPointF(button.mapFrom(self, self._pointer.toPoint()))
+            button.presence = self._glow if not self.reduced_motion else 0
+            button.spotlight_hue = self._spotlight_hue
+            if self.expanded or self._glow > .01:
+                button.update()
         if self.expanded:
             self.bars.update()
-        if self.expanded or self.microphone_active or self._glow > 0.01:
+        if not self.reduced_motion or self.expanded or self.microphone_active or self._glow > 0.01:
             self.update()
 
     def _schedule_collapse(self):
-        if self.expanded and not self.request_id and self._drag_offset is None and (not self.dismiss.isActive() or self.dismiss.remainingTime() > 550):
+        if self.expanded and not self.typing and not self.request_id and self._drag_offset is None and (not self.dismiss.isActive() or self.dismiss.remainingTime() > 550):
             self.dismiss.start(550)
 
     def _auto_collapse(self):
-        if not self.rect().contains(self.mapFromGlobal(QCursor.pos())) and self._drag_offset is None:
+        if not self.typing and not self.rect().contains(self.mapFromGlobal(QCursor.pos())) and self._drag_offset is None:
             self.collapse()
 
     def activate(self):
@@ -292,7 +315,7 @@ class ActivityOverlay(QWidget):
         self.chat_only = not self.chat_only
         self.mode_button.setChecked(self.chat_only)
         self.mode_button.setText('Just talk' if self.chat_only else 'Assistant')
-        self.eyebrow.setText('JUST TALK' if self.chat_only else 'YOUR NEXT MOVE')
+        self.eyebrow.setText('JUST TALK' if self.chat_only else 'AT YOUR COMMAND')
         self.entry.setPlaceholderText("What's on your mind?" if self.chat_only else 'Give ZENO a direction…')
         self.caption.setText('Conversation only. No computer actions. What is on your mind?'
                              if self.chat_only else 'Ready for a request. Ask what I can do, or give me a task.')
@@ -346,80 +369,66 @@ class ActivityOverlay(QWidget):
         if self.microphone_active and not self.expanded:
             self._paint_listening_island()
             return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
+        radius = 29 + 7 * self._reveal
+        # A tight, layered shadow stays inside the transparent native window.
+        for spread, alpha in [(4, 12), (2, 24)]:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(0, 0, 0, alpha))
+            p.drawRoundedRect(surface.adjusted(-spread, 0, spread, spread), radius, radius)
         shape = QPainterPath()
-        shape.addRoundedRect(surface, 30, 30)
-        painter.setClipPath(shape)
-        painter.setPen(Qt.PenStyle.NoPen)
-        glass = QLinearGradient(0, 0, self.width(), self.height())
-        glass.setColorAt(0, QColor(16, 21, 33, 253))
-        glass.setColorAt(0.5, QColor(8, 12, 22, 253))
-        glass.setColorAt(1, QColor(6, 9, 17, 253))
-        painter.setBrush(glass)
-        painter.drawRoundedRect(surface, 30, 30)
+        shape.addRoundedRect(surface, radius, radius)
+        p.setClipPath(shape)
+        paint_metal_shell(p, surface, radius, 0 if self.reduced_motion else self._phase,
+                         self._pointer, 0 if self.reduced_motion else self._glow)
+        if self._reveal > .5:
+            p.setPen(QPen(QColor(255, 255, 255, round(16 * self._reveal)), 1))
+            p.drawLine(QPointF(28, 64), QPointF(self.width() - 28, 64))
+            # Familiar home indicator at the foot of the expanded surface.
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(255, 255, 255, 44))
+            p.drawRoundedRect(QRectF(self.width() / 2 - 22, self.height() - 13, 44, 3), 1.5, 1.5)
+        p.setClipping(False)
         if self.microphone_active:
-            spectrum = QConicalGradient(surface.center(), 0 if self.reduced_motion else self._phase * 45)
-            for stop, color in [(0, '#71dccb'), (.3, '#91cfff'), (.6, '#ae8efa'), (.85, '#efb18e'), (1, '#71dccb')]:
-                spectrum.setColorAt(stop, QColor(color))
-            painter.setPen(QPen(spectrum, 2))
-            painter.drawRoundedRect(surface.adjusted(1, 1, -1, -1), 30, 30)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor('#71dccb'))
-            painter.drawEllipse(QPointF(self.width() - 18, 19), 3, 3)
-        # Soft silver pools echo the dashboard's ambient background and cursor halo.
-        for point, radius, alpha in [
-            (QPointF(self.width() * (0.8 + 0.1 * math.sin(self._phase)), 15), 240, 22),
-            (QPointF(30, self.height()), 180, 14),
-            (self._pointer, 115, round(72 * self._glow)),
-        ]:
-            glow = QRadialGradient(point, radius)
-            glow.setColorAt(0, QColor(255, 255, 255, alpha))
-            glow.setColorAt(1, QColor(255, 255, 255, 0))
-            painter.fillRect(surface, glow)
-        if self._reveal > 0:
-            panel = QRectF(16, 65, self.width() - 32, self.height() - 82)
-            painter.setPen(QPen(QColor(246, 246, 246, 20), 1))
-            painter.setBrush(QColor(255, 255, 255, 5))
-            painter.drawRoundedRect(panel, 20, 20)
-        painter.setClipping(False)
-        rim = QLinearGradient(0, 0, self.width(), self.height())
-        rim.setColorAt(0, QColor(255, 255, 255, 78))
-        rim.setColorAt(0.5, QColor(255, 255, 255, 18))
-        rim.setColorAt(1, QColor(255, 255, 255, 40))
-        painter.setPen(QPen(rim, 1))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(surface, 30, 30)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor('#75e5b2'))
+            p.drawEllipse(QPointF(self.width() - 20, 22), 3, 3)
 
     def _paint_listening_island(self):
-        """Contained cyan activity, with actual capture levels driving the bars."""
+        """Compact live activity; only an open capture stream enables this view."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
         shape = QPainterPath()
-        shape.addRoundedRect(surface, 22, 22)
+        shape.addRoundedRect(surface, 29, 29)
         p.setClipPath(shape)
-        p.fillPath(shape, QColor('#080e12'))
+        paint_metal_shell(p, surface, 29, 0 if self.reduced_motion else self._phase,
+                         self._pointer, 0 if self.reduced_motion else self._glow)
         phase = 0 if self.reduced_motion else self._phase
-        glow = QRadialGradient(QPointF(self.width() - 18, 38), 108)
-        glow.setColorAt(0, QColor(24, 216, 223, round(125 + 25 * math.sin(phase * 2))))
-        glow.setColorAt(.45, QColor(15, 171, 185, 65))
-        glow.setColorAt(1, QColor(8, 14, 18, 0))
+        glow = QRadialGradient(QPointF(self.width() - 55, 34), 80)
+        glow.setColorAt(0, QColor(66, 216, 191, 38))
+        glow.setColorAt(1, QColor(0, 0, 0, 0))
         p.fillPath(shape, glow)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor('#75e5b2'))
+        p.drawEllipse(QPointF(29, 33), 3, 3)
         font = p.font()
         font.setFamily('Segoe UI')
-        font.setPixelSize(16)
+        font.setPixelSize(14)
         font.setBold(True)
         p.setFont(font)
-        p.setPen(QColor('#f1f6f7'))
-        p.drawText(QRectF(30, 4, self.width() - 130, 59), Qt.AlignmentFlag.AlignVCenter, 'Listening')
+        p.setPen(QColor('#f5f5f7'))
+        p.drawText(QRectF(43, 4, self.width() - 145, 59), Qt.AlignmentFlag.AlignVCenter, 'Listening')
         p.setPen(Qt.PenStyle.NoPen)
-        for index in range(5):
-            motion = .5 + .5 * math.sin(phase * 8 + index * 1.15)
-            height = 5 if self.reduced_motion else 5 + 5 * motion + self.bars.level * (8 + 13 * motion)
-            p.setBrush(QColor('#9af5f1'))
-            p.drawRoundedRect(QRectF(self.width() - 88 + index * 8, 34 - height / 2, 4, height), 2, 2)
+        for index in range(9):
+            envelope = math.sin((index + 1) * math.pi / 10)
+            motion = .5 + .5 * math.sin(phase * 8 + index * .8)
+            height = 5 if self.reduced_motion else 4 + self.bars.level * envelope * (12 + 18 * motion)
+            p.setBrush(QColor('#8cf0d5' if index < 5 else '#9eb7ff'))
+            p.drawRoundedRect(QRectF(self.width() - 91 + index * 7, 33 - height / 2, 3, height), 1.5, 1.5)
+        p.setClipping(False)
 
     def handle_event(self, kind, value):
         if kind == "state":
@@ -457,8 +466,9 @@ class ActivityOverlay(QWidget):
             if not self.microphone_active:
                 self.bars.level = 0
             self.bars.update()
-            self.eyebrow.setText('LIVE CAPTURE' if self.microphone_active else 'JUST TALK' if self.chat_only else 'YOUR NEXT MOVE')
-            self.privacy.setText('Mic on' if self.microphone_active else 'Mic off')
+            self.eyebrow.setText('LIVE CAPTURE' if self.microphone_active else 'JUST TALK' if self.chat_only else 'AT YOUR COMMAND')
+            self.privacy.setText('● Mic on' if self.microphone_active else 'Mic off')
+            self.privacy.setStyleSheet('color: #75e5b2; font-size: 10px;' if self.microphone_active else 'color: #a1a1aa; font-size: 10px;')
             self.lights.set_active(False)
             if self.microphone_active:
                 self.position_at_top()

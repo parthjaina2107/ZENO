@@ -10,7 +10,7 @@ import re
 from config import config
 from .api_utils import reasoning_available, call_gemini_with_fallback
 from .nlu import SYSTEM_PROMPT
-from .planner import describe_action
+from .planner import ActionResult, describe_action
 
 
 @dataclass
@@ -81,10 +81,11 @@ class TaskRunner:
             source_valid, source, error = file_ops._resolve_and_validate_path(params["source"])
             if not source_valid:
                 raise ValueError(error)
-            destination = destination / source.name
+            if action.action_type == "file_move" or source.is_file():
+                destination = destination / source.name
         if destination.exists():
             if action.action_type == "file_create" and destination.is_file() and destination.read_text(encoding="utf-8") == params.get("content", ""):
-                return
+                return ActionResult(True, "The file already contains the requested text.", output={"path": str(destination)})
             raise ValueError(f"Output already exists: {destination}. Choose a new path to preserve the existing file.")
 
     def verify(self, action, result):
@@ -95,6 +96,9 @@ class TaskRunner:
         if action.action_type == "type_text":
             verified = isinstance(result.output, dict) and result.output.get("verified") is True
             return verified, "Text read back from Notepad." if verified else "Text delivery is not verified."
+        if action.action_type == 'folder_create':
+            valid, path, error = executor.file._resolve_and_validate_path(params['path'])
+            return bool(valid and path.is_dir()), error or 'Folder existence checked.'
         if action.action_type == "open_app":
             from executor.system_ops import APP_EXECUTABLE_MAP
             import psutil
@@ -122,7 +126,7 @@ class TaskRunner:
                     absent = not resolve(params["path"]).exists()
                     return absent, "Source is absent." if absent else "Source still exists."
                 source, destination = resolve(params["source"]), resolve(params["destination"])
-                target = destination / source.name if destination.is_dir() else destination
+                target = Path(result.output["path"]) if isinstance(result.output, dict) and "path" in result.output else destination
                 if action.action_type == "file_move":
                     good = not source.exists() and target.exists()
                     return good, f"Move {'verified' if good else 'not verified'} at {target}."
@@ -133,7 +137,20 @@ class TaskRunner:
                             return hashlib.file_digest(stream, "sha256").hexdigest()
                     good = digest(source) == digest(target)
                     return good, "Copy content matches." if good else "Copy content differs."
-                return False, "Directory copy has not been independently verified."
+                if source.is_dir() and target.is_dir():
+                    import filecmp
+                    def same_tree(left, right):
+                        if left.is_symlink() or right.is_symlink():
+                            return left.is_symlink() and right.is_symlink() and left.readlink() == right.readlink()
+                        if left.is_file():
+                            return right.is_file() and filecmp.cmp(left, right, shallow=False)
+                        if not left.is_dir() or not right.is_dir():
+                            return False
+                        names = {p.name for p in left.iterdir()}
+                        return names == {p.name for p in right.iterdir()} and all(
+                            same_tree(left / name, right / name) for name in names)
+                    return same_tree(source, target), "Compared directory contents."
+                return False, "Copy destination does not match the source type."
             except Exception as exc:
                 return False, f"Verification failed: {exc}"
         if action.action_type in ("file_read", "file_search", "system_info", "list_apps", "ui_inspect", "screenshot", "run_command"):
@@ -191,7 +208,7 @@ class TaskRunner:
                 if len(plan) != 1 or plan[0].action_type in ("unhandled", "unknown"):
                     raise ValueError("Task requested an unsupported action or invalid parameters.")
                 action = plan[0]
-                await asyncio.to_thread(self.preflight, action)
+                existing_result = await asyncio.to_thread(self.preflight, action)
                 checkpoint()
                 if any(step["action_id"] == action.action_id for step in report.steps):
                     raise ValueError("Repeated action stopped to avoid an execution loop.")
@@ -203,7 +220,7 @@ class TaskRunner:
                 else:
                     self.permissions.log_decision(action, True, source="auto", reason="Task action permitted by configured policy")
                 checkpoint()
-                result = await execute(action)
+                result = existing_result or await execute(action)
                 self.permissions.log_result(action, result, source="task")
                 verified, evidence = await asyncio.to_thread(self.verify, action, result)
                 # Screenshots contain base64 blobs: omit them from the text reasoning loop.

@@ -1,5 +1,9 @@
 # OriginKit-inspired native island
 
+This records the earlier design. The current native interface is documented in
+[Native Dynamic Island](island-21st.md), which supersedes the ribbon/card styling
+and screen-edge-lighting description below.
+
 ## Sources and adaptation
 
 - [Ribbon Glow](https://www.originkit.dev/components/ribbon-glow): cyan/violet

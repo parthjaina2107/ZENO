@@ -39,6 +39,8 @@ audit_log.jsonl
 remote_url.txt
 zeno_memory.json
 paired_devices.json
+paired_devices.lock
+paired_devices.tmp
 screenshots/
 google-client.json
 accounts/

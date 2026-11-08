@@ -57,7 +57,7 @@ RE_SHUTDOWN = re.compile(r"\b(shutdown|shut down)\b", re.IGNORECASE)
 RE_RESTART = re.compile(r"\b(restart|reboot)\b", re.IGNORECASE)
 RE_LOCK = re.compile(r"\b(lock computer|lock screen|lock workstation|lock pc|\block\b)\b", re.IGNORECASE)
 RE_TYPE = re.compile(r"^(?:type|write)\s+(.+)", re.IGNORECASE)
-RE_CMD = re.compile(r"^(?:run command|execute command|run in terminal|terminal)\s+(.+)", re.IGNORECASE)
+RE_CMD = re.compile(r"^(?:run command|execute command|run in terminal|terminal)\s+(.+)", re.IGNORECASE | re.DOTALL)
 RE_CONVERSATIONAL = re.compile(r"^(what is|what are|who is|who was|why is|why do|how do|how does|how can|tell me|explain|can you explain)\b", re.IGNORECASE)
 
 SYSTEM_PROMPT = """You are a computer control assistant. The user will give you voice commands.
@@ -88,6 +88,7 @@ Available actions:
 - file_move: { "source": "...", "destination": "..." }
 - file_copy: { "source": "...", "destination": "..." }
 - file_search: { "directory": "...", "pattern": "*.txt" }
+- folder_create: { "path": "Desktop/Folder Name" } (use Desktop/Documents/Downloads aliases, never invent a username)
 - file_read: { "path": "..." }
 - screenshot: {}
 - ui_inspect: {}
@@ -108,9 +109,16 @@ If you don't understand the command, set "understood": false and suggest what th
 """
 
 
+def excludes_execution(text: str) -> bool:
+    return bool(re.match(
+        r"^(?:please\s+)?(?:do not|don't|don’t|never|what (?:would|happens)|"
+        r"what if|would you explain|why|explain|how (?:do|does|would|can)|if)\b",
+        text.strip(), re.I))
+
+
 def split_commands(text: str) -> list[str]:
     """Split explicit sequences outside quotes, leaving dictation/search payloads intact."""
-    if re.match(r"^(?:type|write|run command|execute command|terminal|search|google)\b", text, re.I):
+    if re.match(r"^(?:type|write|run command|execute command|run in terminal|terminal|search|google|look up)\b", text, re.I):
         return [text]
     quoted = [(m.start(), m.end()) for m in re.finditer(r'"[^"\n]*"|\'[^\'\n]*\'', text)]
     separator = re.compile(r"\s+(?:and\s+then|then|and(?=\s+(?:open|launch|close|type|write|search|set|take|check|pause|play|run)\b))\s+", re.I)
@@ -119,7 +127,7 @@ def split_commands(text: str) -> list[str]:
         if any(a <= match.start() < b for a, b in quoted):
             continue
         # Once dictation starts, all remaining words are its payload.
-        if re.match(r"^(?:type|write|run command|search|google)\b", text[start:].strip(), re.I):
+        if re.match(r"^(?:type|write|run command|execute command|run in terminal|terminal|search|google|look up)\b", text[start:].strip(), re.I):
             break
         parts.append(text[start:match.start()].strip())
         start = match.end()
@@ -219,6 +227,15 @@ class NLUEngine:
         """Built-in regex/keyword parser for reliable offline operation with word-boundary precision."""
         lowered = text.lower().strip()
 
+        from .folder_intent import folder_request
+        folder = folder_request(text)
+        if folder:
+            if not folder['name']:
+                return {'understood': False, 'action': 'none', 'parameters': {},
+                        'confirmation_message': f'What should I name the folder in {folder["location"]}?'}
+            return {'understood': True, 'action': 'folder_create',
+                    'parameters': {'path': folder['location'] + '/' + folder['name']}}
+
         # Payload-bearing commands preserve capitalization, URLs and literal text.
         for pattern, action, key in ((RE_TYPE, "type_text", "text"), (RE_CMD, "run_command", "command"), (RE_SEARCH, "web_search", "query")):
             match = pattern.search(text.strip())
@@ -316,7 +333,9 @@ class NLUEngine:
             }
 
         # 5. Volume controls
-        vol_match = RE_VOLUME_SET.search(lowered)
+        from .interaction import is_direct_command
+        literal = is_direct_command(text)
+        vol_match = RE_VOLUME_SET.search(lowered) if literal else None
         if vol_match:
             level = int(vol_match.group(1))
             return {
@@ -327,14 +346,14 @@ class NLUEngine:
                 "risk_level": "low",
                 "confirmation_message": f"Set volume to {level}%?"
             }
-        if RE_VOLUME_MUTE.search(lowered):
+        if literal and RE_VOLUME_MUTE.search(lowered):
             return {
                 "understood": True,
-                "action": "volume_set",
-                "parameters": {"level": 0},
-                "description": "Mute system volume",
+                "action": "volume_mute",
+                "parameters": {"muted": lowered.startswith("mute")},
+                "description": "Set system mute state",
                 "risk_level": "low",
-                "confirmation_message": "Mute system volume?"
+                "confirmation_message": "Mute system volume?" if lowered.startswith("mute") else "Unmute system volume?"
             }
 
         # 6. Screenshot
@@ -347,7 +366,7 @@ class NLUEngine:
                 "risk_level": "low",
                 "confirmation_message": "Inspect the focused window?"
             }
-        if RE_SCREENSHOT.search(lowered):
+        if literal and RE_SCREENSHOT.search(lowered):
             return {
                 "understood": True,
                 "action": "screenshot",
@@ -440,7 +459,7 @@ class NLUEngine:
             }
 
         # 10. Shutdown / Restart / Lock with word boundaries
-        if RE_SHUTDOWN.search(lowered):
+        if literal and RE_SHUTDOWN.search(lowered):
             return {
                 "understood": True,
                 "action": "shutdown",
@@ -449,7 +468,7 @@ class NLUEngine:
                 "risk_level": "high",
                 "confirmation_message": "Are you sure you want to SHUT DOWN your computer?"
             }
-        if RE_RESTART.search(lowered):
+        if literal and RE_RESTART.search(lowered):
             return {
                 "understood": True,
                 "action": "shutdown",
@@ -458,7 +477,7 @@ class NLUEngine:
                 "risk_level": "high",
                 "confirmation_message": "Are you sure you want to RESTART your computer?"
             }
-        if RE_LOCK.search(lowered):
+        if literal and RE_LOCK.search(lowered):
             return {
                 "understood": True,
                 "action": "shutdown",
@@ -508,6 +527,9 @@ class NLUEngine:
 
         # Decompose before the greedy single-command patterns can swallow a task.
         parts = split_commands(text)
+        if any(excludes_execution(part) for part in parts):
+            return {"understood": False, "action": "none", "parameters": {},
+                    "confirmation_message": "No action requested. Give an explicit command to proceed."}
         if len(parts) > 1:
             steps = [self._local_fallback_understand(part) for part in parts]
             if all(step.get("understood") for step in steps):

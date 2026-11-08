@@ -123,6 +123,24 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         # Only known bundled assets may reach this privileged bridge page.
         assert not dashboard.dashboard_page.acceptNavigationRequest(QUrl('https://example.com'), 0, True)
         assert STATIC.as_uri() + '/glass-loop.png' in dashboard_html()
+        # Material layers cannot intercept actions or obscure narrow layouts.
+        assert js("getComputedStyle(document.getElementById('run'), '::before').pointerEvents") == 'none'
+        assert js("getComputedStyle(document.getElementById('run')).transitionDuration") == '0s'
+        js("""storage.set('zeno_motion', false);
+            Object.defineProperty(systemReducedMotion, 'matches', {configurable: true, value: true});
+            systemReducedMotion.dispatchEvent(new Event('change')); true""")
+        assert js("document.body.classList.contains('reduce-motion') && document.getElementById('motion').checked")
+        js("""preferences('language');
+            Object.defineProperty(systemReducedMotion, 'matches', {configurable: true, value: false});
+            systemReducedMotion.dispatchEvent(new Event('change')); true""")
+        wait_for(lambda: not island.reduced_motion)
+        assert not js("document.body.classList.contains('reduce-motion')")
+        dashboard.setMinimumSize(0, 0)
+        dashboard.resize(390, 844)
+        wait_for(lambda: js('innerWidth') == 390)
+        js("view('preferences'); true")
+        assert js('document.documentElement.scrollWidth <= innerWidth')
+        assert js("document.querySelector('.rail').getBoundingClientRect().height <= 64")
     finally:
         island.close()
         dashboard.hide()
@@ -142,13 +160,14 @@ def test_black_dashboard_owns_preferences_without_a_legacy_window(monkeypatch, t
     monkeypatch.setattr(desktop, 'microphones', lambda: [{'id': None, 'name': 'Default'}])
     try:
         assert not isinstance(desktop, QMainWindow)
-        desktop.reveal()
+        desktop.overlay.dashboard_button.click()
         dashboard = desktop.dashboard
         assert dashboard.windowTitle() == 'ZENO — Dashboard'
         deadline = time.monotonic() + 8
         while not dashboard.bridge.connected and time.monotonic() < deadline:
             QTest.qWait(20)
         assert dashboard.bridge.connected
+        desktop.reveal()
         QTest.qWait(100)
         result = []
         dashboard.dashboard_page.runJavaScript("!document.getElementById('preferences').hidden && !!document.getElementById('saveDesktopSettings')", result.append)
@@ -165,6 +184,48 @@ def test_black_dashboard_owns_preferences_without_a_legacy_window(monkeypatch, t
         desktop.controller.busy = False
         desktop.open_dashboard()
         assert desktop.dashboard is dashboard
+        dashboard.showMinimized()
+        QTest.qWait(30)
+        assert dashboard.isMinimized()
+        desktop.overlay.dashboard_button.click()
+        assert desktop.dashboard is dashboard and dashboard.isVisible()
+        assert not dashboard.isMinimized()
+        dashboard.close()
+        assert not dashboard.isVisible()
+        desktop.overlay.dashboard_button.click()
+        assert dashboard.isVisible()
+    finally:
+        desktop.hotkey.close()
+        desktop.overlay.close()
+        desktop.tray.hide()
+        if desktop.dashboard:
+            desktop.dashboard.hide()
+            desktop.dashboard.dashboard_page.deleteLater()
+        QTest.qWait(50)
+
+
+def test_workspace_construction_failure_is_visible_and_retryable(monkeypatch, tmp_path, caplog):
+    from PySide6.QtWidgets import QSystemTrayIcon
+    from desktop.app import DesktopApplication
+    from desktop.settings import DesktopSettings
+    import desktop.app as desktop_app
+    import desktop.dashboard as dashboard_module
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(desktop_app, 'GlobalHotkey', MagicMock())
+    monkeypatch.setattr(QSystemTrayIcon, 'isSystemTrayAvailable', lambda: False)
+    desktop = DesktopApplication(app, DesktopSettings(), tmp_path / 'desktop.json')
+    monkeypatch.setattr(desktop, 'microphones', lambda: [{'id': None, 'name': 'Default'}])
+    constructor = dashboard_module.DashboardWindow
+    monkeypatch.setattr(dashboard_module, 'DashboardWindow', MagicMock(side_effect=RuntimeError('Synthetic load failure')))
+    try:
+        desktop.overlay.dashboard_button.click()
+        assert desktop.dashboard is None
+        assert desktop.overlay.expanded
+        assert 'workspace could not open' in desktop.overlay.caption.text()
+        assert 'Could not open the workspace' in caplog.text
+        monkeypatch.setattr(dashboard_module, 'DashboardWindow', constructor)
+        desktop.overlay.dashboard_button.click()
+        assert desktop.dashboard is not None and desktop.dashboard.isVisible()
     finally:
         desktop.hotkey.close()
         desktop.overlay.close()

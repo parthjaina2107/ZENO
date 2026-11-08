@@ -8,6 +8,8 @@ import json
 import logging
 import asyncio
 import uuid
+import time
+import copy
 from pathlib import Path
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException, status, Request, Header
@@ -51,11 +53,11 @@ app.add_middleware(
 def get_client_ip(request: Request) -> str:
     """Extract client IP, trusting X-Forwarded-For only when behind local proxy / ngrok."""
     direct_ip = request.client.host if request.client else "127.0.0.1"
-    is_proxy = direct_ip in ("127.0.0.1", "::1", "localhost", "testclient") or "ngrok-trace-id" in request.headers or "x-forwarded-proto" in request.headers
+    is_proxy = direct_ip in ("127.0.0.1", "::1", "localhost")
     if is_proxy:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            return xff.split(",")[0].strip()
+            return xff.split(",")[-1].strip()
     return direct_ip
 
 # Shared subsystems (initialized from main.py or initialized lazily on-demand)
@@ -124,7 +126,7 @@ async def authenticate(request: Request, token: str = Form(...), device_id: str 
             device = device_registry.pair(device_id, device_label, client_ip)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-        jwt_token = auth_manager.create_session_token(client_id=client_ip, device_id=device_id)
+        jwt_token = auth_manager.create_session_token(client_id=client_ip, device_id=device_id, generation=device["generation"])
         return JSONResponse(content={"status": "authenticated", "jwt_token": jwt_token, "device": device})
     else:
         locked, remaining = auth_manager.is_locked_out(client_ip)
@@ -148,8 +150,7 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
     elif token:
         jwt_val = token.strip()
 
-    payload = auth_manager.verify_session_token(jwt_val) if jwt_val else None
-    if not payload or not device_registry.is_active(payload.get("device_id", "")):
+    if not verified_session(jwt_val):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required for health endpoint."
@@ -166,7 +167,9 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
 
 def verified_session(token: str, client_ip: str = "") -> Optional[Dict[str, Any]]:
     payload = auth_manager.verify_session_token(token)
-    if not payload or not device_registry.is_active(payload.get("device_id", "")):
+    if not payload or not isinstance(payload.get("exp"), (float, int)) or payload["exp"] <= time.time():
+        return None
+    if not device_registry.accepts_session(payload.get("device_id", ""), payload.get("generation", "")):
         return None
     if client_ip:
         device_registry.touch(payload["device_id"], client_ip)
@@ -201,11 +204,34 @@ async def read_audit(limit: int = 100, authorization: Optional[str] = Header(Non
         raise HTTPException(status_code=401, detail="Authentication required.")
     limit = max(1, min(limit, 500))
     path = config.BASE_DIR / "audit_log.jsonl"
+    events, skipped, truncated = [], 0, False
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()[-limit:]
-        return {"events": [json.loads(line) for line in lines if line.strip()]}
+        with path.open("rb") as stream:
+            end = stream.seek(0, 2)
+            floor = max(0, end - 4 * 1024 * 1024)
+            partial = b""
+            while end > floor and len(events) < limit:
+                start = max(floor, end - 65536)
+                stream.seek(start)
+                lines = (stream.read(end - start) + partial).split(b"\n")
+                partial = lines.pop(0) if start else b""
+                for line in reversed(lines):
+                    if not line.strip():
+                        continue
+                    try:
+                        event = json.loads(line)
+                        if not isinstance(event, dict):
+                            raise ValueError("Expected an event object")
+                        events.append(event)
+                    except (ValueError, UnicodeError):
+                        skipped += 1
+                    if len(events) == limit:
+                        break
+                end = start
+            truncated = floor > 0 and len(events) < limit
     except FileNotFoundError:
-        return {"events": []}
+        pass
+    return {"events": list(reversed(events)), "skipped": skipped, "truncated": truncated}
 
 
 @app.get("/audit", response_class=HTMLResponse)
@@ -249,6 +275,11 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     logger.info(f"Remote client connected via WebSocket (user: {auth_payload.get('sub', 'unknown')}).")
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
+    brain = copy.copy(brain)
+    brain.pending_folder_location = None
+    brain.awaiting_clarification = False
+    brain.memory = copy.copy(brain.memory)
+    brain.memory.short_term_history = []
     device_id = auth_payload["device_id"]
     active_tasks = set()
     connection_id = "remote:" + uuid.uuid4().hex
@@ -265,6 +296,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
     async def handle_command(user_text: str, agent_mode=False):
         """Keep receiving approvals and stop commands while planning/execution runs."""
+        status = "responded"
         try:
             brain_resp = await brain.think(user_text, agent_mode=True) if agent_mode else await brain.think(user_text)
             if brain_resp.kind in ("chat", "vision", "memory", "abort"):
@@ -289,22 +321,36 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                     speaker.speak(event.get("message", ""))
 
             runner = AgentRunner(brain, perms, connection_id, approve, emit, planner=planner)
-            await runner.run((brain_resp.data or {}).get("goal", brain_resp.message if brain_resp.kind == "task" else user_text),
-                             actions=brain_resp.actions, agent_mode=brain_resp.kind == "task")
+            status = await runner.run((brain_resp.data or {}).get("goal", brain_resp.message if brain_resp.kind == "task" else user_text),
+                             actions=brain_resp.actions, agent_mode=brain_resp.kind == "task" or bool((brain_resp.data or {}).get("agent_mode")))
         except asyncio.CancelledError:
+            status = "cancelled"
             raise
         except Exception:
+            status = "failed"
             logger.exception("Command processing failed")
             await send_to_client({"type": "response", "message": "The command could not be processed. Please try again."})
         finally:
-            await send_to_client({"type": "command_finished"})
+            await send_to_client({"type": "command_finished", "status": status})
 
     try:
         while True:
-            raw_data = await websocket.receive_text()
-            if not device_registry.is_active(device_id):
+            remaining = auth_payload["exp"] - time.time()
+            if remaining <= 0:
+                await websocket.close(code=4001, reason="Session expired")
+                break
+            try:
+                raw_data = await asyncio.wait_for(websocket.receive_text(), timeout=min(remaining, 2))
+            except asyncio.TimeoutError:
+                raw_data = None
+            if time.time() >= auth_payload["exp"]:
+                await websocket.close(code=4001, reason="Session expired")
+                break
+            if not device_registry.accepts_session(device_id, auth_payload.get("generation", "")):
                 await websocket.close(code=4003, reason="Device revoked")
                 break
+            if raw_data is None:
+                continue
             try:
                 msg = json.loads(raw_data)
             except Exception:
@@ -336,6 +382,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             # Abort / Emergency stop
             if msg_type == "abort":
                 logger.warning("Emergency abort received over WebSocket.")
+                brain.pending_folder_location = None
+                brain.awaiting_clarification = False
                 coordinator.stop()
                 for t in list(active_tasks):
                     if not t.done():
@@ -355,7 +403,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 req_id = msg.get("request_id")
                 approved = msg.get("approved") is True
                 action_id = msg.get("action_id")
-                if req_id in owned_requests:
+                if isinstance(req_id, str) and req_id in owned_requests:
                     owned_requests.discard(req_id)
                     perms.resolve_remote_permission(req_id, approved, action_id=action_id, device_id=device_id)
                 continue
@@ -366,6 +414,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                     continue
                 user_text = text_value.strip()
                 if not user_text or len(user_text) > 12000:
+                    await send_to_client({"type": "error", "message": "Enter a command of 1 to 12,000 characters."})
                     continue
                 if msg.get('mode') == 'chat':
                     from brain.companion import conversation_text
@@ -374,6 +423,8 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
                 if active_tasks or coordinator.active is not None:
                     await send_to_client({"type": "response", "message": "ZENO is busy. Stop the current task or wait for it to finish."})
+                    if not active_tasks:
+                        await send_to_client({"type": "command_finished", "status": "blocked"})
                     continue
                 task = asyncio.create_task(handle_command(user_text, agent_mode=msg.get("mode") == "agent"))
                 active_tasks.add(task)

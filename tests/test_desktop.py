@@ -142,7 +142,7 @@ async def test_task_runner_cancellation_saves_report_no_next_step(tmp_path, monk
     brain.planner = ActionPlanner(MagicMock())
     runner = TaskRunner(brain, MagicMock())
     runner.decide = AsyncMock(return_value={"action": "system_info", "parameters": {"info_type": "battery"}})
-    runner.preflight = MagicMock()
+    runner.preflight = MagicMock(return_value=None)
     runner.verify = MagicMock(return_value=(True, "Observed"))
     def execute(action):
         token.cancel()
@@ -510,14 +510,15 @@ def test_island_pointer_tracking_collapses_after_leaving_child_controls():
         with patch.object(QCursor, 'pos', return_value=island.start.mapToGlobal(QPoint(10, 10))):
             island._track_pointer()
         assert island._pointer.x() > old and island._glow > 0
-        # A focused entry or running task must not permanently pin the island.
+        # Keep a draft open across pointer movement until explicit submission/collapse.
         island.typing = True
         island.busy = True
         island.entry.setText('keep this draft')
         with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(-100, -100))):
             island._track_pointer()  # No native leave event required.
-            assert island.dismiss.isActive()
             island._auto_collapse()
+        assert island.expanded
+        island.collapse()
         assert not island.expanded
         assert island.entry.text() == 'keep this draft'
         island.set_approval('review', 'Review action')
@@ -642,4 +643,35 @@ def test_island_conversation_toggle_and_escape_route_safely():
         assert not island.chat_only
     finally:
         island.lights.close()
+        island.close()
+
+
+def test_short_display_keeps_approval_controls_reachable_at_the_edge(monkeypatch):
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    area = QRect(20, 25, 600, 360)
+    screen = MagicMock()
+    screen.availableGeometry.return_value = area
+    island = ActivityOverlay()
+    monkeypatch.setattr(island, "screen", lambda: screen)
+    try:
+        island.show()
+        island.move(area.right() - 80, area.bottom() - 70)
+        island.enable_typing()
+        island.set_approval("review", "Review this request. " * 45)
+        island.motion.setCurrentTime(island.motion.duration())
+        app.processEvents()
+        assert area.contains(island.geometry())
+        assert island.body_scroll.verticalScrollBar().maximum() > 0
+        assert island.body.height() >= island.body.minimumSizeHint().height()
+        decisions = []
+        island.approval_decided.connect(lambda key, approved: decisions.append((key, approved)))
+        island.body_scroll.ensureWidgetVisible(island.deny)
+        viewport = island.body_scroll.viewport()
+        assert viewport.rect().contains(island.deny.mapTo(viewport, island.deny.rect().center()))
+        island.deny.click()
+        assert decisions == [("review", False)]
+    finally:
         island.close()

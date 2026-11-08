@@ -4,8 +4,8 @@ import threading
 
 
 class RunControl:
-    def __init__(self):
-        self.cancelled = threading.Event()
+    def __init__(self, cancelled=None):
+        self.cancelled = cancelled if cancelled is not None else threading.Event()
         self._lock = threading.Lock()
 
     def cancel(self):
@@ -43,4 +43,17 @@ class RunControl:
             self.check()
             return function(*args, **kwargs)
         self.check()
-        return await asyncio.to_thread(guarded)
+        worker = asyncio.create_task(asyncio.to_thread(guarded))
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            self.cancel()
+            while not worker.done():
+                try:
+                    await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            await asyncio.gather(worker, return_exceptions=True)
+            raise

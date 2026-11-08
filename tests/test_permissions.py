@@ -51,7 +51,7 @@ async def test_remote_permission_resolution():
     req_id = sent_payloads[0]["request_id"]
 
     # Client approves
-    resolved = pm.resolve_remote_permission(req_id, True)
+    resolved = pm.resolve_remote_permission(req_id, True, action_id=sent_payloads[0]["action_id"])
     assert resolved is True
 
     result = await req_task

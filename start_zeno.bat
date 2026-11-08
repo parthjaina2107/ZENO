@@ -11,10 +11,8 @@ if not exist "%PYTHON_EXE%" (
 )
 
 if "%1"=="--background" (
-    shift
     start "" "%PYTHONW_EXE%" main.py --mode all %*
 ) else if "%1"=="-b" (
-    shift
     start "" "%PYTHONW_EXE%" main.py --mode all %*
 ) else (
     "%PYTHON_EXE%" main.py %*

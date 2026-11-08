@@ -207,3 +207,19 @@ async def test_remote_permission_cancel_removes_pending_request(tmp_path):
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
     assert not perms._pending_remote_requests
+
+
+@pytest.mark.parametrize("text", ["do not set volume to 90", "what would happen if I restart my pc?",
+                                  "open notepad then don't take a screenshot"])
+@pytest.mark.asyncio
+async def test_agent_never_executes_a_negated_or_hypothetical_request(rig, text):
+    await rig.runner.run(text, agent_mode=True)
+    rig.executor.execute.assert_not_called()
+    rig.approve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unmute_reaches_a_distinct_action(rig):
+    await rig.runner.run("unmute", agent_mode=True)
+    action = rig.executor.execute.call_args.args[0]
+    assert (action.action_type, action.parameters) == ("volume_mute", {"muted": False})
