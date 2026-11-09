@@ -10,6 +10,7 @@ import time
 import uuid
 
 import psutil
+import app_access
 from config import config
 from .store import EventStore
 from .sources import WorkAndSystem, WindowsNotifications, event
@@ -73,10 +74,40 @@ class AwarenessService:
                 logger.warning('Awareness poll could not finish (%s).', type(exc).__name__)
             self.stop_event.wait(config.AWARENESS_POLL_SECONDS)
 
+    def _visible(self, events):
+        try:
+            choices = app_access.choices()
+        except (ValueError, OSError):
+            choices = {}
+        source_features = {"Gmail": "gmail_read", "Outlook": "outlook", "System": "monitor",
+                           "Projects": "monitor", "Processes": "monitor",
+                           "Reminders": None, "ZENO tasks": None, "Connections": None}
+        def visible(item):
+            feature = item.get("feature")
+            if feature is None:
+                # Prior versions keyed Windows toasts by a SHA-256 digest of their contents.
+                toast = re.fullmatch(r"[0-9a-f]{64}", item.get("id", "").rsplit(":", 1)[-1])
+                feature = "notifications" if toast else source_features.get(item["source"], "notifications")
+            return feature is None or choices.get(feature, False)
+        return [item for item in events if visible(item)]
+
+    def _events(self, **kwargs):
+        limit = kwargs.pop("limit", 100)
+        return self._visible(self.store.events(limit=1000, **kwargs))[:limit]
+
     def poll(self):
         for source in self.sources:
             if self.stop_event.is_set():
                 break
+            feature = {"Gmail": "gmail_read", "Outlook": "outlook", "Windows notifications": "notifications",
+                       "Work and system": "monitor"}.get(source.name)
+            if isinstance(source, WorkAndSystem):
+                with self.lock:
+                    for item in source.collect_reminders():
+                        self.store.add(item)
+            if feature and not app_access.allowed(feature):
+                self.status[source.name] = "Disabled in App access"
+                continue
             try:
                 # Only collection can create notification records; it cannot run actions.
                 if isinstance(source, WorkAndSystem):
@@ -84,9 +115,11 @@ class AwarenessService:
                         events = source.collect()
                 else:
                     events = source.collect()
+                if feature and not app_access.allowed(feature):
+                    continue
                 initial = not self.store.get('initialized:' + source.name, False)
                 for item in events:
-                    self.store.add(item, announced=initial and item.get('priority', 0) == 0)
+                    self.store.add(item, announced=initial and item.get('priority', 0) == 0, feature=feature)
                 self.store.set('initialized:' + source.name, True)
                 if self.status.get(source.name) != 'Connected':
                     logger.info('%s source connected.', source.name)
@@ -105,7 +138,7 @@ class AwarenessService:
     def next_announcement(self):
         if self.store.get('paused', False) or in_quiet_hours(config.QUIET_HOURS):
             return None
-        events = self.store.events(pending=True)
+        events = self._events(pending=True)
         if not events:
             return None
         interval = 60 if any(e['priority'] for e in events) else config.BRIEFING_INTERVAL_SECONDS
@@ -118,10 +151,10 @@ class AwarenessService:
         return 'A quick update. ' + digest(selected)
 
     def briefing(self, details=False):
-        events = self.store.events(pending=True)
+        events = self._events(pending=True)
         historical = not events
         if not events:
-            events = self.store.events()
+            events = self._events()
         selected = events[:5]
         self._remember_briefing(selected)
         self.store.acknowledge(e['id'] for e in selected)
@@ -134,7 +167,7 @@ class AwarenessService:
 
     def message_briefing(self, sources, details=False):
         excluded = {'System', 'Projects', 'Processes', 'Reminders', 'ZENO tasks', 'Connections'}
-        events = [e for e in self.store.events(limit=1000) if
+        events = [e for e in self._events(limit=1000) if
                   (e['source'] in sources if sources else e['source'] not in excluded)][:5]
         self._remember_briefing(events)
         self.store.acknowledge(e['id'] for e in events)
@@ -152,7 +185,7 @@ class AwarenessService:
 
     async def summarize(self, client):
         from brain.api_utils import call_gemini_with_fallback, reasoning_available
-        events = self.store.events(pending=True, limit=10) or self.store.events(limit=10)
+        events = self._events(pending=True, limit=10) or self._events(limit=10)
         self._remember_briefing(events)
         if not events:
             unavailable = [name for name in ('Gmail', 'Outlook') if self.status.get(name) != 'Connected']
@@ -187,7 +220,7 @@ class AwarenessService:
         if lowered in {'tell me more', 'read those updates', 'read them', 'more details'}:
             if not self.last_briefing or time.monotonic() - self.last_briefing_at > 300:
                 return 'Ask me for a briefing first, then I can read its details.'
-            return digest(self.last_briefing, details=True)
+            return digest(self._visible(self.last_briefing), details=True)
         if lowered in {'show my reminders', 'list reminders', 'what are my reminders'}:
             reminders = sorted(self.store.get('reminders', []), key=lambda r: r['due'])
             if not reminders:
@@ -205,10 +238,15 @@ class AwarenessService:
             return 'Updates are on. I will group routine changes and respect quiet hours.'
         if lowered in {'connection status', 'what are you monitoring'}:
             return '. '.join(f'{name}: {status}' for name, status in self.status.items()) or 'The first source checks are still running.'
+        if (lowered in {'work status', 'project status', 'how is my work going'} or
+                lowered.startswith(('watch project ', 'watch process '))) and not app_access.allowed("monitor"):
+            return app_access.denial("monitor")
         if lowered in {'work status', 'project status', 'how is my work going'}:
             summaries = [self.store.get('project:' + p, {}).get('summary', '') for p in self.store.get('projects', [])]
             return ' '.join(s for s in summaries if s) or 'No project status is available yet.'
         if lowered in {"what's running", 'what is running', 'running apps'}:
+            if not app_access.allowed("system"):
+                return app_access.denial("system")
             apps = []
             for process in psutil.process_iter(['name', 'memory_info']):
                 try:

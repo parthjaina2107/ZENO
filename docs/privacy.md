@@ -114,7 +114,15 @@ sends it to Ollama on loopback. Opt-in cloud vision can send it to Gemini.
 Screen replies are displayed or spoken and bypass saved assistant memory.
 
 With optional Gmail compose permission, ZENO saves the reviewed message in
-your Google account and sends it when you provide the draft's confirmation code.
+your Google account and sends it when you provide the draft's confirmation code
+or click **Send reviewed draft** in the desktop app.
 AI-assisted writing sends the topic you supply to the configured reasoning model.
 The draft preview is visible to the requesting interface and may be spoken aloud.
 Paired remote controllers can use these mailbox features on the host account.
+
+The native dashboard stores per-feature access choices in `ZENO_DATA_DIR/app-access.json`.
+Fresh profiles start with optional tools off. Disabling a source blocks new requests
+and filters its collected events from subsequent briefings. OAuth grants and stored
+events can be managed separately. New CLI voice captures omit full transcripts from
+the normal application log. The optional headphone interruption listener accepts
+only local stop or correction intents while ZENO is speaking.

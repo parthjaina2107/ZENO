@@ -223,3 +223,16 @@ async def test_unmute_reaches_a_distinct_action(rig):
     await rig.runner.run("unmute", agent_mode=True)
     action = rig.executor.execute.call_args.args[0]
     assert (action.action_type, action.parameters) == ("volume_mute", {"muted": False})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("goal", ["open Notepad, but don't do it", "open https://example.org unless the file exists", "create a folder called Audit but don't actually create it"])
+async def test_withdrawn_or_conditional_goal_runs_no_prefix(rig, goal):
+    await rig.runner.run(goal, agent_mode=True)
+    rig.executor.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_unverified_remote_action_is_not_completed(rig):
+    rig.executor.execute.return_value = ActionResult(True, "Paste requested", {"verified": False})
+    assert await rig.runner.run("type Hello", agent_mode=True) == "unverified"

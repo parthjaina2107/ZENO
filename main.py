@@ -241,7 +241,11 @@ class VoiceAgentApp:
                 print(f"⚠️ {fail_msg}")
                 break
         if records:
-            self.speaker.speak(await outcome_reply(self.brain, user_text, records))
+            reply = await outcome_reply(self.brain, user_text, records)
+            following = (brain_resp.data or {}).get('following_mail')
+            if following and all(record['success'] for record in records):
+                reply += '\n' + await control.wait(self.brain.respond_to_mail(following))
+            self.speaker.speak(reply)
 
     def voice_state(self, state):
         """Console microphone indicator; no audio or transcript is persisted here."""
@@ -258,11 +262,16 @@ class VoiceAgentApp:
             return
         while self.running and self.speaker.is_busy:
             self.voice_state('speaking — interruption microphone active; headphones required')
-            text = await loop.run_in_executor(None, self.listener.listen_once, 1, 3, True)
+            text = await loop.run_in_executor(None, self.listener.listen_once, 1, 3, True, True)
             if text and not self.listener.last_uncertain:
                 intent = interrupt_intent(text, config.ASSISTANT_NAME)
                 if intent:
                     self.speaker.interrupt()
+                    if intent == "stop":
+                        coordinator.stop()
+                        current = getattr(self, "_local_task", None)
+                        if current and not current.done():
+                            current.cancel()
                     await loop.run_in_executor(None, self.speaker.wait_until_idle)
                     if intent == 'correct':
                         self.brain.memory.add_turn('user', "That's not what I meant. Ask what should change; do not repeat or undo completed actions.")
@@ -326,7 +335,7 @@ class VoiceAgentApp:
                         None, self.listener.listen_once, config.LISTEN_TIMEOUT, config.PHRASE_TIMEOUT, standby)
                     # Console fallback is explicit user input, not ambient speech.
                     if text and self.listener.is_mic_available():
-                        turn = self.conversation.accept(text, self.listener.last_uncertain)
+                        turn = self.conversation.accept(text, self.listener.last_uncertain, active_task=coordinator.active is not None or bool(self._local_task and not self._local_task.done()))
                         if turn.kind == 'sleep' and await asyncio.to_thread(self.listener._get_whisper_model) is None:
                             self.conversation.wake_enabled = False
                             turn.message = 'Wake standby needs a cached local speech model. Run --setup-speech first; direct listening remains enabled.'

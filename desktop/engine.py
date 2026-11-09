@@ -32,8 +32,15 @@ class DesktopEngine:
         if not hasattr(self, 'coding_intent'):
             self.coding_intent = CodingIntent()
         from brain.companion import conversation_text, social_opening, CLEAR_REQUESTS
+        from awareness.gmail import mail_request
+        from brain.folder_intent import folder_request
+        from brain.interaction import is_direct_command
+        from brain.vision import ScreenVision
         routing_text = getattr(self.brain, 'strip_wake_prefix', lambda value: value)(text)
         if (conversation_text(routing_text) is not None or social_opening(routing_text)
+                or mail_request(routing_text) is not None or folder_request(routing_text)
+                or is_direct_command(routing_text) or ScreenVision.is_vision_query(routing_text)
+                or (getattr(self.brain, 'gmail_mailbox', None) and self.brain.gmail_mailbox.composing)
                 or routing_text.strip().lower().rstrip('.!?') in CLEAR_REQUESTS
                 or routing_text.lower().startswith(('conversation style ', 'assistant profile '))
                 or routing_text.lower().rstrip('.!?') in {'what can you do', 'show capabilities', 'help'}):
@@ -53,6 +60,8 @@ class DesktopEngine:
             except (ValueError, RuntimeError, OSError) as exc:
                 return 'Coding task could not start: ' + str(exc)
         emit("state", "Thinking")
+        mailbox = getattr(self.brain, 'gmail_mailbox', None)
+        previous_draft = mailbox.pending if mailbox else None
         response = await control.wait(self.brain.think(text))
         control.check()
         if getattr(response, 'data', None) and response.data.get('service_error'):
@@ -94,11 +103,21 @@ class DesktopEngine:
                 if not result.success:
                     break
             reply = await control.wait(outcome_reply(self.brain, text, records))
+            following = (response.data or {}).get('following_mail')
+            if following and records and all(record['success'] for record in records):
+                reply += '\n' + await control.wait(self.brain.respond_to_mail(following))
         control.check()
+        mailbox = getattr(self.brain, 'gmail_mailbox', None)
+        if mailbox and mailbox.pending and (mailbox.pending is not previous_draft
+                or (getattr(response, 'data', None) or {}).get('review_send')):
+            emit("mail_review", mailbox.pending[0])
         return reply
 
     async def run(self, text, control, approve, emit, settings):
         if text is None:
+            import app_access
+            if not app_access.allowed("microphone"):
+                return app_access.denial("microphone")
             from .audio import capture
             emit("state", "Opening microphone")
             def microphone_opened():

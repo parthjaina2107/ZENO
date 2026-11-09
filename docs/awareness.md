@@ -205,3 +205,7 @@ Automatic prioritization uses explicit reminders, threshold crossings and groupe
 on-demand AI summaries can highlight attention items from the available previews. It does
 not infer every deadline or learn a personalized priority model. Account connection
 and notification coverage are always reported separately from system/project monitoring.
+
+Enable the desired inbox, notification or monitoring source in **App access**.
+For mail, ZENO can collect an address and message over separate turns. “Any new
+emails” filters unread messages. “Any emails today” starts at local midnight.

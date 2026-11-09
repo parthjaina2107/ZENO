@@ -102,6 +102,10 @@ class WorkAndSystem:
                                      f"{item['name']} has stopped. Its exit result is unknown."))
         if remaining != watched:
             self.store.set('processes', remaining)
+        return results
+
+    def collect_reminders(self):
+        results = []
         reminders = self.store.get('reminders', [])
         for reminder in reminders:
             if reminder['due'] <= time.time() and not self.store.contains('Reminders:' + reminder['id']):

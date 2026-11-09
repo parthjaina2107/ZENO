@@ -22,7 +22,7 @@ def git_paths(*args):
 
 def setup_impact(path):
     return (path.startswith(("requirements", "desktop/", "voice/"))
-            or path in {"main.py", "config.py", ".env.example", "Start-ZENO.cmd", "start_zeno.bat"}
+            or path in {"main.py", "config.py", "app_access.py", ".env.example", "Start-ZENO.cmd", "start_zeno.bat"}
             or (path.startswith("scripts/") and path.endswith((".bat", ".cmd", ".ps1"))))
 
 
@@ -58,7 +58,7 @@ def main():
         lower = name.lower()
         if ((path.name.startswith(".env") and path.name != ".env.example")
                 or path.name in {"credentials.json", "google-client.json", "desktop.json", "desktop.lock",
-                                 "zeno_memory.json", "audit_log.jsonl", "paired_devices.json"}
+                                 "zeno_memory.json", "audit_log.jsonl", "paired_devices.json", "app-access.json"}
                 or path.name.startswith("client_secret") or path.suffix in {".token", ".sqlite3", ".log"}
                 or lower.startswith(("accounts/", "screenshots/", "task_reports/"))):
             errors.append("Sensitive runtime path must not be tracked: " + name)

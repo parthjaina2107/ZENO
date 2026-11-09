@@ -6,6 +6,7 @@ and confirmation parsing.
 
 import logging
 import threading
+import app_access
 import time
 import re
 from typing import Optional, Callable
@@ -87,7 +88,7 @@ class VoiceListener:
             self._recognizer.dynamic_energy_threshold = True
             self._recognizer.pause_threshold = 0.8
             self._recognizer.operation_timeout = 10
-            if not self._initialize_microphone:
+            if not self._initialize_microphone or not app_access.allowed("microphone"):
                 return
             
             # Check for microphone
@@ -107,11 +108,11 @@ class VoiceListener:
             self._mic_available = False
 
     def is_mic_available(self) -> bool:
-        return self._mic_available
+        return self._mic_available and app_access.allowed("microphone")
 
     def calibrate(self, duration: float = 2.0):
         """Listen to ambient noise to set energy threshold."""
-        if not self._mic_available or not self._microphone:
+        if not self.is_mic_available() or not self._microphone:
             return
         try:
             import speech_recognition as sr
@@ -181,6 +182,8 @@ class VoiceListener:
 
         if local_only or (config.STT_BACKEND != 'google' and not config.STT_ALLOW_ONLINE_FALLBACK):
             return None
+        if not app_access.allowed("online_voice"):
+            return None
         # Google fallback sends captured audio online; it can be disabled in .env.
         try:
             text = self._recognizer.recognize_google(audio_data)
@@ -189,10 +192,10 @@ class VoiceListener:
             # Silence or uncomprehended speech
             return None
 
-    def listen_once(self, timeout: int = 5, phrase_time_limit: int = 10, local_only=False) -> Optional[str]:
+    def listen_once(self, timeout: int = 5, phrase_time_limit: int = 10, local_only=False, interrupt_only=False) -> Optional[str]:
         """Listen for one phrase, return text or None if silence/error."""
         self.last_uncertain = False
-        if not self._mic_available or not self._microphone:
+        if not self.is_mic_available() or not self._microphone:
             # Fall back to console input if no microphone
             try:
                 print("🎤 [Local Mic Not Available - Type command or press Enter]: ", end="", flush=True)
@@ -206,22 +209,27 @@ class VoiceListener:
         import speech_recognition as sr
         try:
             before = self.tts_state() if self.tts_state else (0, False)
-            if before[1]:
+            if before[1] and not interrupt_only:
                 time.sleep(0.05)
                 return None
             with self._microphone as source:
                 logger.debug("Listening for audio...")
                 audio = self._recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
             after = self.tts_state() if self.tts_state else (0, False)
-            if after[1] or before[0] != after[0]:
+            if not interrupt_only and (after[1] or before[0] != after[0]):
+                return None
+            if not app_access.allowed("microphone"):
                 return None
             # Release the microphone before CPU/network transcription.
-            text = self._transcribe_audio(audio, local_only=local_only)
+            text = self._transcribe_audio(audio, local_only=local_only or interrupt_only)
+            if interrupt_only:
+                from .conversation import interrupt_intent
+                return text if text and not self.last_uncertain and interrupt_intent(text, config.ASSISTANT_NAME) else None
             if text:
                 if local_only:
                     logger.debug('Local wake/interruption phrase processed; transcript not logged.')
                 else:
-                    logger.info(f"Heard speech: {text}")
+                    logger.debug("Speech transcribed for a command.")
             return text
         except sr.WaitTimeoutError:
             return None

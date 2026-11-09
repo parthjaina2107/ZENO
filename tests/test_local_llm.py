@@ -198,7 +198,7 @@ async def test_update_summary_uses_local_without_cloud_client(monkeypatch):
     monkeypatch.setattr(local_llm, 'generate_local', local)
     service = AwarenessService.__new__(AwarenessService)
     service.store = MagicMock()
-    service.store.events.return_value = [{'id': 'synthetic', 'title': 'Example reminder'}]
+    service.store.events.return_value = [{'id': 'synthetic', 'source': 'Reminders', 'title': 'Example reminder'}]
     service.status = {}
     service._remember_briefing = MagicMock()
     assert await service.summarize(None) == 'Synthetic reminder summary.'

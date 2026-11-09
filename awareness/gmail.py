@@ -7,34 +7,68 @@ from html.parser import HTMLParser
 import re
 import secrets
 import threading
+from datetime import datetime
 from email.message import EmailMessage
+from email import message_from_bytes
+from email.policy import default
 from email.policy import SMTP
 
 import httpx
 
+import app_access
 from .accounts import GMAIL_COMPOSE_SCOPE, gmail_credentials, token_path
 from .commands import normalize
 
 
+ADDRESS = r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
+COMPOSE_START = re.compile(
+    r"^(?:(?:and |so )?(?:now |then ))?(?:(?:can|could|would) you |i (?:want|need) (?:you )?to )?(?:please )?"
+    r"(?:write|draft|compose|send)\s+(?:(?:me|her|him|them)\s+)?(?:(?:an?|the|that)\s+)?(?:e-?mail|mail)\b", re.I)
+
+
+def mail_fields(text):
+    """Extract a single recipient. Preserve the original casing and wording of the body."""
+    text = re.sub(r"\b([\w.+-]+(?:\s+dot\s+[\w+-]+)*)\s+at\s+([\w-]+(?:\s+dot\s+[\w-]+|\.[\w-]+)+)",
+                  lambda m: re.sub(r"\s+dot\s+", ".", m[1], flags=re.I) + "@" + re.sub(r"\s+dot\s+", ".", m[2], flags=re.I), text, flags=re.I)
+    addresses = list(re.finditer(ADDRESS, text))
+    if len(addresses) > 1:
+        return None, None
+    marker = re.search(r"\b(?:with subject|subject|body|message|saying|about|telling (?:her|him|them)|asking (?:her|him|them))\b[: ]*", text, re.I)
+    details = text[marker.start():].strip() if marker else ""
+    if addresses and marker and marker.start() < addresses[0].start():
+        details = re.split(r"[,;]?\s+(?:(?:and|at)\s+)?(?:(?:his|her|their|the)\s+)?(?:e-?mail(?:\s+(?:id|address))?(?:\s+is)?|address is)\b",
+                           text[marker.start():addresses[0].start()], flags=re.I)[0].strip(" ,;")
+    return (addresses[0][0] if addresses else ""), details
+
+
 def mail_request(text):
     original = text.strip()
-    confirm = re.fullmatch(r"(?:please )?send draft (\d{6})[.!]?", original, re.I)
+    confirm = re.fullmatch(r"(?:please )?send draft ([a-z0-9 -]+)[.!]?", original, re.I)
     if confirm:
-        return ("send_draft", confirm[1])
+        names = "zero one two three four five six seven eight nine".split()
+        groups = re.split(r"[ -]+", confirm[1].lower().strip())
+        digits = "".join(str(names.index(g)) if g in names else g for g in groups)
+        if re.fullmatch(r"[0-9]{6}", digits):
+            return ("send_draft", digits)
     if re.fullmatch(r"(?:please )?(?:cancel|discard) (?:this |the )?send[.!]?", original, re.I):
         return ("cancel_send", "")
-    outgoing = re.fullmatch(r"(?:please )?(?:write|draft|compose|send) (?:me )?(?:an? )?(?:email|mail) to ([^\s,;]+)\s+(.+)", original, re.I | re.S)
-    if outgoing:
-        address, details = outgoing.groups()
-        if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", address):
+    start = COMPOSE_START.match(original)
+    if start:
+        address, details = mail_fields(original[start.end():])
+        if address is None:
             return ("compose_help", "")
-        fields = re.fullmatch(r"(?:with )?subject\s*:?\s+([^\r\n]+?)\s+(?:body|saying|message)\s*:?\s+(.+)", details, re.I | re.S)
-        if fields and len(fields[1]) <= 250:
+        fields = re.fullmatch(r"(?:with )?subject[: ]+([^\r\n]+?)\s+(?:body|saying|message)[: ]+(.+)", details, re.I | re.S)
+        if address and fields:
             return ("draft", (address, fields[1].strip(), fields[2].strip()))
-        topic = re.fullmatch(r"about\s+(.+)", details, re.I | re.S)
-        if topic:
-            return ("write", (address, topic[1]))
-        return ("compose_help", "")
+        if address and details.lower().startswith("about "):
+            return ("write", (address, details[6:].strip()))
+        return ("collect", (address, details))
+    if re.fullmatch(ADDRESS, original.rstrip(".!?")):
+        return ("recipient", (original.rstrip(".!?"), ""))
+    if re.match(r"^(?:(?:his|her|their|the|my friend's)\s+(?:e-?mail(?:\s+(?:address|id))?|address)\s*(?:is|:)\s*|send it to\s+)", original, re.I):
+        address, details = mail_fields(original)
+        if address:
+            return ("recipient", (address, details))
     if re.match(r"^(?:please )?(?:write|draft|compose|send) (?:me )?(?:an? )?(?:email|mail|draft)\b", original, re.I):
         return ("compose_help", "")
     text = normalize(text)
@@ -42,9 +76,10 @@ def mail_request(text):
         if re.search(r"\b(?:gmail|emails?|mails?)\b", text):
             return ("unsupported", "")
         return None
-    read = re.fullmatch(r"(?:read|open)(?: me)? (?:email|mail|message)(?: number)? (\d+)", text)
+    read = re.fullmatch(r"(?:read|open)(?: me)? (?:email|mail|message)(?: number)? (\d+|one|two|three|four|five)", text)
     if read:
-        return ("read", int(read[1]))
+        number = int(read[1]) if read[1].isdigit() else 1 + ["one", "two", "three", "four", "five"].index(read[1])
+        return ("read", number)
     if not re.search(r"\b(?:gmail|emails?|mails?|inbox)\b", text):
         return None
     if re.match(r"^(?:how (?:do|can)|explain|what is gmail|do not|don't)\b", text):
@@ -59,10 +94,11 @@ def mail_request(text):
         return ("search", ('from:' if sender else 'subject:') + '"' + value + '"')
     if re.fullmatch(r"(?:(?:check|show|read|summarize)(?: me)? |any |do i have (?:any )?|what (?:are|is)(?: in)? )?(?:my |the |new |latest |recent |unread )*(?:gmail|emails?|mails?|inbox)(?: today)?", text):
         query = "in:inbox"
-        if "unread" in text:
+        if "unread" in text or "new" in text.split():
             query += " is:unread"
         if "today" in text:
-            query += " newer_than:1d"
+            midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            query += f" after:{int(midnight.timestamp())}"
         return ("search", query)
     if re.match(r"^(?:check|show|read|summarize|find|search|did|have|what|when|which|is|are)\b", text):
         return ("help", "")
@@ -118,9 +154,66 @@ class GmailMailbox:
     def __init__(self):
         self.results = []
         self.pending = None
+        self.composing = None
         self._lock = threading.Lock()
 
+    def followup(self, text):
+        """Only consume a continuation while this session is collecting mail fields."""
+        if self.pending and re.fullmatch(r"(?:yes|send it|send it now|go ahead)[.!]?", text.strip(), re.I):
+            return ("review_send", "")
+        if self.pending and re.fullmatch(r"[0-9][0-9 -]+[.!]?", text.strip()):
+            return ("review_send", "")
+        if self.composing is None:
+            return None
+        value = text.strip()
+        if re.fullmatch(r"(?:cancel|stop|never mind|nevermind|forget it|no|do not send(?: it)?|don.t send(?: it)?)[.!]?", value, re.I):
+            return ("cancel_send", "")
+        if re.match(r"^(?:(?:please|can you)\s+)?(?:open|close|create|make|search|check|read|show|set|run|task|explain|code|pause|play|take|clear|type|what|why|how|restart|mute|unmute)\b", value, re.I):
+            self.composing = None
+            return None
+        address, details = mail_fields(value)
+        if address is None:
+            return ("compose_help", "")
+        if not address and not details and self.composing[0] and not re.fullmatch(r"(?:yes|ok|okay|send it|go ahead)[.!]?", value, re.I):
+            details = ("about " if re.match(r"^(?:tell|ask|wish|invite|thank|remind)\b", value, re.I) else "body ") + value
+        return ("continue_mail", (address, details))
+
     async def respond(self, request, model_client):
+        feature = "gmail_read" if request[0] in {"read", "search"} else "gmail_send"
+        if request[0] not in {"help", "unsupported", "cancel_send"} and not app_access.allowed(feature):
+            self.composing = self.pending = None
+            return app_access.denial(feature)
+        if request[0] == "review_send":
+            code, _, _, raw = self.pending
+            message = message_from_bytes(base64.urlsafe_b64decode(raw), policy=default)
+            return (f'Gmail draft ready for review.\nTo: {message["To"]}\nSubject: {message["Subject"]}\n\n'
+                    f'{message.get_content().strip()}\n\nTo send this version, say "send draft {code}".')
+        if request[0] in {"collect", "continue_mail", "recipient"}:
+            address, details = request[1]
+            old_address, old_details = (self.composing or ("", "")) if request[0] != "collect" else ("", "")
+            if old_details and re.fullmatch(r"(?:with )?subject[: ]+.+", old_details, re.I) and re.match(r"^(?:body|message|saying)\b", details, re.I):
+                details = old_details + " " + details
+            address, details = address or old_address, details or old_details
+            self.pending = None
+            self.composing = (address, details)
+            if not address:
+                return "What email address should I use for the recipient?"
+            if not details:
+                return f"What should the email to {address} say? You can dictate the message or say 'about' followed by a topic."
+            fields = re.fullmatch(r"(?:with )?subject[: ]+([^\r\n]+?)\s+(?:body|saying|message)[: ]+(.+)", details, re.I | re.S)
+            if fields:
+                request = ("draft", (address, fields[1].strip(), fields[2].strip()))
+            elif re.match(r"^(?:with )?subject\b", details, re.I):
+                self.composing = (address, details)
+                return f"What should the message body for {address} say?"
+            elif re.match(r"^(?:about|asking|telling)\b", details, re.I):
+                request = ("write", (address, details))
+            else:
+                body = re.sub(r"^(?:body|message|saying)\b[: ]*", "", details, flags=re.I)
+                request = ("draft", (address, "Message", body))
+        self.composing = None
+        if request[0] in {"draft", "write"}:
+            self.pending = None
         if request[0] == "write":
             from brain.api_utils import call_gemini_with_fallback
             address, topic = request[1]
@@ -135,9 +228,18 @@ class GmailMailbox:
                 request = ("draft", (address, fields["subject"].strip(), fields["body"].strip()))
             except Exception:
                 return 'Writing assistance is unavailable. You can dictate the text using "draft an email to ADDRESS subject SUBJECT body MESSAGE".'
+        if request[0] in {"draft", "send_draft"}:
+            cancelled = threading.Event()
+            worker = asyncio.create_task(asyncio.to_thread(self.compose, *request, cancelled))
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancelled.set()
+                await asyncio.gather(worker, return_exceptions=True)
+                raise
         return await asyncio.to_thread(self.answer, request)
 
-    def compose(self, kind, value):
+    def compose(self, kind, value, cancelled=None):
         usage = 'Say "draft an email to alex@example.com subject Meeting body Can we meet Friday?" or "write an email to alex@example.com about scheduling a meeting".'
         with self._lock:
             if kind == "cancel_send":
@@ -164,6 +266,10 @@ class GmailMailbox:
                         message.set_content(body)
                         raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
                         self.pending = None
+                        if cancelled and cancelled.is_set():
+                            return "Draft creation cancelled."
+                        if not app_access.allowed("gmail_send"):
+                            return app_access.denial("gmail_send")
                         result = client.post(base, json={"message": {"raw": raw}})
                         result.raise_for_status()
                         draft = result.json()
@@ -176,6 +282,10 @@ class GmailMailbox:
                     check.raise_for_status()
                     if check.json()["message"]["id"] != version:
                         return "This draft changed in Gmail. Review the updated version there before sending."
+                    if cancelled and cancelled.is_set():
+                        return "Send cancelled."
+                    if not app_access.allowed("gmail_send"):
+                        return app_access.denial("gmail_send")
                     sent = client.post(base + "/send", json={"id": draft_id, "message": {"raw": raw}})
                     sent.raise_for_status()
                     if sent.json().get("id"):
@@ -191,6 +301,8 @@ class GmailMailbox:
             return self.compose(kind, value)
         if kind in {"help", "unsupported"}:
             return 'Try "check my emails", "read email 1", or "draft an email to alex@example.com subject Meeting body Can we meet Friday?".'
+        if not app_access.allowed("gmail_read"):
+            return app_access.denial("gmail_read")
         if not token_path("gmail").exists():
             return "Connect Gmail first using python main.py --connect gmail."
         if kind == "read" and not 1 <= value <= len(self.results):

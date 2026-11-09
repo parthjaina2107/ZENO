@@ -45,6 +45,7 @@ screenshots/
 google-client.json
 accounts/
 desktop.json
+app-access.json
 desktop.lock
 task_reports/
 *.token

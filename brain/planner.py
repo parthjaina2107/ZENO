@@ -93,7 +93,7 @@ class ShutdownParams(BaseModel):
     mode: str = "lock"
 
 class MediaParams(BaseModel):
-    command: Literal["play_pause", "next", "previous", "stop"]
+    command: Literal["play", "pause", "play_pause", "next", "previous", "stop"]
 
 class WaitParams(BaseModel):
     seconds: float = Field(default=1, ge=0, le=10)

@@ -6,10 +6,11 @@ import socket
 import subprocess
 
 from config import config
+import app_access
 
 
 def start_local_runtime():
-    if not config.LOCAL_LLM_ENABLED or os.name != 'nt':
+    if not config.LOCAL_LLM_ENABLED or os.name != 'nt' or not app_access.allowed('local_ai'):
         return False
     try:
         with socket.create_connection(('127.0.0.1', 11434), timeout=0.2):

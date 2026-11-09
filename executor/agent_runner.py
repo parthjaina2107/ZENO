@@ -178,6 +178,11 @@ class AgentRunner:
                         await self.emit({"type": "screenshot", "data": result.output.get("base64"), "message": result.message})
                     else:
                         await self.emit({"type": "response", "message": ("✅ " if result.success else "❌ ") + result.message})
+                    if result.success and isinstance(output, dict) and output.get("verified") is False:
+                        terminal_status = "unverified"
+                        terminal_message = "The action was attempted, but its result could not be verified."
+                        await self.emit({"type": "response", "message": terminal_message})
+                        return terminal_status
                     if not result.success:
                         failed = True
                         terminal_message = result.message

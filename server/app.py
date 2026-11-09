@@ -16,6 +16,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import app_access
 import psutil
 
 from config import config
@@ -156,6 +157,8 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
             detail="Authentication required for health endpoint."
         )
 
+    if not app_access.allowed("system"):
+        return {"status": "healthy", "cpu_percent": None, "ram_percent": None, "battery": None}
     battery = psutil.sensors_battery()
     return {
         "status": "healthy",
@@ -324,6 +327,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             runner = AgentRunner(brain, perms, connection_id, approve, emit, planner=planner)
             status = await runner.run((brain_resp.data or {}).get("goal", brain_resp.message if brain_resp.kind == "task" else user_text),
                              actions=brain_resp.actions, agent_mode=brain_resp.kind == "task" or bool((brain_resp.data or {}).get("agent_mode")))
+            following = (brain_resp.data or {}).get('following_mail')
+            if status == 'completed' and following:
+                await emit({"type": "response", "message": await brain.respond_to_mail(following)})
         except asyncio.CancelledError:
             status = "cancelled"
             raise
@@ -369,6 +375,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
             # Telemetry request
             if msg_type == "get_telemetry":
+                if not app_access.allowed("system"):
+                    await send_to_client({"type": "telemetry", "cpu": None, "ram": None, "battery": None})
+                    continue
                 battery = psutil.sensors_battery()
                 cpu = psutil.cpu_percent()
                 ram = psutil.virtual_memory().percent

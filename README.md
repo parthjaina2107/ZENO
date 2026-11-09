@@ -24,8 +24,7 @@ VS Code to open. This uses a separately signed-in Codex CLI. Generated code and
 runtime tests are not executed automatically. See
 [coding workspace setup and limits](docs/coding-workspace.md).
 
-Separate experiment: [Aurora standalone lyric companion](standalone/aurora/README.md)
-has its own launcher and setup; it is not integrated into ZENO.
+Aurora is a separate local experiment with its own launcher and setup.
 
 Say **“Zeno, task open Notepad then type Hello ZENO”**, type
 `task: check battery then check cpu usage`, or enable **Agent task mode** in the phone UI.
@@ -309,3 +308,7 @@ The automated unit and integration tests verify:
 - Rate limiting, IP tracking, and JWT authentication
 - Read-only inbox adapters, awareness isolation, reminders, and OAuth recovery
 - Local speech recognition, silence filtering, and speech-service fallbacks
+
+The desktop dashboard's **App access** page controls available accounts,
+applications and tools. **Exit** on the island or **Exit ZENO** in the dashboard
+quits the desktop application. See [setup](docs/setup.md#app-access-and-quitting-zeno).

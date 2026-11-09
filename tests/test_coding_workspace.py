@@ -131,7 +131,10 @@ async def test_runner_approvals_and_end_to_end_fake_provider(tmp_path, monkeypat
     root = tmp_path / 'project'
     root.mkdir()
     (root / 'Tutorial3.txt').write_text('Write a function that adds two numbers')
+    import app_access
     monkeypatch.setattr(cw.config, 'DATA_DIR', tmp_path / 'data')
+    for feature in ('coding', 'files', 'code'):
+        app_access.set_choice(feature, True)
     monkeypatch.setattr(cw, 'coding_executable', lambda: 'fake-codex')
     def fake_proposal(goal, staging, directory, control, progress):
         assert (staging / 'Tutorial3.txt').read_text().startswith('Write')

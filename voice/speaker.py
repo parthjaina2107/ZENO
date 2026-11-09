@@ -8,6 +8,7 @@ import queue
 import re
 import sys
 import threading
+import app_access
 import time
 import logging
 import unicodedata
@@ -117,7 +118,7 @@ class VoiceSpeaker:
                 pass
 
             # Neural speech is optional; a network failure falls back to local speech.
-            if config.TTS_BACKEND == "edge" and time.monotonic() >= self._neural_retry_at:
+            if config.TTS_BACKEND == "edge" and app_access.allowed("online_voice") and time.monotonic() >= self._neural_retry_at:
                 try:
                     from .neural import speak_neural
                     speak_neural(clean, lambda: self._running and generation == self._generation)
@@ -135,10 +136,14 @@ class VoiceSpeaker:
             if self._backend == "sapi" and sapi_voice:
                 try:
                     sapi_voice.Speak(clean, 1)  # Async: cancellation is handled on this COM thread.
+                    deadline = time.monotonic() + max(20, 2 * len(clean.split()) + 8)
                     while self._running and generation == self._generation:
                         if sapi_voice.WaitUntilDone(50):
                             break
-                    if not self._running or generation != self._generation:
+                        if time.monotonic() >= deadline:
+                            logger.warning("Windows speech playback timed out.")
+                            break
+                    if not self._running or generation != self._generation or time.monotonic() >= deadline:
                         sapi_voice.Speak('', 3)  # Purge pending speech.
                 except Exception as e:
                     logger.error(f"SAPI Speak error: {e}")

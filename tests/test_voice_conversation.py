@@ -260,3 +260,12 @@ async def test_uncertain_voice_turn_waits_before_execution(monkeypatch):
     await app.run_local_loop()
     app.process_user_command.assert_awaited_once_with('open Notepad')
     assert any('I may have heard' in call.args[0] for call in app.speaker.speak.call_args_list)
+
+
+def test_active_task_can_stop_after_wake_window_expires():
+    clock = MagicMock(return_value=10)
+    session = ConversationSession(True, clock=clock)
+    assert session.accept("Hey Xeno, check battery").kind == "command"
+    clock.return_value = 300
+    assert session.accept("stop", active_task=True).kind == "command"
+    assert session.accept("open notepad", active_task=True).kind == "ignore"

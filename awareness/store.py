@@ -11,7 +11,10 @@ class EventStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute('CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, source TEXT, title TEXT, body TEXT, priority INTEGER, created REAL, announced INTEGER)')
+            if 'feature' not in {row['name'] for row in db.execute('PRAGMA table_info(events)')}:
+                db.execute('ALTER TABLE events ADD COLUMN feature TEXT')
             db.execute('CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT)')
 
     @contextmanager
@@ -37,11 +40,11 @@ class EventStore:
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO state VALUES (?,?)', (key, json.dumps(value)))
 
-    def add(self, event, announced=False):
+    def add(self, event, announced=False, feature=None):
         with self.connect() as db:
-            db.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?)', (
+            db.execute('INSERT OR IGNORE INTO events (id,source,title,body,priority,created,announced,feature) VALUES (?,?,?,?,?,?,?,?)', (
                 event['id'], event['source'][:120], event['title'][:300], event.get('body', '')[:1500],
-                event.get('priority', 0), event.get('created', time.time()), int(announced)))
+                event.get('priority', 0), event.get('created', time.time()), int(announced), feature))
 
     def events(self, pending=False, limit=100):
         with self.connect() as db:

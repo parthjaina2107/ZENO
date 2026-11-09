@@ -4,6 +4,7 @@ import io
 import logging
 import re
 from typing import Optional, Dict, Any
+import app_access
 from config import config
 from .api_utils import cloud_allowed, call_gemini_with_fallback
 
@@ -45,7 +46,8 @@ class ScreenVision:
         else:
             logger.info("ScreenVision: Cloud disabled or unconfigured. Using local screen interpretation.")
 
-    def is_vision_query(self, text: str) -> bool:
+    @staticmethod
+    def is_vision_query(text: str) -> bool:
         """Determine if user utterance is asking about the screen."""
         lowered = text.lower().strip()
         for pattern in VISION_PATTERNS:
@@ -79,6 +81,8 @@ class ScreenVision:
         """
         Capture screen and use Gemini 2.5 Flash multimodal vision to answer the user's question.
         """
+        if not app_access.allowed("screen"):
+            return {"success": False, "analysis": None, "message": app_access.denial("screen")}
         # 1. Capture screen if not provided
         if image is None:
             image = await asyncio.to_thread(self.capture_screen)

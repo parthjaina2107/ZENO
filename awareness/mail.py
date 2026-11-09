@@ -12,6 +12,10 @@ class MailSource:
         self.name = provider.title()
 
     def collect(self):
+        import app_access
+        feature = "gmail_read" if self.provider == "gmail" else "outlook"
+        if not app_access.allowed(feature):
+            raise RuntimeError(app_access.denial(feature))
         if not token_path(self.provider).exists():
             raise RuntimeError('Not connected. Run python main.py --connect ' + self.provider + '.')
         if self.provider == 'gmail':

@@ -675,3 +675,17 @@ def test_short_display_keeps_approval_controls_reachable_at_the_edge(monkeypatch
         assert decisions == [("review", False)]
     finally:
         island.close()
+
+
+def test_constant_background_noise_does_not_start_phrase(monkeypatch):
+    from desktop import audio
+    import struct
+    import speech_recognition as sr
+    clock = iter(range(100))
+    source = MagicMock(CHUNK=512, SAMPLE_RATE=16000, SAMPLE_WIDTH=2)
+    source.stream.read.return_value = struct.pack("<512h", *([600, -600] * 256))
+    mic = MagicMock()
+    mic.__enter__.return_value = source
+    monkeypatch.setattr(sr, "Microphone", lambda **kw: mic)
+    monkeypatch.setattr(audio.time, "monotonic", lambda: next(clock))
+    assert audio.capture(RunControl(), wait_seconds=3) is None

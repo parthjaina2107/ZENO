@@ -20,6 +20,7 @@ def brain(tmp_path):
     value.memory = ZenoMemory(str(tmp_path / 'memory.json'))
     value.client = object()
     value.awaiting_clarification = False
+    value.gmail_mailbox = None
     value.awareness = MagicMock()
     value.vision = MagicMock()
     value.nlu = MagicMock()

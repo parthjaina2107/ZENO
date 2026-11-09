@@ -27,22 +27,29 @@ class VoiceTurn:
 
 class ConversationSession:
     def __init__(self, wake_enabled=False, name='ZENO', followup_seconds=30, clock=time.monotonic):
+        self.name = name
         self.wake_enabled = wake_enabled
         self.followup_seconds = followup_seconds
         self.clock = clock
         self.active_until = 0
         self.pending = None
         self.pending_until = 0
-        self.wake = re.compile(rf'^(?:(?:hey|hi|hello|okay|ok)\s+)?{re.escape(name)}\b[, :]*', re.I)
+        address = rf'(?:(?:hey|hi|hello|okay|ok)\s+)?{re.escape(name)}'
+        if name.lower() == 'zeno':
+            address += r'|(?:hey|hi|hello|okay|ok)\s+xeno'
+        self.wake = re.compile(rf'^(?:{address})\b[, :]*', re.I)
 
     def extend(self):
         self.active_until = self.clock() + self.followup_seconds
 
-    def accept(self, text, uncertain=False):
+    def accept(self, text, uncertain=False, active_task=False):
         text = text.strip()
         if not text:
             return VoiceTurn('ignore')
         now = self.clock()
+        if active_task and not uncertain and (interrupt_intent(text, self.name) == "stop" or normalized(text) in {"cancel", "abort", "emergency stop"}):
+            self.pending = None
+            return VoiceTurn("command", text=text)
         addressed = self.wake.match(text)
         if self.wake_enabled and not addressed and now >= self.active_until:
             self.pending = None

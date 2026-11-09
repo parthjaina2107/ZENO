@@ -13,6 +13,32 @@ from desktop.dashboard import DashboardWindow, DashboardBridge, dashboard_html, 
 from desktop.overlay import ActivityOverlay
 
 
+@pytest.mark.parametrize("busy", [False, True])
+def test_exit_releases_resources_and_waits_for_active_work(tmp_path, monkeypatch, busy):
+    from desktop.app import DesktopApplication
+    from desktop.settings import DesktopSettings
+    from PySide6.QtWidgets import QSystemTrayIcon
+    qt = QApplication.instance() or QApplication([])
+    monkeypatch.setattr("desktop.app.GlobalHotkey", MagicMock())
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: False)
+    application = MagicMock()
+    desktop = DesktopApplication(application, DesktopSettings(), tmp_path / "desktop.json")
+    desktop.controller.engine = MagicMock()
+    desktop.controller.stop = MagicMock()
+    desktop.controller.busy = busy
+    desktop.overlay.show()
+    desktop.overlay.quit_button.click()
+    if busy:
+        desktop.controller.stop.assert_called_once()
+        application.quit.assert_not_called()
+        desktop.controller.busy = False
+        desktop.controller.idle.emit()
+    desktop.request_quit()
+    application.quit.assert_called_once()
+    desktop.controller.engine.close.assert_called_once()
+    assert not desktop.overlay.isVisible() and not desktop.tray.isVisible()
+
+
 def test_bridge_rejects_stale_approvals_and_busy_commands():
     app = QApplication.instance() or QApplication([])
     island = ActivityOverlay()
@@ -66,6 +92,28 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         wait_for(lambda: dashboard.bridge.connected)
         assert not island.isVisible()
         assert js("document.getElementById('statusText').textContent") == 'Connected'
+        import app_access
+        quits = []
+        dashboard.bridge.quit_requested.connect(lambda: quits.append("dashboard"))
+        island.quit_requested.connect(lambda: quits.append("island"))
+        js("document.getElementById('exitDesktop').click();true")
+        wait_for(lambda: quits == ["dashboard"])
+        island.quit_button.click()
+        assert quits == ["dashboard", "island"]
+        js("document.querySelector('[data-view=access]').click();true")
+        wait_for(lambda: js("!!document.querySelector('[data-feature=gmail_send]')"))
+        js("document.querySelector('[data-feature=gmail_send]').click();true")
+        wait_for(lambda: not app_access.allowed("gmail_send"))
+        assert app_access.allowed("gmail_read")
+        js("view('workspace');true")
+        island.handle_event('mail_review', '234567')
+        dashboard.handle_event('mail_review', '234567')
+        wait_for(lambda: js("document.getElementById('sendReviewedDraft').hidden === false"))
+        js("document.getElementById('sendReviewedDraft').click();true")
+        wait_for(lambda: texts == ['send draft 234567'])
+        island.submit_reviewed_draft()
+        assert texts == ['send draft 234567']
+        texts.clear()
         assert js("!!document.querySelector('.voice-hero') && !!document.querySelector('.rail')")
         assert js("getComputedStyle(document.getElementById('mode')).pointerEvents") == 'auto'
         dashboard.handle_event('state', 'Thinking')

@@ -126,7 +126,7 @@ async def test_desktop_time_and_media_requests_reach_expected_actions(desktop_en
     time_reply = await engine.command("what time is it", RunControl(), AsyncMock(), MagicMock())
     assert "Current time" in time_reply
     await engine.command("pause music", RunControl(), AsyncMock(), MagicMock())
-    media.assert_called_once_with("play_pause")
+    media.assert_called_once_with("pause")
 
 
 @pytest.mark.asyncio
@@ -137,3 +137,59 @@ async def test_new_command_after_folder_prompt_keeps_its_own_intent(desktop_engi
     result = await brain.think("open Notepad then check battery")
     assert [a.action_type for a in result.actions] == ["open_app", "system_info"]
     assert not folder_request("create folder X on desktop and close Chrome")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("combined", [True, False])
+async def test_folder_then_mail_keeps_recipient_and_body(desktop_engine, monkeypatch, combined):
+    from awareness.gmail import GmailMailbox
+    engine, desktop = desktop_engine
+    create = MagicMock(return_value="Gmail draft saved.")
+    monkeypatch.setattr(GmailMailbox, "compose", create)
+    async def command(text):
+        return await engine.command(text, RunControl(), AsyncMock(), MagicMock())
+    folder = "create a folder named Parthz on desktop"
+    mail = "send a mail to my friend"
+    if combined:
+        reply = await command(folder + " and then " + mail)
+        assert 'Created folder' in reply
+    else:
+        assert "Created folder" in await command(folder)
+        reply = await command(mail)
+    assert "email address" in reply and (desktop / "Parthz").is_dir()
+    assert "friend@example.org" in await command("her email ID is friend at example dot org")
+    assert "What should" in await command("yes")
+    assert "Gmail draft saved" in await command("See you at six.")
+    assert create.call_args.args[:2] == ("draft", ("friend@example.org", "Message", "See you at six."))
+    assert len(list(desktop.iterdir())) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_folder_blocks_mail_step(desktop_engine):
+    engine, desktop = desktop_engine
+    (desktop / "Taken").write_text("existing")
+    reply = await engine.command("create folder Taken on desktop then send an email to alex@example.org",
+                                 RunControl(), AsyncMock(), MagicMock())
+    assert "email" not in reply.lower()
+    assert engine.brain.gmail_mailbox is None
+
+
+@pytest.mark.asyncio
+async def test_folder_acknowledgement_cannot_become_a_folder_name(desktop_engine):
+    engine, desktop = desktop_engine
+    await engine.command("create a folder on desktop", RunControl(), AsyncMock(), MagicMock())
+    reply = await engine.command("yes", RunControl(), AsyncMock(), MagicMock())
+    assert "name" in reply and not list(desktop.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_screen_request_interrupts_a_coding_clarification(desktop_engine, monkeypatch):
+    from brain.coding_intent import CodingIntent
+    engine, _ = desktop_engine
+    engine.coding_intent = CodingIntent()
+    engine.coding_intent.pending_goal = 'Fix the script in "C:/Project".'
+    analyze = AsyncMock(return_value={"message": "Screen checked."})
+    monkeypatch.setattr(engine.brain.vision, "analyze_screen", analyze)
+    assert await engine.command("read my screen", RunControl(), AsyncMock(), MagicMock()) == "Screen checked."
+    assert engine.coding_intent.pending_goal == ""
+    analyze.assert_awaited_once()

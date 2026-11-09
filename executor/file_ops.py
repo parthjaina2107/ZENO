@@ -43,7 +43,7 @@ class FileOps:
     def __init__(self, allowed_dirs: Optional[List[str]] = None):
         self.allowed_dirs = [Path(d).resolve() for d in (allowed_dirs or config.ALLOWED_DIRS)]
 
-    def _resolve_and_validate_path(self, path_str: str) -> tuple[bool, Optional[Path], Optional[str]]:
+    def _resolve_and_validate_path(self, path_str: str, *, tree=False) -> tuple[bool, Optional[Path], Optional[str]]:
         """
         Validate path:
         1. Resolve relative and absolute paths
@@ -64,6 +64,9 @@ class FileOps:
 
         target = Path(clean).expanduser().resolve()
         target_str = str(target).lower()
+        settings = (config.DATA_DIR / 'app-access.json').resolve()
+        if target == settings or (tree and target in settings.parents):
+            return False, None, "App access settings can only be changed in the desktop dashboard."
 
         # Check blocked paths
         for blocked in config.BLOCKED_PATHS:
@@ -123,7 +126,7 @@ class FileOps:
 
     def file_delete(self, path: str, permanent: bool = False) -> ActionResult:
         """Delete a file safely by moving it to the Recycle Bin (send2trash)."""
-        valid, target, err = self._resolve_and_validate_path(path)
+        valid, target, err = self._resolve_and_validate_path(path, tree=True)
         if not valid or not target:
             return ActionResult(success=False, message=err or "Invalid path.", error="PATH_VALIDATION_FAILED")
 
@@ -146,7 +149,7 @@ class FileOps:
 
     def file_move(self, source: str, destination: str) -> ActionResult:
         """Move a file or directory after validating source and destination."""
-        s_valid, s_target, s_err = self._resolve_and_validate_path(source)
+        s_valid, s_target, s_err = self._resolve_and_validate_path(source, tree=True)
         if not s_valid or not s_target:
             return ActionResult(success=False, message=f"Source error: {s_err}", error="SOURCE_PATH_ERROR")
 
@@ -162,6 +165,8 @@ class FileOps:
             if d_target.exists() and (not d_target.is_dir() or (d_target / s_target.name).exists()):
                 return ActionResult(False, "Destination already exists.", error="PATH_EXISTS")
             res = d_target / s_target.name if d_target.is_dir() else d_target
+            if res == (config.DATA_DIR / 'app-access.json').resolve():
+                return ActionResult(False, "App access settings can only be changed in the desktop dashboard.", error="DEST_PATH_ERROR")
             if os.name == "nt":
                 try:
                     os.rename(s_target, res)
@@ -181,7 +186,7 @@ class FileOps:
 
     def file_copy(self, source: str, destination: str) -> ActionResult:
         """Copy a file after validating paths."""
-        s_valid, s_target, s_err = self._resolve_and_validate_path(source)
+        s_valid, s_target, s_err = self._resolve_and_validate_path(source, tree=True)
         if not s_valid or not s_target:
             return ActionResult(success=False, message=f"Source error: {s_err}", error="SOURCE_PATH_ERROR")
 
@@ -194,6 +199,8 @@ class FileOps:
 
         try:
             res = d_target / s_target.name if s_target.is_file() and d_target.is_dir() else d_target
+            if res == (config.DATA_DIR / 'app-access.json').resolve():
+                return ActionResult(False, "App access settings can only be changed in the desktop dashboard.", error="DEST_PATH_ERROR")
             if s_target.is_dir() and res.is_relative_to(s_target):
                 return ActionResult(False, "A folder cannot be copied inside itself.", error="INVALID_DESTINATION")
             res.parent.mkdir(parents=True, exist_ok=True)

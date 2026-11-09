@@ -96,7 +96,7 @@ Available actions:
 - system_info: { "type": "battery" | "cpu" | "ram" | "disk" | "ip" | "time" }
 - shutdown: { "mode": "shutdown" | "restart" | "sleep" | "lock" }
 - mouse_click: { "x": 100, "y": 200, "button": "left" }
-- media_control: { "command": "play_pause" | "next" | "previous" | "stop" }
+- media_control: { "command": "play" | "pause" | "play_pause" | "next" | "previous" | "stop" }
 - wait: { "seconds": 1 }
 - multi_step: { "steps": [ ...array of above actions... ] }
 
@@ -110,10 +110,17 @@ If you don't understand the command, set "understood": false and suggest what th
 
 
 def excludes_execution(text: str) -> bool:
+    # Dictated text, terminal input and search terms are literal payloads.
+    if re.match(r"^(?:type|write|search|google|look up|run command|execute command|terminal)\b", text.strip(), re.I):
+        return False
+    unquoted = re.sub(r'"[^"]*"', '', text)
     return bool(re.match(
         r"^(?:please\s+)?(?:do not|don't|don’t|never|what (?:would|happens)|"
         r"what if|would you explain|why|explain|how (?:do|does|would|can)|if)\b",
-        text.strip(), re.I))
+        unquoted.strip(), re.I) or re.search(
+        r"\b(?:but|unless|only if|provided that|except when|do not|don['’]t|never mind|actually cancel)\b",
+        unquoted, re.I))
+
 
 
 def split_commands(text: str) -> list[str]:
@@ -248,8 +255,8 @@ class NLUEngine:
                         "risk_level": config.ACTION_RISK[action], "confirmation_message": f"{action.replace('_', ' ')}: {value}"}
 
         media = {
-            "pause music": "play_pause", "play music": "play_pause", "resume music": "play_pause",
-            "pause playback": "play_pause", "play pause": "play_pause", "skip this song": "next",
+            "pause music": "pause", "play music": "play", "resume music": "play",
+            "pause playback": "pause", "play pause": "play_pause", "skip this song": "next",
             "next song": "next", "next track": "next", "previous song": "previous", "stop music": "stop",
         }.get(lowered.rstrip(".!?"))
         if media:
@@ -263,7 +270,7 @@ class NLUEngine:
             ]}, "description": "Open Notepad and type the requested text", "risk_level": "medium"}
 
         # 1. URL pattern
-        url_match = RE_URL.search(text)
+        url_match = RE_URL.fullmatch(text.strip())
         if url_match:
             url = url_match.group(1).strip()
             return {
@@ -276,7 +283,7 @@ class NLUEngine:
             }
 
         # 2. Open App or Known Website (Checked BEFORE system info so 'open instagram' is not read as 'ram')
-        open_match = RE_OPEN_APP.search(lowered)
+        open_match = RE_OPEN_APP.fullmatch(lowered.rstrip(".!?"))
         if open_match:
             app_raw = open_match.group(1).strip()
             # Strip browser context words: "in chrome", "in browser", "in edge", etc.
@@ -307,7 +314,7 @@ class NLUEngine:
             }
 
         # 3. Close App
-        close_match = RE_CLOSE_APP.search(lowered)
+        close_match = RE_CLOSE_APP.fullmatch(lowered.rstrip(".!?"))
         if close_match:
             app = close_match.group(1).strip()
             return {

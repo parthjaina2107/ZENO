@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Added App access to the desktop dashboard, with per-user switches for supported
+  accounts, applications, device controls, AI services and background sources.
+  Fresh profiles require opt-in. Review the setup guide and enable desired tools.
+- Added one-click exit on the island and dashboard. Typing can interrupt reply
+  playback. Folder and mail requests can run in sequence. Gmail now retains the
+  recipient and content across clarification turns and checks cancellation before
+  submitting a send. Reviews accept spoken digits and normalized email addresses.
+  The island and dashboard can send the reviewed version with a button when
+  speech recognition misses the command.
+- Fixed trailing command qualifications, polite wrappers, wake/stop handling,
+  folder acknowledgements, unverified remote outcomes, steady-noise capture,
+  pause/resume semantics and Gmail date filters. Removed broken Aurora links.
+  Install updated requirements for Windows media controls. App access settings
+  live in ZENO_DATA_DIR; see the updated setup and privacy guides.
+
 - Gmail supports saving drafts with dictated text or an AI-written subject and
   body. A draft preview and its session-specific code control sending.
   Existing read-only connections can opt in using `--connect gmail --gmail-compose`.

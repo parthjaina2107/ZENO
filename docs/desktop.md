@@ -111,7 +111,7 @@ needed. Dashboard history/preferences remain session-only; desktop settings use
 their existing persistent location.
 
 Drag the island header to reposition for the session. Screen changes reset its
-top anchor. Quit from dashboard Preferences or the tray. Windows sign-in startup is unchanged.
+top anchor. Use **Exit** on the island or **Exit ZENO** in the dashboard header to quit.
 Command/reply excerpts can be visible during screen sharing. The painted island
 glass does not blur the Windows desktop behind it.
 
@@ -216,3 +216,8 @@ Talk button and shortcut for the current session. Escape while focused stops bus
 work or collapses idle UI. Dashboard Preferences offers persistent assistant
 profiles; its mode selector is independent of the island. See
 [assistant experience](assistant-experience.md) for the full interaction notes.
+
+Open **App access** in the dashboard sidebar to enable selected integrations.
+Use **Exit** in the island header or **Exit ZENO** in the dashboard header to
+quit from either window. A running operation drains before ZENO exits. Click
+**Type a request** during a spoken reply to interrupt playback and continue.

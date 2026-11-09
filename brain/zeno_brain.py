@@ -65,6 +65,8 @@ class ZenoBrain:
         """Strip conversational address prefixes like 'Hey Zeno', 'Zeno,', 'OK Zeno'."""
         name = re.escape(self.assistant_name)
         pattern = rf"^(?:hey\s+|hi\s+|hello\s+|ok\s+|okay\s+)?{name}\b[,\s:]*\s*"
+        if name.lower() == "zeno":
+            text = re.sub(r"^((?:hey|hi|hello|okay|ok)\s+)xeno\b", r"\1Zeno", text, flags=re.I)
         cleaned = re.sub(pattern, "", text.strip(), flags=re.IGNORECASE)
         return cleaned.strip() if cleaned.strip() else text.strip()
 
@@ -104,6 +106,7 @@ class ZenoBrain:
             )
 
         clean_text = self.strip_wake_prefix(raw_text)
+        clean_text = re.sub(r"^(?:(?:can|could|would) you |please )+", "", clean_text, flags=re.I)
         lowered = clean_text.lower().strip(".!?,")
 
         from .companion import conversation_text, social_opening, CLEAR_REQUESTS, STYLES, PROFILES
@@ -137,6 +140,8 @@ class ZenoBrain:
         if chat_text is None and social_opening(clean_text):
             chat_text = clean_text
         if chat_text is not None:
+            if self.gmail_mailbox:
+                self.gmail_mailbox.composing = None
             self.pending_folder_location = None
             self.awaiting_clarification = False
             reply = await self._generate_conversational_reply(chat_text)
@@ -147,17 +152,35 @@ class ZenoBrain:
                                  if self.conversation_unavailable else {'conversation_only': True})
 
         tool_text = re.sub(r"^(?:task|agent(?: task)?)\s*:\s*", "", clean_text, flags=re.I)
+        from awareness.gmail import mail_request
+        from .folder_intent import folder_request
+        from .nlu import excludes_execution, split_commands
+        if any(excludes_execution(part) for part in split_commands(tool_text)) and re.match(
+                r"^(?:open|launch|create|make|close|set|run|restart|shutdown)\b", tool_text, re.I):
+            return BrainResponse(kind='chat', message='No actions were run. Please give the intended command without the conflicting condition.')
+        parts = re.split(r"\s+(?:and then|then|and)\s+", tool_text, maxsplit=1, flags=re.I)
+        if len(parts) == 2 and (folder := folder_request(parts[0])) and folder['name']:
+            following = mail_request(parts[1])
+            if following and following[0] in {"collect", "draft", "write"}:
+                first = await self.think(parts[0], agent_mode=agent_mode or tool_text != clean_text)
+                if first.kind == 'action':
+                    first.data['following_mail'] = following
+                return first
         if self.vision.is_vision_query(tool_text):
+            if self.gmail_mailbox:
+                self.gmail_mailbox.composing = None
             result = await self.vision.analyze_screen(tool_text)
             return BrainResponse(kind="vision", message=result["message"], data=result)
 
-        from awareness.gmail import GmailMailbox, mail_request
         request = mail_request(tool_text)
+        if request is None and self.gmail_mailbox is not None:
+            request = self.gmail_mailbox.followup(tool_text)
         if request is not None:
-            if self.gmail_mailbox is None:
-                self.gmail_mailbox = GmailMailbox()
-            reply = await self.gmail_mailbox.respond(request, self.client)
-            return BrainResponse(kind="chat", message=reply, data={"mail_read_only": request[0] in {"read", "search"}})
+            self.pending_folder_location = None
+            self.awaiting_clarification = False
+            reply = await self.respond_to_mail(request)
+            return BrainResponse(kind="chat", message=reply, data={"mail_read_only": request[0] in {"read", "search"},
+                                "review_send": request[0] == "review_send" and bool(self.gmail_mailbox.pending)})
 
         if self.awareness is not None:
             import asyncio
@@ -180,7 +203,7 @@ class ZenoBrain:
             return BrainResponse(kind="abort", message=reply)
 
         task_match = re.match(r"^(?:agent(?:\s+task)?|task)(?:\s*:\s*|\s+)(.+)$|^(?:do this task|complete this task)\s*[:,]?\s+(.+)$", clean_text, re.I | re.S)
-        from .folder_intent import folder_request, folder_name
+        from .folder_intent import folder_name
         folder_text = next((part for part in task_match.groups() if part), clean_text) if task_match else clean_text
         folder = folder_request(folder_text)
         folder_agent = bool(agent_mode or task_match)
@@ -188,6 +211,8 @@ class ZenoBrain:
             name = folder_name(clean_text)
             explicit_name = re.match(r'^(?:call it|name it|name the folder|call the folder)\s+', clean_text, re.I)
             # Multi-word names can be supplied with "call it ...". A new command takes precedence.
+            if re.fullmatch(r"yes|yeah|okay|ok|sure|go ahead", lowered):
+                return BrainResponse(kind='chat', message='What name should I use? Say "call it" followed by the folder name.')
             bare_name = len(clean_text.split()) == 1 and not is_direct_command(clean_text)
             if name and (explicit_name or bare_name):
                 location, pending_agent = self.pending_folder_location
@@ -290,3 +315,9 @@ class ZenoBrain:
         self.memory.add_turn("user", clean_text)
         self.memory.add_turn("zeno", chat_reply)
         return BrainResponse(kind="chat", message=chat_reply)
+
+    async def respond_to_mail(self, request):
+        from awareness.gmail import GmailMailbox
+        if self.gmail_mailbox is None:
+            self.gmail_mailbox = GmailMailbox()
+        return await self.gmail_mailbox.respond(request, self.client)

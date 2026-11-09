@@ -14,6 +14,7 @@ import time
 import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
+import app_access
 from config import config
 from brain.planner import ActionResult, PlannedAction
 from .file_ops import FileOps
@@ -24,7 +25,7 @@ TEXT = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.ipynb', 
         '.sql', '.yaml', '.yml', '.toml', '.xml', '.csv', '.r', '.sh', '.ps1', '.bat'}
 SKIP = {'.git', '.venv', 'venv', 'node_modules', '__pycache__', '.codex', '.ssh', '.aws',
         'dist', 'build', '.next', '.env', 'credentials.json', 'google-client.json', 'token.json', 'secrets.json',
-        'zeno_memory.json', 'paired_devices.json', 'accounts', 'task_reports', 'screenshots', '__tutorial_context__'}
+        'zeno_memory.json', 'app-access.json', 'paired_devices.json', 'accounts', 'task_reports', 'screenshots', '__tutorial_context__'}
 MAX_FILE = 200_000
 MAX_TOTAL = 8_000_000
 
@@ -389,6 +390,9 @@ class CodingRunner:
     async def run(self, request, approve, emit, control):
         if not config.CODING_ALLOW_EXTERNAL:
             return 'The external coding service is disabled. It has separate account and billing terms; local AI chat remains available.'
+        for feature in ("coding", "files"):
+            if not app_access.allowed(feature):
+                return app_access.denial(feature)
         root = resolve_workspace(request.workspace, self.file_ops)
         coding_executable()  # Fail before requesting permission if setup is missing.
         action = PlannedAction('coding_request', {'workspace': str(root), 'goal': request.goal},
@@ -410,6 +414,9 @@ class CodingRunner:
                     dest.write_bytes(data)
                 await control.call(stage_documents, root, staging)
                 emit('state', 'Planning code')
+                for feature in ("coding", "files"):
+                    if not app_access.allowed(feature):
+                        raise ValueError(app_access.denial(feature))
                 plan = await control.call(propose, request.goal, staging, run_dir, control,
                                           lambda message: emit('detail', message))
             control.check()
@@ -429,6 +436,9 @@ class CodingRunner:
             control.check()
             emit('state', 'Saving code')
             # Once a batch starts, it drains as a unit before cancellation completes.
+            for feature in ("coding", "files"):
+                if not app_access.allowed(feature):
+                    raise ValueError(app_access.denial(feature))
             await control.call(apply_plan, root, plan, originals, run_dir)
             self.permissions.log_result(change_action, ActionResult(success=True,
                                         message=f'Saved and read-back verified {len(manifest)} files.'), source='desktop')
@@ -437,7 +447,7 @@ class CodingRunner:
             control.check()
             emit('state', 'Opening VS Code')
             try:
-                opened = await control.call(open_vscode, root, [item['path'] for item in manifest])
+                opened = app_access.allowed("code") and await control.call(open_vscode, root, [item['path'] for item in manifest])
             except OSError as exc:
                 opened = False
                 report['editor_error'] = str(exc)

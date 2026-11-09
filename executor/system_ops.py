@@ -118,6 +118,26 @@ class SystemOps:
 
     def media_control(self, command: str) -> ActionResult:
         """Send a media key to the active media session; do not claim playback verified."""
+        if command in {"pause", "play"}:
+            from winrt.runtime import init_apartment, uninit_apartment, ApartmentType
+            from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionManager as Manager
+            import asyncio
+            async def request():
+                session = (await Manager.request_async()).get_current_session()
+                if session is None:
+                    return False
+                return await (session.try_pause_async() if command == "pause" else session.try_play_async())
+            try:
+                init_apartment(ApartmentType.MULTI_THREADED)
+                try:
+                    accepted = asyncio.run(asyncio.wait_for(request(), timeout=8))
+                finally:
+                    uninit_apartment()
+                if accepted:
+                    return ActionResult(True, f"The active player accepted {command}.")
+                return ActionResult(False, f"No active player accepted {command}.", error="MEDIA_UNAVAILABLE")
+            except Exception as exc:
+                return ActionResult(False, f"Media control failed: {exc}", error="MEDIA_FAILED")
         keys = {"play_pause": "playpause", "next": "nexttrack", "previous": "prevtrack", "stop": "stop"}
         if command not in keys or pyautogui is None:
             return ActionResult(False, "Media control is unavailable or invalid.", error="MEDIA_UNAVAILABLE")

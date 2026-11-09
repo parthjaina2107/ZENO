@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 
+import app_access
 import psutil
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, Qt
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
@@ -32,6 +33,13 @@ def dashboard_html():
     html = html.replace('<link rel="stylesheet" href="' + STATIC.as_uri() + '/liquid-glass.css" />', '')
     preferences = (ROOT / 'desktop/preferences.html').read_text(encoding='utf-8')
     html = html.replace('<div class="settings glass">', preferences + '<div class="settings glass">', 1)
+    html = html.replace('</nav>', '<button class="nav" data-view="access"><i data-lucide="shield-check"></i>App access</button></nav>', 1)
+    html = html.replace('</main>', """
+        <section class="view" id="access" hidden>
+          <div class="page-heading"><div><h1>App access</h1>
+          <p>Choose which tools ZENO can use on this computer.</p></div></div>
+          <p role="status" id="accessStatus"></p><div id="accessGroups"></div>
+        </section></main>""", 1)
     return html.replace('</head>', '<style>' + extra + '\n' + liquid + '</style></head>')
 
 
@@ -81,6 +89,9 @@ class DashboardBridge(QObject):
             self.publish({'type': 'auth_ok'})
             self.publish({'type': 'desktop_state', 'state': island.status.text()})
             self.publish({'type': 'desktop_microphone', 'text': 'on' if island.microphone_active else 'off'})
+            if island.mail_code:
+                self.publish({'type': 'desktop_reply', 'text': island.caption.text()})
+                self.publish({'type': 'desktop_mail_review', 'text': island.mail_code})
             if island.request_id:
                 self.publish({'type': 'permission_request', 'request_id': island.request_id, 'message': island.caption.text()})
         elif kind == 'command' and not island.busy:
@@ -98,6 +109,8 @@ class DashboardBridge(QObject):
                 island.start_requested.emit()
         elif kind == 'abort':
             island.stop_requested.emit()
+        elif kind == 'send_reviewed_draft' and data.get('code') == island.mail_code:
+            island.submit_reviewed_draft()
         elif kind == 'permission_response':
             if data.get('request_id') == island.request_id and isinstance(data.get('approved'), bool) and island.allow.isEnabled():
                 island.decide(data['approved'])
@@ -107,11 +120,42 @@ class DashboardBridge(QObject):
             self.settings_request.emit(raw)
         elif kind == 'shortcut_capture':
             self.capture_changed.emit(data.get('active') is True)
+        elif kind in {'app_access', 'set_app_access'}:
+            try:
+                if kind == 'set_app_access':
+                    app_access.set_choice(data.get('feature'), data.get('enabled'))
+                choices = app_access.choices()
+                from awareness.accounts import token_path
+                items = []
+                for key, group, label, description in app_access.FEATURES:
+                    provider = {'gmail_read': 'gmail', 'gmail_send': 'gmail', 'outlook': 'outlook'}.get(key)
+                    account = ''
+                    if provider:
+                        command = f"python main.py --connect {provider}" + (" --gmail-compose" if key == "gmail_send" else "")
+                        account = "Account saved." if token_path(provider).exists() else "Connect using " + command
+                        if key == "gmail_send" and token_path(provider).exists():
+                            from awareness.accounts import load_token, GMAIL_COMPOSE_SCOPE
+                            try:
+                                scopes = json.loads(load_token(provider)).get("scopes") or []
+                                if GMAIL_COMPOSE_SCOPE not in scopes:
+                                    account = "Sending requires " + command
+                            except Exception:
+                                # Includes unreadable Windows DPAPI tokens and older token formats.
+                                account = "Reconnect using " + command
+                    items.append({'key': key, 'group': group, 'label': label, 'description': description,
+                                  'enabled': choices.get(key, False),
+                                  'account': account})
+                self.publish({'type': 'app_access', 'items': items})
+            except (OSError, ValueError, TypeError):
+                self.publish({'type': 'access_error', 'message': 'Could not load or save App access settings.'})
         elif kind == 'quit':
             self.quit_requested.emit()
         elif kind == 'motion':
             island.reduced_motion = bool(data.get('reduced'))
         elif kind == 'get_telemetry':
+            if not app_access.allowed("system"):
+                self.publish({'type': 'telemetry', 'cpu': None, 'ram': None, 'battery': None})
+                return
             battery = psutil.sensors_battery()
             self.publish({'type': 'telemetry', 'cpu': psutil.cpu_percent(),
                           'ram': psutil.virtual_memory().percent,
@@ -157,7 +201,7 @@ class DashboardWindow(QWebEngineView):
     def handle_event(self, kind, value):
         if kind == 'state':
             self.bridge.publish({'type': 'desktop_state', 'state': value})
-        elif kind in {'transcript', 'reply', 'detail', 'draft', 'service_error', 'microphone', 'level'}:
+        elif kind in {'transcript', 'reply', 'detail', 'draft', 'mail_review', 'service_error', 'microphone', 'level'}:
             self.bridge.publish({'type': 'desktop_' + kind, 'text': value})
 
     def set_approval(self, request_id, prompt):

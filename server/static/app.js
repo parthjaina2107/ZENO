@@ -42,6 +42,7 @@ let socket,
   toastTimer;
 const runs = [];
 const terminal = new Set([
+  "unverified",
   "completed",
   "blocked",
   "cancelled",
@@ -57,7 +58,51 @@ function notify(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => ($("toast").hidden = true), 5000);
 }
+function renderAccess(items) {
+  const root = $("accessGroups");
+  const focusKey = document.activeElement?.dataset?.feature;
+  const groups = new Map();
+  for (const item of items) {
+    let panel = groups.get(item.group);
+    if (!panel) {
+      const heading = document.createElement("h2");
+      heading.textContent = item.group;
+      panel = document.createElement("section");
+      panel.className = "settings glass";
+      panel.append(heading);
+      groups.set(item.group, panel);
+    }
+    const row = document.createElement("label");
+    row.className = "setting";
+    const info = document.createElement("div");
+    const name = document.createElement("h3");
+    name.textContent = item.label;
+    const description = document.createElement("p");
+    description.textContent = item.description + (item.account ? " " + item.account : "");
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("aria-label", item.label);
+    toggle.dataset.feature = item.key;
+    toggle.checked = item.enabled;
+    toggle.addEventListener("change", () => {
+      toggle.disabled = true;
+      if (!send({type: "set_app_access", feature: item.key, enabled: toggle.checked})) {
+        toggle.checked = item.enabled;
+        toggle.disabled = false;
+        $("accessStatus").textContent = "Could not reach the desktop controller.";
+      }
+    });
+    info.append(name, description);
+    row.append(info, toggle);
+    panel.append(row);
+  }
+  root.replaceChildren(...groups.values());
+  $("accessStatus").textContent = "";
+  if (focusKey) root.querySelector('[data-feature="' + CSS.escape(focusKey) + '"]')?.focus();
+}
 function view(name) {
+  if (desktopMode && name === "access") send({type: "app_access"});
   if (desktopMode && name === "preferences") send({type: "get_desktop_settings"});
   document
     .querySelectorAll(".view")
@@ -67,7 +112,7 @@ function view(name) {
     if (el.dataset.view === name) el.setAttribute("aria-current", "page");
     else el.removeAttribute("aria-current");
   });
-  $("pageTitle").textContent = name[0].toUpperCase() + name.slice(1);
+  $("pageTitle").textContent = name === "access" ? "App access" : name[0].toUpperCase() + name.slice(1);
   if (name === "activity") renderActivity();
 }
 document
@@ -214,6 +259,10 @@ function handle(data) {
       $("desktopSettingsMessage").textContent = data.message || "Changes apply to your next request.";
       break;
     case "desktop_state":
+      if ($("sendReviewedDraft")) {
+        $("sendReviewedDraft").disabled = data.state !== "Ready";
+        if (["Preparing", "Stopping"].includes(data.state)) $("sendReviewedDraft").hidden = true;
+      }
       if (["Ready", "Stopping"].includes(data.state)) microphoneVisual(false);
       if (data.state === "Preparing") {
         desktopServiceError = false;
@@ -238,6 +287,11 @@ function handle(data) {
       desktopServiceError = true;
       $("taskState").textContent = "AI UNAVAILABLE";
       $("statusText").textContent = "Connected · AI unavailable";
+      break;
+    case "desktop_mail_review":
+      $("sendReviewedDraft").dataset.code = data.text;
+      $("sendReviewedDraft").disabled = busy;
+      $("sendReviewedDraft").hidden = false;
       break;
     case "desktop_reply":
       message(data.text);
@@ -266,12 +320,24 @@ function handle(data) {
       if ($("auth").open) $("auth").close();
       send({ type: "get_telemetry" });
       break;
+    case "app_access":
+      if (desktopMode) renderAccess(data.items);
+      break;
+    case "access_error":
+      if (desktopMode) {
+        $("accessStatus").textContent = data.message;
+        $("accessGroups").replaceChildren();
+      }
+      break;
     case "telemetry":
       for (const key of ["cpu", "ram"]) {
         const value = Number(data[key]);
         if (data[key] != null && Number.isFinite(value)) {
           $(key).value = value;
           $(key + "Value").textContent = Math.round(value) + "%";
+        } else {
+          $(key).value = 0;
+          $(key + "Value").textContent = "Unavailable";
         }
       }
       $("batteryValue").textContent =
@@ -317,9 +383,9 @@ function handle(data) {
     case "command_finished":
       if (busy && !activeTask) {
         const status = data.status || "responded";
-        if (status === "failed" || status === "blocked") {
+        if (["failed", "blocked", "unverified"].includes(status)) {
           $("taskState").textContent = status.toUpperCase();
-          $("taskTitle").textContent = status === "blocked" ? "Request blocked." : "Command failed.";
+          $("taskTitle").textContent = status === "unverified" ? "Result unverified." : status === "blocked" ? "Request blocked." : "Command failed.";
         }
         finish(status);
       }
@@ -766,6 +832,27 @@ window.addEventListener("pagehide", () => {
 icons();
 if (desktopMode) {
   $("mode").value = "agent";
+  const exitButton = document.createElement("button");
+  exitButton.id = "exitDesktop";
+  exitButton.className = "secondary";
+  exitButton.textContent = "Exit ZENO";
+  exitButton.addEventListener("click", () => send({type: "quit"}));
+  document.querySelector(".header-actions").append(exitButton);
+  const sendDraft = document.createElement("button");
+  sendDraft.id = "sendReviewedDraft";
+  sendDraft.className = "secondary";
+  sendDraft.textContent = "Send reviewed draft";
+  sendDraft.hidden = true;
+  sendDraft.addEventListener("click", () => {
+    sendDraft.disabled = true;
+    send({type: "send_reviewed_draft", code: sendDraft.dataset.code});
+  });
+  $("taskMessage").after(sendDraft);
+  const exitApproval = document.createElement("button");
+  exitApproval.textContent = "Exit ZENO";
+  exitApproval.className = "text-button";
+  exitApproval.addEventListener("click", () => send({type: "quit"}));
+  $("approvalStop").after(exitApproval);
   $("mode").querySelector('[value="command"]').remove();
   $("mode").add(new Option("Coding task · Codex", "coding"));
   const workspaceLabel = document.createElement("label");

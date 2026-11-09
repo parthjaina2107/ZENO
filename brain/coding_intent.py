@@ -41,9 +41,10 @@ class CodingIntent:
         writing = bool(re.search(r'\b(?:write|build|create|implement|solve|complete|fix|finish)\b', text, re.I))
         if explicit or (imperative and (editor or coding_subject) and writing):
             goal = text
-        elif self.pending_goal:
+        elif self.pending_goal and (self.folder(text) or self.folder(self.pending_goal)):
             goal = self.pending_goal + '\nUser clarification: ' + text
         else:
+            self.pending_goal = ''
             return None
         workspace = self.folder(text) or self.folder(goal)
         if not workspace:

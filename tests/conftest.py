@@ -10,6 +10,16 @@ from unittest.mock import MagicMock
 
 
 @pytest.fixture(autouse=True)
+def test_access_profile(tmp_path_factory, monkeypatch):
+    import json
+    import app_access
+    from config import config
+    profile = tmp_path_factory.mktemp("zeno-profile")
+    monkeypatch.setattr(config, "DATA_DIR", profile)
+    (profile / "app-access.json").write_text(json.dumps(dict.fromkeys(app_access.LABELS, True)))
+
+
+@pytest.fixture(autouse=True)
 def isolate_reasoning_providers(monkeypatch):
     """Tests opt into mocked providers, never the developer's running local LLM."""
     from config import config

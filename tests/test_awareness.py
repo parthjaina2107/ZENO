@@ -125,6 +125,18 @@ def test_reminders_survive_restart_and_are_delivered_once(store, monkeypatch):
     assert resumed.get('reminders') == []
 
 
+def test_due_reminders_work_with_monitoring_off(store, monkeypatch):
+    import app_access
+    app_access.set_choice("monitor", False)
+    source = WorkAndSystem(store, [])
+    monkeypatch.setattr(source, "collect", MagicMock(side_effect=AssertionError("Monitoring was disabled")))
+    store.set("reminders", [{"id": "test", "text": "Take a break", "due": 0}])
+    monitor = AwarenessService(store, [source])
+    monitor.poll()
+    assert "Take a break" in monitor.briefing(details=True)
+    source.collect.assert_not_called()
+
+
 def test_process_id_reuse_counts_as_stopped_not_success(store, monkeypatch):
     monkeypatch.setattr('awareness.sources.psutil.sensors_battery', lambda: None)
     monkeypatch.setattr('awareness.sources.psutil.cpu_percent', lambda: 1)

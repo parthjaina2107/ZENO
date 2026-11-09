@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import httpx
 
+import app_access
 from config import config
 
 OLLAMA_URL = 'http://127.0.0.1:11434'
@@ -24,6 +25,8 @@ async def generate_local(contents, generation_config=None, *, image_bytes=None):
     # A text-only model must never pretend to have inspected an image.
     if not isinstance(contents, str):
         raise ValueError('Local text model does not support image inputs')
+    if not app_access.allowed("local_ai"):
+        raise ValueError(app_access.denial("local_ai"))
     model = config.OLLAMA_VISION_MODEL if image_bytes is not None else config.OLLAMA_MODEL
     if not model or 'cloud' in model.lower() or '/' in model or '\\' in model:
         raise ValueError('Select a downloaded local Ollama model')

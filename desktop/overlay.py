@@ -15,6 +15,7 @@ class ActivityOverlay(QWidget):
     text_requested = Signal(str)
     settings_requested = Signal()
     dashboard_requested = Signal()
+    quit_requested = Signal()
     approval_decided = Signal(str, bool)
 
     def __init__(self):
@@ -40,6 +41,7 @@ class ActivityOverlay(QWidget):
         self.reduced_motion = False
         self.service_error = False
         self.last_request = ''
+        self.mail_code = ''
         self.microphone_active = False
         self.chat_only = False
         self.lights = MicrophoneLights()
@@ -81,6 +83,12 @@ class ActivityOverlay(QWidget):
         header.addWidget(self.title)
         header.addWidget(self.status, 1)
         header.addWidget(self.start)
+        self.quit_button = GlassButton('Exit', quiet=True)
+        self.quit_button.setFixedWidth(54)
+        self.quit_button.setAccessibleName('Exit ZENO')
+        self.quit_button.setToolTip('Exit ZENO')
+        self.quit_button.clicked.connect(self.quit_requested.emit)
+        self.quit_button.setParent(self)
         self.body = QWidget(self)
         self.body_scroll = QScrollArea(self)
         self.body_scroll.setWidgetResizable(True)
@@ -108,6 +116,10 @@ class ActivityOverlay(QWidget):
         scroll.setWidget(self.caption)
         scroll.setMinimumHeight(62)
         body.addWidget(scroll, 1)
+        self.send_draft = GlassButton('Send reviewed draft', primary=True)
+        self.send_draft.hide()
+        self.send_draft.clicked.connect(self.submit_reviewed_draft)
+        body.addWidget(self.send_draft)
         self.entry = QLineEdit()
         self.entry.setPlaceholderText('Give ZENO a direction…')
         self.entry.setAccessibleName('Island command')
@@ -233,7 +245,8 @@ class ActivityOverlay(QWidget):
 
     def _layout_contents(self):
         self.header.setVisible(not self.microphone_active or self.expanded)
-        self.header.setGeometry(24, 16, self.width() - 48, 36)
+        self.header.setGeometry(24, 16, self.width() - 110, 36)
+        self.quit_button.setGeometry(self.width() - 78, 17, 54, 34)
         # Fixed-height content is clipped by the growing window, never squashed.
         self.body_scroll.setGeometry(24, 72, self.width() - 48, getattr(self, '_expanded_height', 400) - 94)
 
@@ -274,7 +287,7 @@ class ActivityOverlay(QWidget):
         self.bars.reduced_motion = self.reduced_motion
         if self.expanded and not self.reduced_motion:
             self.bars.phase += .018
-        for button in (self.start, self.type_button, self.dashboard_button, self.settings_button, self.mode_button, self.collapse_button, self.allow, self.deny):
+        for button in (self.start, self.quit_button, self.type_button, self.dashboard_button, self.settings_button, self.mode_button, self.collapse_button, self.allow, self.deny):
             button.reduced_motion = self.reduced_motion
             button.pointer = QPointF(button.mapFrom(self, self._pointer.toPoint()))
             button.presence = self._glow if not self.reduced_motion else 0
@@ -331,7 +344,9 @@ class ActivityOverlay(QWidget):
         super().keyPressEvent(event)
 
     def enable_typing(self):
-        if self.busy:
+        if self.busy and self.status.text() == 'Speaking':
+            self.stop_requested.emit()
+        elif self.busy:
             return
         self.typing = True
         self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, False)
@@ -349,6 +364,12 @@ class ActivityOverlay(QWidget):
             self.setWindowFlag(Qt.WindowType.WindowDoesNotAcceptFocus, True)
             self.show()
             self.text_requested.emit('Chat: ' + text if self.chat_only else text)
+
+    def submit_reviewed_draft(self):
+        if self.mail_code and not self.busy:
+            code, self.mail_code = self.mail_code, ''
+            self.send_draft.hide()
+            self.text_requested.emit('send draft ' + code)
 
     def set_approval(self, request_id, prompt):
         self.request_id = request_id
@@ -427,7 +448,7 @@ class ActivityOverlay(QWidget):
             motion = .5 + .5 * math.sin(phase * 8 + index * .8)
             height = 5 if self.reduced_motion else 4 + self.bars.level * envelope * (12 + 18 * motion)
             p.setBrush(QColor('#8cf0d5' if index < 5 else '#9eb7ff'))
-            p.drawRoundedRect(QRectF(self.width() - 91 + index * 7, 33 - height / 2, 3, height), 1.5, 1.5)
+            p.drawRoundedRect(QRectF(self.width() - 151 + index * 7, 33 - height / 2, 3, height), 1.5, 1.5)
         p.setClipping(False)
 
     def handle_event(self, kind, value):
@@ -440,11 +461,15 @@ class ActivityOverlay(QWidget):
             self.bars.level = 0
             if value == 'Preparing':
                 self.service_error = False
+            if value in {'Preparing', 'Stopping'}:
+                self.mail_code = ''
+                self.send_draft.hide()
+            self.send_draft.setEnabled(not self.busy)
             self.status.setText('AI unavailable' if value == 'Ready' and self.service_error else value)
             self.start.setText("Stop" if self.busy else "Retry" if self.service_error and self.last_request else "Talk")
             self.start.glyph = "square" if self.busy else "mic"
             self.start.setEnabled(value != "Stopping")
-            self.type_button.setEnabled(not self.busy)
+            self.type_button.setEnabled(not self.busy or value == 'Speaking')
             self.mode_button.setEnabled(not self.busy)
             if value == "Preparing":
                 self.caption.setText("Getting ready. Use Stop or your shortcut to cancel.")
@@ -491,6 +516,11 @@ class ActivityOverlay(QWidget):
                 self.last_request = value
             if not self.request_id:
                 self.caption.setText(value)
+        elif kind == "mail_review":
+            self.mail_code = value
+            self.send_draft.setVisible(bool(value))
+            self.send_draft.setEnabled(not self.busy)
+            self.expand()
         elif kind == "draft":
             self.entry.setText(value)
             self.caption.setText("Recognition was uncertain. Choose Type a request to review and send this draft.")

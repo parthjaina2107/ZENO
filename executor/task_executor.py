@@ -6,6 +6,7 @@ Central dispatching engine routing PlannedAction objects to specialized subsyste
 
 import logging
 from typing import Dict, Any
+import app_access
 from brain.planner import PlannedAction, ActionResult
 from .system_ops import SystemOps
 from .browser_ops import BrowserOps
@@ -26,6 +27,9 @@ class TaskExecutor:
         """Execute a planned action and return an ActionResult."""
         act_type = action.action_type
         params = action.parameters or {}
+        feature = app_access.action_feature(action)
+        if feature and not app_access.allowed(feature):
+            return ActionResult(False, app_access.denial(feature), error="ACCESS_DISABLED")
         logger.info(f"Executing action '{act_type}' with parameters: {params}")
 
         try:

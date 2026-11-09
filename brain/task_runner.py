@@ -7,6 +7,7 @@ import uuid
 import time
 import re
 
+import app_access
 from config import config
 from .api_utils import reasoning_available, call_gemini_with_fallback
 from .nlu import SYSTEM_PROMPT
@@ -56,6 +57,9 @@ class TaskRunner:
 
     def preflight(self, action):
         """Do not let a task accidentally replace existing work while creating outputs."""
+        feature = app_access.action_feature(action)
+        if feature and not app_access.allowed(feature):
+            raise ValueError(app_access.denial(feature))
         if action.action_type == "type_text" and self.brain.planner.executor.system._last_opened_app not in ("notepad", "notepad.exe"):
             raise ValueError("Task typing currently requires opening Notepad first so its editor can be verified.")
         if action.action_type in ("keyboard_shortcut", "mouse_click"):
@@ -89,6 +93,9 @@ class TaskRunner:
             raise ValueError(f"Output already exists: {destination}. Choose a new path to preserve the existing file.")
 
     def verify(self, action, result):
+        feature = app_access.action_feature(action)
+        if feature and not app_access.allowed(feature):
+            return False, app_access.denial(feature)
         if not result.success:
             return False, "Action failed."
         executor = self.brain.planner.executor

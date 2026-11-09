@@ -4,6 +4,7 @@ import logging
 import re
 import time
 from contextvars import ContextVar
+import app_access
 from config import config
 
 logger = logging.getLogger('VoiceAgent.API')
@@ -14,11 +15,11 @@ FREE_TIER_MODELS = frozenset({'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.
 
 
 def cloud_allowed():
-    return config.LLM_MODE == 'free-cloud-local' and config.GEMINI_FREE_TIER_CONFIRMED
+    return config.LLM_MODE == 'free-cloud-local' and config.GEMINI_FREE_TIER_CONFIRMED and app_access.allowed('cloud_ai')
 
 
 def reasoning_available(client):
-    return config.LOCAL_LLM_ENABLED or (cloud_allowed() and client is not None)
+    return (config.LOCAL_LLM_ENABLED and app_access.allowed("local_ai")) or (cloud_allowed() and client is not None)
 
 
 def last_api_failure():

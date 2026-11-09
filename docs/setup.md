@@ -3,7 +3,7 @@
 ## Separate Aurora prototype
 
 The independent music-lyrics prototype lives in `standalone/aurora`. Follow its
-[own setup guide](../standalone/aurora/README.md) and launcher; it has a separate
+own setup guide and launcher; it has a separate
 environment and does not use ZENO accounts, keys or services. Its optional Windows
 media bridge supports optional LRCLIB lookup, local lyrics/preset storage, desktop
 overlay and opt-in tray/startup operation. Spotify play/pause and a YouTube Music
@@ -518,6 +518,34 @@ accounts, environment variables or voice models are needed. Existing speech and
 approval settings are retained. See [assistant controls and preview](assistant-experience.md).
 
 
+## App access and quitting ZENO
+
+Open the native dashboard and choose **App access** in the sidebar. Switch on the
+accounts, installed applications and tools you want ZENO to use. New profiles
+start with these switches off. For voice, enable **Microphone**. For local AI,
+enable **Local Ollama**. For folder commands, enable **Files and folders**.
+Gmail inbox and Gmail sending have separate switches and still require the
+corresponding Google consent. Coding requires **Coding workspace**, **Files and
+folders** and the existing external coding configuration. Web and CLI requests
+respect the host's selections. Only the native dashboard can change them.
+
+Settings are saved in `app-access.json` inside `ZENO_DATA_DIR`. Changes apply to
+subsequent operations, including background polling. Turning off a feature leaves
+its provider credentials in place. AI, Windows and OAuth configuration can
+independently limit a feature. The switches control ZENO's built-in tools.
+If ZENO reports that it cannot load these settings, close it and move the damaged
+`app-access.json` aside. Reopen ZENO and choose the tools to enable again.
+
+**Exit** on the island and **Exit ZENO** in the dashboard header close the desktop
+app, including its tray icon. During a task, ZENO requests cancellation and quits
+after the worker finishes. Closing only the dashboard window hides the workspace.
+You can click **Type a request** during speech playback to interrupt a reply and
+enter the next command.
+
+Update the project requirements for Windows media controls. Pause and resume now
+use the current media session's explicit pause and play operations. Stop remains
+available during active CLI work even after a wake window expires.
+
 ## On-demand Gmail requests
 
 Connect your Google account using the Gmail steps above, then restart ZENO to load
@@ -541,6 +569,15 @@ Ask `write an email to alex@example.com about rescheduling our call` for AI assi
 or dictate exact wording with `draft an email to alex@example.com subject Meeting body Can we meet Friday?`.
 ZENO saves the draft to Gmail and displays the recipient, subject and body.
 To send, say `send draft` followed by the six-digit code in that preview.
+In the desktop app you can also click **Send reviewed draft** under the preview
+after speech playback finishes. Dictating just a number brings back the preview.
 The code is specific to the current draft and session. `Cancel send` clears
 the pending confirmation and leaves the draft in Gmail.
 See [Gmail details](awareness.md#direct-gmail-inbox-connection).
+
+For a multi-turn message, start with `send a mail to my friend`, supply the address
+when asked, and then dictate the body. You can also say `create a folder named
+Parthz on desktop then send an email to alex@example.com`. The mail step starts
+only after folder creation succeeds. Digit-by-digit send codes and single-recipient
+addresses spoken with “at” and “dot” are supported. Review the displayed address
+before sending.

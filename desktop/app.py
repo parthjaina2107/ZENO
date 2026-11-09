@@ -43,6 +43,7 @@ class DesktopApplication(QObject):
         self.approval_id = ''
         self.hotkey = GlobalHotkey(application, self.toggle)
         self.overlay.dashboard_requested.connect(self.open_dashboard)
+        self.overlay.quit_requested.connect(self.request_quit)
         self.overlay.settings_requested.connect(self.reveal)
         self.overlay.start_requested.connect(self.toggle)
         self.overlay.conversation_requested.connect(self.listen_conversation)
@@ -153,7 +154,10 @@ class DesktopApplication(QObject):
         self.capturing_shortcut = capturing
 
     def microphones(self):
+        import app_access
         devices = [{'id': None, 'name': 'Windows default microphone'}]
+        if not app_access.allowed("microphone"):
+            return devices
         try:
             import pyaudio
             audio = pyaudio.PyAudio()
@@ -225,6 +229,8 @@ class DesktopApplication(QObject):
             self.finish_quit()
 
     def request_quit(self):
+        if self.closing:
+            return
         self.closing = True
         self.hotkey.close()
         if self.controller.busy:

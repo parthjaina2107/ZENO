@@ -94,6 +94,9 @@ def test_draft_send_requires_matching_preview_and_is_single_use(monkeypatch):
     assert str(message['To']) == 'Alex@example.org' and message['Subject'] == 'My Meeting'
     assert message.get_content().strip() == 'Hello Alex!'
     assert 'Hello Alex!' in preview and code in preview
+    import asyncio
+    review = asyncio.run(mailbox.respond(mailbox.followup("1-2-3-4-5-6"), None))
+    assert 'Alex@example.org' in review and 'Hello Alex!' in review and code in review
     assert 'does not match' in mailbox.answer(('send_draft', '000000'))
     assert len(calls) == 1
     assert 'confirmed' in mailbox.answer(mail_request('send draft ' + code))
@@ -122,6 +125,41 @@ async def test_generated_draft_uses_requested_recipient(monkeypatch):
     model = AsyncMock(return_value=SimpleNamespace(text='{"subject":"Meeting","body":"Could we meet Friday?","to":"fake@example.org"}'))
     monkeypatch.setattr('brain.api_utils.call_gemini_with_fallback', model)
     mailbox = GmailMailbox()
-    mailbox.answer = MagicMock(return_value='preview')
+    mailbox.compose = MagicMock(return_value='preview')
     assert await mailbox.respond(mail_request('write an email to Alex@example.org about a meeting'), object()) == 'preview'
-    mailbox.answer.assert_called_once_with(('draft', ('Alex@example.org', 'Meeting', 'Could we meet Friday?')))
+    assert mailbox.compose.call_args.args[:2] == ('draft', ('Alex@example.org', 'Meeting', 'Could we meet Friday?'))
+
+
+@pytest.mark.asyncio
+async def test_cancel_before_send_never_submits_message(monkeypatch):
+    import asyncio
+    import threading
+    import awareness.gmail as gmail
+    box = GmailMailbox()
+    box.pending = ("123456", "d", "v", "synthetic")
+    entered, release = threading.Event(), threading.Event()
+    methods = []
+    def handle(req):
+        methods.append(req.method)
+        entered.set()
+        assert release.wait(3)
+        return httpx.Response(200, json={"message": {"id": "v"}})
+    real = httpx.Client
+    monkeypatch.setattr(gmail.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(handle), **kw))
+    monkeypatch.setattr(gmail, "token_path", lambda p: SimpleNamespace(exists=lambda: True))
+    monkeypatch.setattr(gmail, "gmail_credentials", lambda: SimpleNamespace(token="test", has_scopes=lambda s: True))
+    task = asyncio.create_task(box.respond(mail_request("send draft one two three four five six"), None))
+    assert await asyncio.to_thread(entered.wait, 2)
+    task.cancel()
+    await asyncio.sleep(0)
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert methods == ["GET"]
+
+
+def test_freshness_filters():
+    from datetime import datetime
+    assert mail_request("any new emails") == ("search", "in:inbox is:unread")
+    midnight = int(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    assert mail_request("any emails today") == ("search", f"in:inbox after:{midnight}")
