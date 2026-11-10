@@ -93,6 +93,16 @@ pending. The package build and its hashed Windows Python dependencies are in
 
 ## Release-candidate verification record
 
+The unsigned preview EXE built from `84f0d80` was downloaded from GitHub
+and verified against SHA-256
+`e47dbf394bdef1749abc8e32d466e653e8787d1fd8a9d42bb5913376efb0fd8b`.
+On an existing Windows x64 development PC, a non-elevated install in a fresh
+directory provisioned private Python, dependencies and the default speech
+model. The installed island opened and exited, and the uninstaller removed
+the application. Clean-PC, optional Ollama installation and hardware checks
+remain pending. The [Windows CI run for the preview](https://github.com/parthjaina2107/ZENO/actions/runs/42857144753)
+passed for `fc8b3ab`.
+
 Complete this table for each candidate; automated unit tests alone do not verify
 microphones, real user speech, authorization, installers or third-party services.
 
