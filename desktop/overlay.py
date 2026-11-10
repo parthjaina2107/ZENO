@@ -359,10 +359,11 @@ class ActivityOverlay(QWidget):
             self._pointer_inside = inside
             if inside and not self.microphone_active:
                 self.expand()
-            else:
-                self._schedule_collapse()
+            elif not inside:
+                self._collapse_on_leave()
         if not inside and self.expanded and not self.request_id and not self.dismiss.isActive() and self._drag_offset is None:
-            self._schedule_collapse()
+            if not self.typing:
+                self.dismiss.start(550)  # Auto-opened without a hover, e.g. task feedback.
         self._glow += ((1.0 if inside and not self.reduced_motion else 0.0) - self._glow) * 0.16
         if inside:
             self._pointer += (QPointF(local) - self._pointer) * 0.18
@@ -392,9 +393,10 @@ class ActivityOverlay(QWidget):
         if not self.reduced_motion or self.expanded or self.microphone_active or self._glow > 0.01:
             self.update()
 
-    def _schedule_collapse(self):
-        if self.expanded and not self.typing and not self.request_id and self._drag_offset is None and (not self.dismiss.isActive() or self.dismiss.remainingTime() > 550):
-            self.dismiss.start(550)
+    def _collapse_on_leave(self):
+        if self.expanded and not self.typing and not self.request_id and self._drag_offset is None:
+            self.collapse()
+            self.motion.setCurrentTime(self.motion.duration())
 
     def _auto_collapse(self):
         if not self.typing and not self.rect().contains(self.mapFromGlobal(QCursor.pos())) and self._drag_offset is None:
@@ -638,7 +640,9 @@ class ActivityOverlay(QWidget):
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self._schedule_collapse()
+        if not self.rect().contains(self.mapFromGlobal(QCursor.pos())):
+            self._pointer_inside = False
+            self._collapse_on_leave()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

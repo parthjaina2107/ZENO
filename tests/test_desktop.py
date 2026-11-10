@@ -510,6 +510,11 @@ def test_island_pointer_tracking_collapses_after_leaving_child_controls():
         with patch.object(QCursor, 'pos', return_value=island.start.mapToGlobal(QPoint(10, 10))):
             island._track_pointer()
         assert island._pointer.x() > old and island._glow > 0
+        with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(-100, -100))):
+            island._track_pointer()
+        assert not island.expanded and island.height() == 48 and not island.dismiss.isActive()
+        with patch.object(QCursor, 'pos', return_value=island.mapToGlobal(QPoint(50, 30))):
+            island._track_pointer()
         # Keep a draft open across pointer movement until explicit submission/collapse.
         island.typing = True
         island.busy = True

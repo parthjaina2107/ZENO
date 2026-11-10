@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Moving the cursor off the expanded island immediately restores its compact size.
+
 - The docked island curves slightly outward where it meets the screen edge.
   Setup reviewed; this is a visual change only.
 

@@ -403,8 +403,8 @@ is required. If dashboard construction fails, the island shows a message and
 the application log records the error for diagnosis; the button can retry.
 
 `main.py --desktop` and `Start-ZENO.cmd` start the compact island. Hover opens its
-quick-access panel, not the dashboard. Moving the pointer away collapses it after
-550 ms. The panel stays open while you type or review an approval. On shorter
+quick-access panel, not the dashboard. Moving the pointer away collapses it
+immediately. The panel stays open while you type or review an approval. On shorter
 displays, scroll the panel to reach all controls. Drafts survive an explicit collapse. Cursor lighting follows the pointer across the island controls.
 
 Choose **Open workspace** on the island or **Open dashboard** in the tray to open the
