@@ -953,7 +953,8 @@ function drawRibbon(now) {
     const blend = 1 - Math.exp(-dt / 270);
     followX += (pointerX - followX) * blend;
     followY += (pointerY - followY) * blend;
-    const phase = ribbonTime / 16000;
+    // The desktop island uses the same wall-clock phase, even across window opens.
+    const phase = still ? 1 : Date.now() / 16000;
     const index = Math.floor(phase) % ribbonColors.length;
     const mix = Math.min(1, (phase % 1) * 4);
     const from = ribbonColors[(index + ribbonColors.length - 1) % ribbonColors.length];

@@ -288,11 +288,22 @@ class GlassButton(QPushButton):
         p.restore()
 
 
-def paint_voice_orb(painter, center, radius, phase=0, intensity=0):
+def dashboard_hue(seconds):
+    """Wall-clock palette shared with drawRibbon in server/static/app.js."""
+    colors = (266, 204, 165, 322)
+    phase = seconds / 16
+    index = int(phase) % len(colors)
+    start = colors[index - 1]
+    delta = (colors[index] - start + 540) % 360 - 180
+    mix = min(1, (phase % 1) * 4)
+    return round(start + delta * mix * mix * (3 - 2 * mix)) % 360
+
+
+def paint_voice_orb(painter, center, radius, phase=0, intensity=0, hue=266, direction=QPointF()):
     """Small vector aurora, rendered locally at the widget's actual scale."""
     painter.save()
     halo = QRadialGradient(center, radius * 1.6)
-    halo.setColorAt(0, QColor(123, 127, 255, 75))
+    halo.setColorAt(0, QColor.fromHsl(hue, 210, 174, 85))
     halo.setColorAt(1, QColor(0, 0, 0, 0))
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(halo)
@@ -301,12 +312,11 @@ def paint_voice_orb(painter, center, radius, phase=0, intensity=0):
     orb.addEllipse(center, radius, radius)
     painter.setClipPath(orb)
     painter.fillPath(orb, QColor('#111225'))
-    for index, tint in enumerate(['#67e8f9', '#a78bfa', '#fa80b5']):
+    for index, offset in enumerate((0, 14, 28)):
         angle = phase * .5 + index * math.tau / 3
         point = center + QPointF(math.cos(angle) * radius * .55, math.sin(angle) * radius * .55)
-        light = QRadialGradient(point, radius * 1.55)
-        color = QColor(tint)
-        color.setAlpha(215)
+        light = QRadialGradient(point + direction * (radius * .38), radius * 1.55)
+        color = QColor.fromHsl((hue + offset) % 360, 192, 143 + index * 19, 215)
         light.setColorAt(0, color)
         light.setColorAt(1, QColor(0, 0, 0, 0))
         painter.fillPath(orb, light)
@@ -330,12 +340,14 @@ class BrandMark(QWidget):
     def __init__(self):
         super().__init__()
         self.setFixedSize(26, 26)
+        self.hue = 266
+        self.direction = QPointF()
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        paint_voice_orb(p, QPointF(13, 13), 9)
+        paint_voice_orb(p, QPointF(13, 13), 9, hue=self.hue, direction=self.direction)
 
 
 class ActivityBars(QWidget):
@@ -349,7 +361,8 @@ class ActivityBars(QWidget):
         self.capture_active = False
         self.pointer = QPointF(-100, -100)
         self.presence = 0.0
-        self.spotlight_hue = 220.0
+        self.spotlight_hue = 266
+        self.orb_direction = QPointF()
         self.reduced_motion = False
         self.timer = QTimer(self)
         self.timer.setInterval(50)
@@ -373,7 +386,8 @@ class ActivityBars(QWidget):
             paint_spotlight(p, rect, 22, self.pointer, self.presence, self.spotlight_hue)
         phase = 0 if self.reduced_motion else self.phase
         title, subtitle, tint = phase_copy(self.state, self.capture_active)
-        paint_voice_orb(p, QPointF(39, 40), 20, phase, self.level if self.capture_active else 0)
+        paint_voice_orb(p, QPointF(39, 40), 20, phase, self.level if self.capture_active else 0,
+                        self.spotlight_hue, self.orb_direction)
         font = p.font()
         font.setFamily('Segoe UI')
         font.setPixelSize(14)

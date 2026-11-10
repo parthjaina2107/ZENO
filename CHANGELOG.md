@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The island icon and expanded voice orb follow the cursor with highlights from
+  the dashboard's synchronized ribbon palette. Setup reviewed; no configuration change.
+
 - Added an unsigned Windows x64 preview installer with private Python, optional
   model setup, Start menu integration and uninstall support. The README links
   directly to the EXE, checksum and manual installation guide.

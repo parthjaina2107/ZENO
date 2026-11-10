@@ -1,12 +1,13 @@
 """Persistent desktop island; forwards intent to the existing desktop controller."""
 import math
+import time
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QVariantAnimation, QEasingCurve, QPointF
 from PySide6.QtGui import QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QPainterPath, QConicalGradient
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
 from .light_engine import MicrophoneLights
 from .music_island import MusicIsland
-from .island_components import ActivityBars, BrandMark, GlassButton, island_outline, paint_metal_shell
+from .island_components import ActivityBars, BrandMark, GlassButton, dashboard_hue, island_outline, paint_metal_shell
 
 
 class ActivityOverlay(QWidget):
@@ -35,7 +36,7 @@ class ActivityOverlay(QWidget):
         self.expanded_size = (480, 400)
         self._glow = 0.0
         self._pointer = QPointF(150, 34)
-        self._spotlight_hue = 220.0
+        self._spotlight_hue = 266
         self._phase = 0.0
         self._pointer_inside = False
         self.reduced_motion = False
@@ -365,10 +366,17 @@ class ActivityOverlay(QWidget):
         self._glow += ((1.0 if inside and not self.reduced_motion else 0.0) - self._glow) * 0.16
         if inside:
             self._pointer += (QPointF(local) - self._pointer) * 0.18
-            screen = self.screen() or QApplication.primaryScreen()
-            area = screen.availableGeometry()
-            xp = max(0.0, min(1.0, (QCursor.pos().x() - area.left()) / max(1, area.width())))
-            self._spotlight_hue = (220 + xp * 200) % 360
+        self._spotlight_hue = 266 if self.reduced_motion else dashboard_hue(time.time())
+        direction = QPointF()
+        if not self.reduced_motion:
+            offset = QPointF(local - self.mark.mapTo(self, self.mark.rect().center()))
+            direction = offset / max(50.0, math.hypot(offset.x(), offset.y()))
+            direction = self.mark.direction + (direction - self.mark.direction) * .18
+        if self.mark.hue != self._spotlight_hue or self.mark.direction != direction:
+            self.mark.hue = self._spotlight_hue
+            self.mark.direction = direction
+            self.mark.update()
+        self.bars.orb_direction = direction
         if not self.reduced_motion:
             self._phase += 0.018
         self.bars.pointer = self.bars.mapFrom(self, self._pointer.toPoint())
