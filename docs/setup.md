@@ -541,7 +541,8 @@ If ZENO reports that it cannot load these settings, close it and move the damage
 
 **Exit** on the island and **Exit ZENO** in the dashboard header close the desktop
 app, including its tray icon. During a task, ZENO requests cancellation and quits
-after the worker finishes. Closing only the dashboard window hides the workspace.
+after the worker finishes. Exit also shuts down the dashboard's embedded browser.
+Closing only the dashboard window hides the workspace.
 You can click **Type a request** during speech playback to interrupt a reply and
 enter the next command.
 

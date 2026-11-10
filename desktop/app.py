@@ -239,13 +239,14 @@ class DesktopApplication(QObject):
             self.finish_quit()
 
     def finish_quit(self):
-        if self.dashboard:
-            self.dashboard.hide()
         self.overlay.close()
         if self.controller.engine:
             self.controller.engine.close()
         self.tray.hide()
-        self.application.quit()
+        if self.dashboard:
+            self.dashboard.shutdown(self.application.quit)
+        else:
+            self.application.quit()
 
 
 def run_desktop():
@@ -269,3 +270,4 @@ def run_desktop():
     finally:
         desktop.hotkey.close()
         lock.unlock()
+        application.shutdown()

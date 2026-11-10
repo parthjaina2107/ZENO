@@ -12,6 +12,8 @@
   submitting a send. Reviews accept spoken digits and normalized email addresses.
   The island and dashboard can send the reviewed version with a button when
   speech recognition misses the command.
+- Desktop shutdown disposes the dashboard's embedded browser before ending the
+  Qt event loop. Setup reviewed. The existing Exit buttons use this shutdown path.
 - Fixed trailing command qualifications, polite wrappers, wake/stop handling,
   folder acknowledgements, unverified remote outcomes, steady-noise capture,
   pause/resume semantics and Gmail date filters. Removed broken Aurora links.

@@ -1,5 +1,10 @@
 """Local dashboard integration: no microphone, provider or OS actions."""
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import sysconfig
 import time
 from unittest.mock import MagicMock
 
@@ -11,6 +16,52 @@ from PySide6.QtTest import QTest
 from PySide6.QtCore import QUrl
 from desktop.dashboard import DashboardWindow, DashboardBridge, dashboard_html, STATIC
 from desktop.overlay import ActivityOverlay
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows desktop entry point')
+def test_dashboard_exit_terminates_desktop_process(tmp_path):
+    import win32api
+    import win32con
+    import win32process
+    script = """
+import site, sys
+site.addsitedir(sys.argv[1])
+from unittest.mock import patch
+from PySide6.QtCore import QTimer
+from desktop.app import DesktopApplication, run_desktop
+
+original_init = DesktopApplication.__init__
+def open_dashboard(host, *args):
+    original_init(host, *args)
+    host.open_dashboard()
+    def click_exit():
+        if not host.dashboard.bridge.connected:
+            QTimer.singleShot(30, click_exit)
+            return
+        host.dashboard.dashboard_page.runJavaScript("document.getElementById('exitDesktop').click()")
+    QTimer.singleShot(30, click_exit)
+
+with patch.object(DesktopApplication, '__init__', open_dashboard):
+    raise SystemExit(run_desktop())
+"""
+    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', ZENO_DATA_DIR=str(tmp_path), AWARENESS_ENABLED='false')
+    # Query the actual interpreter's Windows exit status. The venv launcher is a
+    # second process and its wait handle may outlive an already-exited interpreter.
+    command = subprocess.list2cmdline([str(Path(sys.base_prefix) / 'python.exe'), '-c', script,
+                                       sysconfig.get_path('purelib')])
+    process, thread, _, _ = win32process.CreateProcess(None, command, None, None, False, subprocess.CREATE_NO_WINDOW, env,
+        str(Path(__file__).resolve().parents[1]), win32process.STARTUPINFO())
+    thread.Close()
+    try:
+        deadline = time.monotonic() + 60
+        while win32process.GetExitCodeProcess(process) == win32con.STILL_ACTIVE and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert win32process.GetExitCodeProcess(process) == 0
+    finally:
+        if win32process.GetExitCodeProcess(process) == win32con.STILL_ACTIVE:
+            win32api.TerminateProcess(process, 1)
+        process.Close()
+    assert not (tmp_path / 'desktop.lock').exists()
 
 
 @pytest.mark.parametrize("busy", [False, True])

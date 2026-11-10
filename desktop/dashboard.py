@@ -218,3 +218,11 @@ class DashboardWindow(QWebEngineView):
         self.bridge.capture_changed.emit(False)
         self.hide()
         event.ignore()
+
+    def shutdown(self, finished):
+        self.hide()
+        # WebEngine needs its event loop while destroying the page and its profile.
+        # Defer destruction until the Exit button's WebChannel callback returns.
+        self.destroyed.connect(finished)
+        self.dashboard_page.destroyed.connect(self.deleteLater)
+        self.dashboard_page.deleteLater()
