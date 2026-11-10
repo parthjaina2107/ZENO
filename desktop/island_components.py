@@ -99,12 +99,23 @@ def paint_spotlight(p, rect, radius, pointer, presence, hue=220):
 
 def island_outline(rect, radius):
     radius = min(radius, rect.height() / 2, rect.width() / 2)
-    path = QPainterPath(rect.topLeft())
-    path.lineTo(rect.topRight())
+    # A docked shell extends above y=0 to hide the seam. Use the existing
+    # transparent side margins for the small curves at the screen edge.
+    shoulder = 5 if rect.top() < 0 else 0
+    edge_y = max(0, rect.top())
+    left, right = rect.left(), rect.right()
+    path = QPainterPath(QPointF(left - shoulder, rect.top()))
+    path.lineTo(right + shoulder, rect.top())
+    if shoulder:
+        path.lineTo(right + shoulder, edge_y)
+        path.quadTo(right, edge_y, right, edge_y + shoulder)
     path.lineTo(rect.right(), rect.bottom() - radius)
     path.quadTo(rect.bottomRight(), QPointF(rect.right() - radius, rect.bottom()))
     path.lineTo(rect.left() + radius, rect.bottom())
     path.quadTo(rect.bottomLeft(), QPointF(rect.left(), rect.bottom() - radius))
+    if shoulder:
+        path.lineTo(left, edge_y + shoulder)
+        path.quadTo(left, edge_y, left - shoulder, edge_y)
     path.closeSubpath()
     return path
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The docked island curves slightly outward where it meets the screen edge.
+  Setup reviewed; this is a visual change only.
+
 - The island now meets the top of the monitor with no transparent gap or
   horizontal border across its top edge, including during expansion.
 
