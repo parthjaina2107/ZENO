@@ -60,7 +60,18 @@ function notify(message) {
 }
 function renderAccess(items) {
   const root = $("accessGroups");
-  const focusKey = document.activeElement?.dataset?.feature;
+  if (root.childElementCount) {
+    $("accessStatus").textContent = "";
+    for (const item of items) {
+      const toggle = root.querySelector('[data-feature="' + CSS.escape(item.key) + '"]');
+      if (toggle && !toggle.disabled) {
+        toggle.checked = item.enabled;
+        toggle.defaultChecked = item.enabled;
+        toggle.closest("label").querySelector("p").textContent = item.description + (item.account ? " " + item.account : "");
+      }
+    }
+    return;
+  }
   const groups = new Map();
   for (const item of items) {
     let panel = groups.get(item.group);
@@ -84,11 +95,11 @@ function renderAccess(items) {
     toggle.setAttribute("role", "switch");
     toggle.setAttribute("aria-label", item.label);
     toggle.dataset.feature = item.key;
-    toggle.checked = item.enabled;
+    toggle.defaultChecked = item.enabled;
     toggle.addEventListener("change", () => {
       toggle.disabled = true;
       if (!send({type: "set_app_access", feature: item.key, enabled: toggle.checked})) {
-        toggle.checked = item.enabled;
+        toggle.checked = toggle.defaultChecked;
         toggle.disabled = false;
         $("accessStatus").textContent = "Could not reach the desktop controller.";
       }
@@ -99,7 +110,6 @@ function renderAccess(items) {
   }
   root.replaceChildren(...groups.values());
   $("accessStatus").textContent = "";
-  if (focusKey) root.querySelector('[data-feature="' + CSS.escape(focusKey) + '"]')?.focus();
 }
 function view(name) {
   if (desktopMode && name === "access") send({type: "app_access"});
@@ -323,10 +333,16 @@ function handle(data) {
     case "app_access":
       if (desktopMode) renderAccess(data.items);
       break;
+    case "app_access_saved":
     case "access_error":
       if (desktopMode) {
-        $("accessStatus").textContent = data.message;
-        $("accessGroups").replaceChildren();
+        const toggle = data.feature && $("accessGroups").querySelector('[data-feature="' + CSS.escape(data.feature) + '"]');
+        if (toggle) {
+          if (data.type === "app_access_saved") toggle.defaultChecked = data.enabled;
+          toggle.checked = toggle.defaultChecked;
+          toggle.disabled = false;
+        }
+        $("accessStatus").textContent = data.message || "";
       }
       break;
     case "telemetry":

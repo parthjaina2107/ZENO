@@ -127,6 +127,8 @@ class DashboardBridge(QObject):
                     if data.get('feature') == 'local_ai' and data.get('enabled'):
                         from brain.ollama_runtime import start_local_runtime
                         start_local_runtime()
+                    self.publish({'type': 'app_access_saved', 'feature': data['feature'], 'enabled': data['enabled']})
+                    return
                 choices = app_access.choices()
                 from awareness.accounts import token_path
                 items = []
@@ -150,7 +152,8 @@ class DashboardBridge(QObject):
                                   'account': account})
                 self.publish({'type': 'app_access', 'items': items})
             except (OSError, ValueError, TypeError):
-                self.publish({'type': 'access_error', 'message': 'Could not load or save App access settings.'})
+                self.publish({'type': 'access_error', 'feature': data.get('feature'),
+                              'message': 'Could not load or save App access settings.'})
         elif kind == 'quit':
             self.quit_requested.emit()
         elif kind == 'motion':

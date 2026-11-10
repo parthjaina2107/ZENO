@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- App access now confirms each switch separately. Changing another permission or
+  refreshing the page while a save is pending keeps the selected switch in place.
+  Setup reviewed. Reopen ZENO to load the updated dashboard and controller.
+
 - Removed the moving background light and layered backdrop filters from the native
   dashboard to reduce flicker during hover and scrolling. Setup was reviewed.
   Reopen ZENO to load the updated dashboard assets.

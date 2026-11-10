@@ -156,6 +156,15 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         js("document.querySelector('[data-feature=gmail_send]').click();true")
         wait_for(lambda: not app_access.allowed("gmail_send"))
         assert app_access.allowed("gmail_read")
+        wait_for(lambda: js("!document.querySelector('[data-feature=gmail_send]').disabled"))
+        js("""const accessSwitch = document.querySelector('[data-feature=gmail_send]');
+              accessSwitch.click();
+              handle({type:'app_access',items:[{key:'gmail_send',enabled:false}]});
+              document.querySelector('[data-feature=media]').click();true""")
+        wait_for(lambda: js("accessSwitch.isConnected && accessSwitch.checked && !accessSwitch.disabled"))
+        wait_for(lambda: app_access.allowed("gmail_send") and not app_access.allowed("media"))
+        js("view('workspace');view('access');true")
+        assert js("accessSwitch.checked && !document.querySelector('[data-feature=media]').checked")
         js("view('workspace');true")
         island.handle_event('mail_review', '234567')
         dashboard.handle_event('mail_review', '234567')
