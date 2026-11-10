@@ -124,6 +124,9 @@ class DashboardBridge(QObject):
             try:
                 if kind == 'set_app_access':
                     app_access.set_choice(data.get('feature'), data.get('enabled'))
+                    if data.get('feature') == 'local_ai' and data.get('enabled'):
+                        from brain.ollama_runtime import start_local_runtime
+                        start_local_runtime()
                 choices = app_access.choices()
                 from awareness.accounts import token_path
                 items = []

@@ -5,6 +5,7 @@
 - Added App access to the desktop dashboard, with per-user switches for supported
   accounts, applications, device controls, AI services and background sources.
   Fresh profiles require opt-in. Review the setup guide and enable desired tools.
+  Configured AI providers can be enabled in a running desktop session.
 - Added one-click exit on the island and dashboard. Typing can interrupt reply
   playback. Folder and mail requests can run in sequence. Gmail now retains the
   recipient and content across clarification turns and checks cancellation before

@@ -445,15 +445,19 @@ class CodingRunner:
             report['status'] = 'saved'
             report['verification'] = 'Read-back SHA-256; Python AST/JSON parse where applicable. Runtime tests were not run.'
             control.check()
-            emit('state', 'Opening VS Code')
-            try:
-                opened = app_access.allowed("code") and await control.call(open_vscode, root, [item['path'] for item in manifest])
-            except OSError as exc:
-                opened = False
-                report['editor_error'] = str(exc)
+            opened = False
+            editor_result = app_access.denial("code") + ' '
+            if app_access.allowed("code"):
+                emit('state', 'Opening VS Code')
+                try:
+                    opened = await control.call(open_vscode, root, [item['path'] for item in manifest])
+                except OSError as exc:
+                    report['editor_error'] = str(exc)
+                editor_result = ('Requested VS Code to open the project. ' if opened else
+                                 'VS Code could not open the project. Open the project folder manually. ')
             report['vscode_open_requested'] = opened
             return (f'Saved and verified {len(manifest)} file(s). ' +
-                    ('Requested VS Code to open the project. ' if opened else 'VS Code was not found; open the project folder manually. ') +
+                    editor_result +
                     f'Runtime tests were not run. Backups and report: {run_dir}')
         except asyncio.CancelledError:
             report['status'] = 'cancelled_after_save' if report['status'] == 'saved' else 'cancelled'

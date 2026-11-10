@@ -533,6 +533,9 @@ Settings are saved in `app-access.json` inside `ZENO_DATA_DIR`. Changes apply to
 subsequent operations, including background polling. Turning off a feature leaves
 its provider credentials in place. AI, Windows and OAuth configuration can
 independently limit a feature. The switches control ZENO's built-in tools.
+Enabling **Local Ollama** starts the installed runtime when local AI is configured.
+ZENO checks **Google Gemini** access before each cloud request, including retries.
+Restart a running CLI voice session if its microphone was off at launch.
 If ZENO reports that it cannot load these settings, close it and move the damaged
 `app-access.json` aside. Reopen ZENO and choose the tools to enable again.
 

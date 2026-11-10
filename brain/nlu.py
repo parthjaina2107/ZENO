@@ -10,7 +10,7 @@ import re
 import os
 from typing import Dict, Any, Optional
 from config import config
-from .api_utils import cloud_allowed, reasoning_available, call_gemini_with_fallback
+from .api_utils import cloud_configured, reasoning_available, call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.NLU")
 
@@ -149,7 +149,7 @@ class NLUEngine:
         self._init_client()
 
     def _init_client(self):
-        if self.api_key and cloud_allowed():
+        if self.api_key and cloud_configured():
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,

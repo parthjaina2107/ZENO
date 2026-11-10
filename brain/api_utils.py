@@ -14,8 +14,12 @@ _last_failure = ContextVar('gemini_failure', default=None)
 FREE_TIER_MODELS = frozenset({'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'})
 
 
+def cloud_configured():
+    return config.LLM_MODE == 'free-cloud-local' and config.GEMINI_FREE_TIER_CONFIRMED
+
+
 def cloud_allowed():
-    return config.LLM_MODE == 'free-cloud-local' and config.GEMINI_FREE_TIER_CONFIRMED and app_access.allowed('cloud_ai')
+    return cloud_configured() and app_access.allowed('cloud_ai')
 
 
 def reasoning_available(client):
@@ -135,6 +139,9 @@ async def _call_cloud(client, contents, primary_model=None, max_retries=2,
                 'retry_options': {'attempts': 1},
             }
             request_config.setdefault('automatic_function_calling', {'disable': True})
+            if not cloud_allowed():
+                _last_failure.set('cloud_disabled')
+                return None
             try:
                 response = await asyncio.wait_for(asyncio.to_thread(
                     client.models.generate_content, model=model, contents=contents,

@@ -6,7 +6,7 @@ import re
 from typing import Optional, Dict, Any
 import app_access
 from config import config
-from .api_utils import cloud_allowed, call_gemini_with_fallback
+from .api_utils import cloud_allowed, cloud_configured, call_gemini_with_fallback
 
 logger = logging.getLogger("VoiceAgent.Vision")
 
@@ -34,7 +34,7 @@ class ScreenVision:
         self._init_client()
 
     def _init_client(self):
-        if self.api_key and cloud_allowed():
+        if self.api_key and cloud_configured():
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,

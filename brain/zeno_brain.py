@@ -18,7 +18,7 @@ from .nlu import NLUEngine
 from .planner import ActionPlanner, PlannedAction
 from .memory import ZenoMemory
 from .vision import ScreenVision
-from .api_utils import cloud_allowed, reasoning_available, call_gemini_with_fallback, last_api_failure, reasoning_failure_message
+from .api_utils import cloud_configured, reasoning_available, call_gemini_with_fallback, last_api_failure, reasoning_failure_message
 from .agent import GoalPlanner
 from .interaction import is_direct_command, route_request
 
@@ -51,7 +51,7 @@ class ZenoBrain:
 
     def _init_chat_client(self):
         """Initialize Google GenAI client for conversational chat & reasoning."""
-        if self.api_key and cloud_allowed():
+        if self.api_key and cloud_configured():
             try:
                 from google import genai
                 self.client = genai.Client(api_key=self.api_key, vertexai=False, enterprise=False,

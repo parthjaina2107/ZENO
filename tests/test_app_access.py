@@ -68,3 +68,23 @@ def test_file_tools_cannot_replace_dashboard_access_choices(tmp_path, monkeypatc
     assert not ops.file_copy(str(candidate), str(settings_dir)).success
     assert not ops.file_delete(str(settings_dir), permanent=True).success
     assert not app_access.allowed("power")
+
+
+@pytest.mark.asyncio
+async def test_cloud_grant_takes_effect_on_existing_brain_and_revocation_blocks_requests(monkeypatch):
+    from google import genai
+    from brain.api_utils import call_gemini_with_fallback
+    from brain.zeno_brain import ZenoBrain
+    app_access.set_choice("cloud_ai", False)
+    client = MagicMock()
+    client.models.generate_content.return_value.text = "Mocked reply"
+    monkeypatch.setattr(genai, "Client", MagicMock(return_value=client))
+    brain = ZenoBrain(api_key="test-key")
+    assert brain.client is client and brain.vision.client is client and brain.nlu.client is client
+    assert await call_gemini_with_fallback(brain.client, "hello") is None
+    client.models.generate_content.assert_not_called()
+    app_access.set_choice("cloud_ai", True)
+    assert (await call_gemini_with_fallback(brain.client, "hello")).text == "Mocked reply"
+    app_access.set_choice("cloud_ai", False)
+    assert await call_gemini_with_fallback(brain.client, "hello") is None
+    client.models.generate_content.assert_called_once()
