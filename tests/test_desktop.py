@@ -699,6 +699,7 @@ def test_short_display_keeps_approval_controls_reachable_at_the_edge(monkeypatch
     screen.availableGeometry.return_value = area
     island = ActivityOverlay()
     monkeypatch.setattr(island, "screen", lambda: screen)
+    monkeypatch.setattr(QApplication, "primaryScreen", lambda: screen)
     try:
         island.show()
         island.move(area.right() - 80, area.bottom() - 70)
@@ -706,7 +707,9 @@ def test_short_display_keeps_approval_controls_reachable_at_the_edge(monkeypatch
         island.set_approval("review", "Review this request. " * 45)
         island.motion.setCurrentTime(island.motion.duration())
         app.processEvents()
-        assert area.contains(island.geometry())
+        assert screen.geometry().contains(island.geometry())
+        assert island.y() == screen.geometry().top()
+        assert island.geometry().center().x() == screen.geometry().center().x()
         assert island.body_scroll.verticalScrollBar().maximum() > 0
         assert island.body.height() >= island.body.minimumSizeHint().height()
         decisions = []

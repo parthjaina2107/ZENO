@@ -31,7 +31,6 @@ class ActivityOverlay(QWidget):
         self.request_id = ""
         self.typing = False
         self.expanded = False
-        self._drag_offset = None
         self._reveal = 0.0
         self.expanded_size = (480, 400)
         self._glow = 0.0
@@ -209,16 +208,19 @@ class ActivityOverlay(QWidget):
         self._layout_contents()
         self.position_at_top()
         app = QApplication.instance()
-        app.screenAdded.connect(lambda screen: self.position_at_top())
-        app.screenRemoved.connect(lambda screen: self.position_at_top())
+        app.primaryScreenChanged.connect(self.position_at_top)
+        app.screenAdded.connect(self._watch_screen)
         for screen in app.screens():
-            screen.availableGeometryChanged.connect(lambda area: self.position_at_top())
+            self._watch_screen(screen)
+
+    def _watch_screen(self, screen):
+        screen.geometryChanged.connect(self.position_at_top)
 
     def position_at_top(self):
-        screen = QApplication.screenAt(self.pos()) or QApplication.primaryScreen()
+        screen = QApplication.primaryScreen()
         if screen:
-            area = screen.availableGeometry()
-            self.move(area.center().x() - self.width() // 2, screen.geometry().top())
+            area = screen.geometry()
+            self.move(area.left() + (area.width() - self.width()) // 2, area.top())
 
     def showing_music(self):
         return bool(self.playback and not (self.assistant_selected or self.busy or self.request_id
@@ -259,7 +261,6 @@ class ActivityOverlay(QWidget):
     def _transition(self, target):
         # Reverse from the current frame instead of snapping on rapid hover changes.
         self.motion.stop()
-        self._anchor_x = self.x() + self.width() / 2
         screen = self.screen() or QApplication.primaryScreen()
         self._expanded_width = min(self.expanded_size[0], screen.availableGeometry().width() - 24)
         self._expanded_height = min(self.expanded_size[1], screen.availableGeometry().height() - 48)
@@ -282,11 +283,7 @@ class ActivityOverlay(QWidget):
         width = round(start_width + (end_width - start_width) * float(value))
         height = round(start_height + (end_height - start_height) * float(value))
         self.setFixedSize(width, height)
-        screen = self.screen() or QApplication.primaryScreen()
-        area = screen.availableGeometry()
-        x = max(area.left(), min(round(self._anchor_x - width / 2), area.right() + 1 - width))
-        y = max(screen.geometry().top(), min(self.y(), area.bottom() + 1 - height))
-        self.move(x, y)
+        self.position_at_top()
         self._layout_contents()
         self.body_opacity.setOpacity(max(0.0, (self._reveal - 0.25) / 0.75))
         self.update()
@@ -362,7 +359,7 @@ class ActivityOverlay(QWidget):
                 self.expand()
             elif not inside:
                 self._collapse_on_leave()
-        if not inside and self.expanded and not self.request_id and not self.dismiss.isActive() and self._drag_offset is None:
+        if not inside and self.expanded and not self.request_id and not self.dismiss.isActive():
             if not self.typing:
                 self.dismiss.start(550)  # Auto-opened without a hover, e.g. task feedback.
         self._glow += ((1.0 if inside and not self.reduced_motion else 0.0) - self._glow) * 0.16
@@ -395,11 +392,11 @@ class ActivityOverlay(QWidget):
             self.update()
 
     def _collapse_on_leave(self):
-        if self.expanded and not self.typing and not self.request_id and self._drag_offset is None:
+        if self.expanded and not self.typing and not self.request_id:
             self.collapse()
 
     def _auto_collapse(self):
-        if not self.typing and not self.rect().contains(self.mapFromGlobal(QCursor.pos())) and self._drag_offset is None:
+        if not self.typing and not self.rect().contains(self.mapFromGlobal(QCursor.pos())):
             self.collapse()
 
     def activate(self):
@@ -649,21 +646,7 @@ class ActivityOverlay(QWidget):
         if self.microphone_active and not self.expanded and event.button() == Qt.MouseButton.LeftButton:
             self.expand()
             return
-        if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 54:
-            self.motion.stop()
-            self._drag_offset = event.globalPosition().toPoint() - self.pos()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_offset is not None:
-            position = event.globalPosition().toPoint() - self._drag_offset
-            screen = QApplication.screenAt(event.globalPosition().toPoint()) or QApplication.primaryScreen()
-            area = screen.availableGeometry()
-            self.move(max(area.left(), min(position.x(), area.right() - self.width() + 1)),
-                      max(screen.geometry().top(), min(position.y(), area.bottom() - self.height() + 1)))
-
-    def mouseReleaseEvent(self, event):
-        self._drag_offset = None
-        self._transition(1.0 if self.expanded else 0.0)
+        super().mousePressEvent(event)
 
     def showEvent(self, event):
         self.ambient.start()

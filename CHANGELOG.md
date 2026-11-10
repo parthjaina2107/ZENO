@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The desktop island is pinned to the top center of the primary display and can
+  no longer be dragged.
+
 - Moving the cursor off the expanded island immediately starts a gentler
   460 ms closing animation. Setup reviewed; no configuration change is needed.
 

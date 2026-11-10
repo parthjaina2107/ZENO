@@ -110,8 +110,8 @@ through Qt WebEngine, with remote navigation blocked. No HTTP server or token is
 needed. Dashboard history/preferences remain session-only; desktop settings use
 their existing persistent location.
 
-Drag the island header to reposition for the session. Screen changes reset its
-top anchor. Use **Exit** on the island or **Exit ZENO** in the dashboard header to quit.
+The island stays fixed at the top center of the primary display as it opens and
+closes. Use **Exit** on the island or **Exit ZENO** in the dashboard header to quit.
 Command/reply excerpts can be visible during screen sharing. The painted island
 glass does not blur the Windows desktop behind it.
 
