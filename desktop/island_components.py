@@ -250,6 +250,16 @@ class GlassButton(QPushButton):
         if self.isEnabled() and not self.reduced_motion:
             paint_spotlight(p, rect.adjusted(1, 1, -1, -1), radius - 1,
                             self.pointer, self.presence, self.spotlight_hue)
+            if 0 < hover < 1:
+                width = rect.width() * .35
+                x = rect.left() - width + (rect.width() + width) * hover
+                sheen = QLinearGradient(x, 0, x + width, -rect.height() * .15)
+                sheen.setColorAt(0, Qt.GlobalColor.transparent)
+                sheen.setColorAt(.55, QColor.fromHsl(round(self.spotlight_hue) % 360, 170, 210, 92))
+                sheen.setColorAt(1, Qt.GlobalColor.transparent)
+                shape = QPainterPath()
+                shape.addRoundedRect(rect, radius, radius)
+                p.fillPath(shape, sheen)
         self._paint_label(p, '#11131b' if self.primary else '#f0f1f7', 0, 1)
         if self.hasFocus():
             p.setPen(QPen(QColor('#86aaff'), 2))

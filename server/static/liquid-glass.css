@@ -221,5 +221,37 @@ body.reduce-motion .workspace-ribbon { transition:none; }
 @keyframes workspace-enter { from { opacity:.72; transform:translateY(5px); } }
 @keyframes voice-ring { from { transform:scale(.7);opacity:1; } to { transform:scale(1.8);opacity:0; } }
 @keyframes task-glow { to { box-shadow:0 0 18px var(--accent-edge); } }
+/* Paint the moving reflection behind the label and inside the button bounds. */
+@property --shine-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@media (prefers-reduced-motion:no-preference) and (forced-colors:none) {
+  body:not(.reduce-motion) :is(.shell,dialog) button:enabled:is(:hover,:focus-visible)::before {
+    background:linear-gradient(110deg,transparent 38%,var(--accent-edge) 49%,#fff4 51%,transparent 62%),
+      radial-gradient(circle,#ffffff26 .6px,transparent .9px);
+    background-size:300% 100%,4px 4px;
+    background-repeat:no-repeat,repeat;
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+    animation:button-shimmer 900ms ease-out both;
+  }
+  body:not(.reduce-motion) :is(.shell,dialog) button:not(.profile):enabled:is(:hover,:focus-visible)::after,
+  body:not(.reduce-motion) #run:enabled::after {
+    content:""; position:absolute; inset:0; padding:1px; border-radius:inherit;
+    pointer-events:none;
+    background:conic-gradient(from var(--shine-angle),transparent 0deg 240deg,var(--accent-light) 300deg,#fff 314deg,transparent 345deg);
+    mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    mask-composite:exclude;
+    animation:button-rim 1.6s ease-out both;
+  }
+  body:not(.reduce-motion) #run:enabled::after { animation:button-rim 4s linear infinite; }
+}
+@keyframes button-shimmer {
+  from { background-position:100% 0,0 0; }
+  to { background-position:0 0,0 0; }
+}
+@keyframes button-rim { to { --shine-angle:360deg; } }
 @media(max-width:540px) { .voice-orbit { width:80px; height:80px; right:4%; } }
 @media(forced-colors:active) { .shell .nav.active { outline:2px solid Highlight; } }

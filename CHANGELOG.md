@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Dashboard buttons shimmer on hover and keyboard focus, and Run task has a
+  rotating accent border. Expanded island action buttons show a matching sheen.
+  Reduce motion disables these effects. Setup reviewed; no setup change is needed.
+
 - The dashboard moves a persistent ribbon layer during cursor tracking and the
   compact island repaints its orb independently, reducing flicker. Setup reviewed;
   restart ZENO after updating.
