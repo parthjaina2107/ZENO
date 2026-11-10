@@ -204,7 +204,7 @@ class NLUEngine:
             cmd = str(params.get("command", "")).lower()
             for blocked in config.BLOCKED_COMMANDS:
                 if blocked in cmd:
-                    logger.warning(f"Blocked dangerous command requested: {cmd}")
+                    logger.warning("Blocked dangerous command")
                     return {
                         "understood": False,
                         "action": "blocked",
@@ -573,7 +573,7 @@ class NLUEngine:
                     if "understood" in parsed and "action" in parsed:
                         return self._sanitize_command(parsed)
             except Exception as e:
-                logger.warning(f"Gemini API request failed ({e}); using local NLU fallback.")
+                logger.warning("Gemini API request failed (%s); using local NLU fallback.", type(e).__name__)
 
         # Return sanitized local fallback
         return self._sanitize_command(local_result)

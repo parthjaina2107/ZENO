@@ -30,7 +30,7 @@ class TaskExecutor:
         feature = app_access.action_feature(action)
         if feature and not app_access.allowed(feature):
             return ActionResult(False, app_access.denial(feature), error="ACCESS_DISABLED")
-        logger.info(f"Executing action '{act_type}' with parameters: {params}")
+        logger.info("Executing action '%s'", act_type)
 
         try:
             if act_type == "media_control":
@@ -149,5 +149,5 @@ class TaskExecutor:
                 )
 
         except Exception as e:
-            logger.exception(f"Unexpected error executing action '{act_type}': {e}")
+            logger.error("Unexpected %s executing action '%s'", type(e).__name__, act_type)
             return ActionResult(success=False, message=f"Execution failed: {e}", error=str(e))

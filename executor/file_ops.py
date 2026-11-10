@@ -8,7 +8,7 @@ import errno
 import os
 import shutil
 import tempfile
-from itertools import islice
+import stat
 from pathlib import Path
 import logging
 from typing import Optional, List, Dict, Any
@@ -18,6 +18,40 @@ from user_paths import user_folder
 from .file_publication import stage_new_file
 
 logger = logging.getLogger("VoiceAgent.FileOps")
+MAX_READ_BYTES = 64 * 1024
+
+
+def _private_path(path):
+    # Reject Windows alternate streams and normalize DOS trailing dots/spaces.
+    for part in path.parts[1:]:
+        name = part.rstrip(" .").casefold()
+        if (":" in name or name == ".env" or name.startswith((".env.", "client_secret"))
+                or name in {".git", ".ssh", ".aws", "credentials.json", "google-client.json",
+                            "token.json", "secrets.json", "paired_devices.json"}
+                or name.endswith((".token", ".pem", ".key", ".pfx"))):
+            return True
+    if path.is_relative_to((config.DATA_DIR / "accounts").resolve()):
+        return True
+    # A hard link can disguise a credential file under an unrelated name.
+    try:
+        info = path.stat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return stat.S_ISREG(info.st_mode) and info.st_nlink > 1
+
+
+def _tree_is_safe(directory):
+    def fail(error):
+        raise error
+    for parent, dirs, files in os.walk(directory, onerror=fail):
+        for name in dirs + files:
+            child = Path(parent) / name
+            if (_private_path(child) or child.is_symlink() or
+                    getattr(child.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+                return False
+    return True
 
 
 def _copy_to_new_path(source: Path, destination: Path):
@@ -62,7 +96,10 @@ class FileOps:
         elif clean.lower().startswith("downloads/") or clean.lower().startswith("downloads\\") or clean.lower() == "downloads":
             clean = str(user_folder('downloads') / clean[9:].lstrip("\\/"))
 
-        target = Path(clean).expanduser().resolve()
+        requested = Path(clean).expanduser().absolute()
+        target = requested.resolve()
+        if _private_path(requested) or _private_path(target):
+            return False, None, "Access denied: this location is reserved for credentials."
         target_str = str(target).lower()
         settings = (config.DATA_DIR / 'app-access.json').resolve()
         if target == settings or (tree and target in settings.parents):
@@ -87,6 +124,12 @@ class FileOps:
             allowed_names = [d.name or str(d) for d in self.allowed_dirs]
             return False, None, f"Access denied: Path '{target}' is outside permitted directories ({', '.join(allowed_names)})."
 
+        if tree and target.is_dir():
+            try:
+                if not _tree_is_safe(target):
+                    return False, None, "Access denied: the folder contains protected files or links."
+            except OSError:
+                return False, None, "Could not safely inspect all files in this folder."
         return True, target, None
 
     def folder_create(self, path: str) -> ActionResult:
@@ -224,12 +267,19 @@ class FileOps:
             return ActionResult(success=False, message=f"Path is not a file: {target}", error="NOT_A_FILE")
 
         try:
-            with open(target, "r", encoding="utf-8", errors="replace") as f:
-                lines = list(islice(f, max(0, max_lines)))
-                content = "".join(lines)
+            with target.open("rb") as f:
+                data = f.read(MAX_READ_BYTES + 1)
+            limited = len(data) > MAX_READ_BYTES
+            preview = data[:MAX_READ_BYTES].decode("utf-8", errors="replace")
+            lines = preview.replace("\r\n", "\n").replace("\r", "\n").splitlines(keepends=True)
+            limit = min(200, max(0, max_lines))
+            limited = limited or len(lines) > limit
+            lines = lines[:limit]
+            content = "".join(lines)
             return ActionResult(
                 success=True,
-                message=f"Read {len(lines)} {'line' if len(lines) == 1 else 'lines'} from {target.name}.",
+                message=f"Read {len(lines)} {'line' if len(lines) == 1 else 'lines'} from {target.name}."
+                        + (" Preview truncated." if limited else ""),
                 output=content
             )
         except Exception as e:
@@ -249,7 +299,8 @@ class FileOps:
                 return ActionResult(False, "Use a search pattern inside the selected directory.", error="INVALID_PATTERN")
             matches = []
             for p in target_dir.glob(pattern):
-                if p.is_file() and p.resolve().is_relative_to(target_dir):
+                if (p.is_file() and not _private_path(p) and not _private_path(p.resolve())
+                        and p.resolve().is_relative_to(target_dir)):
                     matches.append({"name": p.name, "path": str(p), "size_bytes": p.stat().st_size})
                 if len(matches) >= 50:
                     break

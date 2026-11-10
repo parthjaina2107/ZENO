@@ -42,8 +42,8 @@ make Gemini, connected-mail or explicitly enabled remote features offline.
 | `%LOCALAPPDATA%\ZENO\awareness.sqlite3` | Collected events/preferences/reminders; event retention is capped at seven days and 1,000 records |
 | `%LOCALAPPDATA%\ZENO\models` | Downloaded speech-model cache |
 | Project `zeno_memory.json` | Saved personal facts/preferences; recent conversation context is held in process memory |
-| Project `audit_log.jsonl` | Action parameters, permission decisions and execution results; no built-in retention limit |
-| Project `task_reports` | Goal details and task evidence; no built-in retention limit |
+| Project `audit_log.jsonl` | Action type and ID, source, timestamps, permission decisions and success status; no built-in retention limit |
+| Project `task_reports` | Task status, step identifiers and verification flags; no built-in retention limit |
 | Project `screenshots` | Screenshots requested through the screenshot tool; no built-in retention limit |
 | Project `paired_devices.json` | Remote paired-device state. The adjacent `paired_devices.lock` coordinates writes. |
 | Project `voiceagent.log` | Diagnostics; default rotating files are 5 MiB with five backups |
@@ -63,7 +63,8 @@ connected access in your Google/Microsoft account settings to disconnect the
 provider. Removing a local token alone does not revoke its grant at the provider.
 Review Windows notification access separately if you enabled it.
 
-There is no unified erase-account or uninstaller UI yet. To remove local data,
+The Windows installer adds an uninstaller in Settings → Apps. Uninstalling retains
+personal data. To remove local data,
 first back up anything you want to retain, identify the actual configured paths,
 and remove only the relevant generated files/directories listed above. Do not
 delete unrelated project files. Revoke or rotate API keys if you want them to stop
@@ -80,7 +81,9 @@ Native coding requests send filtered source/tutorial context to the signed-in
 Codex provider after consent. Common secret filenames are excluded, but source can
 still contain private data; this is not a secret scanner. ZENO_DATA_DIR/coding_runs
 (normally %LOCALAPPDATA%\ZENO\coding_runs) retains goals, paths, schemas, provider
-events, proposed code, reports and backups. Audit logs can contain diff previews.
+events, proposed code, reports and backups. Older audit logs and task reports
+may contain action arguments, diff previews or file text. Updating ZENO does
+not rewrite those files. Review them locally before sharing diagnostics.
 Temporary snapshots are removed after planning. There is no automatic retention
 cleanup. Deleting run data does not erase project files or provider-side copies.
 See [coding workspaces](coding-workspace.md) before approving sensitive source.

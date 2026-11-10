@@ -14,6 +14,13 @@ from .nlu import SYSTEM_PROMPT
 from .planner import ActionResult, describe_action
 
 
+def matches_requested_text(path, content):
+    if not path.is_file():
+        return False
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        return stream.read(len(content) + 1) == content
+
+
 @dataclass
 class TaskReport:
     goal: str
@@ -88,7 +95,7 @@ class TaskRunner:
             if action.action_type == "file_move" or source.is_file():
                 destination = destination / source.name
         if destination.exists():
-            if action.action_type == "file_create" and destination.is_file() and destination.read_text(encoding="utf-8") == params.get("content", ""):
+            if action.action_type == "file_create" and matches_requested_text(destination, params.get("content", "")):
                 return ActionResult(True, "The file already contains the requested text.", output={"path": str(destination)})
             raise ValueError(f"Output already exists: {destination}. Choose a new path to preserve the existing file.")
 
@@ -127,7 +134,7 @@ class TaskRunner:
             try:
                 if action.action_type == "file_create":
                     path = resolve(params["path"])
-                    good = path.is_file() and path.read_text(encoding="utf-8") == params.get("content", "")
+                    good = matches_requested_text(path, params.get("content", ""))
                     return good, f"Saved content {'matches' if good else 'does not match'} at {path}."
                 if action.action_type == "file_delete":
                     absent = not resolve(params["path"]).exists()
@@ -255,5 +262,11 @@ class TaskRunner:
             directory.mkdir(exist_ok=True)
             path = directory / f"task_{uuid.uuid4().hex}.json"
             report.report_path = str(path)
-            path.write_text(json.dumps(report.__dict__, ensure_ascii=False, indent=2), encoding="utf-8")
+            # Keep full execution evidence in memory for the answer. Disk history
+            # needs outcomes, not the requested text or contents of user files.
+            saved = {"status": report.status, "steps": [
+                {key: step[key] for key in ("action_id", "action", "success", "verified") if key in step}
+                for step in report.steps
+            ]}
+            path.write_text(json.dumps(saved, indent=2), encoding="utf-8")
         return report

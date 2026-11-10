@@ -114,18 +114,62 @@ def test_diagnostic_argument_policy_and_executable_resolution(monkeypatch):
     assert invocation.kwargs["shell"] is False
 
 
+def test_echo_preserves_spaces_in_quoted_text():
+    assert SystemOps().run_command('echo "Hello  ZENO!"').output == "Hello  ZENO!"
+
+
 def test_close_app_targets_exact_executable_and_preserves_other_processes(monkeypatch):
     from unittest.mock import Mock
-    processes = [Mock(info={"name": name}) for name in ["chrome.exe", "chrome-helper.exe", "svchost.exe", None]]
-    monkeypatch.setattr("psutil.process_iter", lambda attrs: processes)
+    import win32con
+    processes = {1: "chrome.exe", 2: "chrome-helper.exe", 3: "chrome.exe"}
+    monkeypatch.setattr("win32gui.EnumWindows", lambda fn, arg: [fn(hwnd, arg) for hwnd in processes])
+    monkeypatch.setattr("win32gui.IsWindowVisible", lambda hwnd: True)
+    monkeypatch.setattr("win32gui.GetWindowText", lambda hwnd: "Document")
+    monkeypatch.setattr("win32process.GetWindowThreadProcessId", lambda hwnd: (0, hwnd))
+    from types import SimpleNamespace
+    monkeypatch.setattr("psutil.Process", lambda pid: SimpleNamespace(name=lambda: processes[pid]))
+    post = Mock()
+    monkeypatch.setattr("win32gui.PostMessage", post)
+    monkeypatch.setattr("win32gui.GetForegroundWindow", lambda: 2)
     ops = SystemOps()
+    assert ops.close_app("Google Chrome").error == "AMBIGUOUS_WINDOW"
+    post.assert_not_called()
+    monkeypatch.setattr("win32gui.GetForegroundWindow", lambda: 3)
     assert ops.close_app("Google Chrome").success
-    processes[0].terminate.assert_called_once()
+    post.assert_called_once_with(3, win32con.WM_CLOSE, 0, 0)
     for text in ["", "host", "svchost", "file explorer"]:
         assert not ops.close_app(text).success
-    for proc in processes[1:]:
-        proc.terminate.assert_not_called()
-    assert ops.run_command('echo "Hello  ZENO!"').output == "Hello  ZENO!"
+
+
+def test_secret_files_and_parent_trees_are_protected(tmp_path):
+    import os
+    ops = FileOps([str(tmp_path)])
+    folder = tmp_path / "project"
+    folder.mkdir()
+    secret = folder / ".env.local"
+    secret.write_text("fake-private-value")
+    alias = tmp_path / "notes.txt"
+    os.link(secret, alias)
+    for path in (alias, secret):
+        assert not ops.file_read(str(path)).success
+        assert not ops.file_copy(str(path), str(tmp_path / "revealed.txt")).success
+    assert not ops.file_copy(str(folder), str(tmp_path / "backup")).success
+    assert not ops.file_move(str(folder), str(tmp_path / "moved")).success
+    assert not ops.file_delete(str(folder), permanent=True).success
+    assert ops.file_search(str(tmp_path), "**/*").output == []
+    assert secret.exists()
+
+
+def test_read_preview_bounds_single_line_and_line_count(tmp_path):
+    from executor.file_ops import MAX_READ_BYTES
+    ops = FileOps([str(tmp_path)])
+    path = tmp_path / "large.txt"
+    path.write_bytes(b"x" * (MAX_READ_BYTES * 3))
+    result = ops.file_read(str(path))
+    assert result.success and result.output == "x" * MAX_READ_BYTES
+    assert "truncated" in result.message
+    path.write_bytes(b"x\r\n" * 250)
+    assert ops.file_read(str(path)).output == "x\n" * 200
 
 
 def test_copy_tree_and_search_stay_in_selected_directory(tmp_path):

@@ -9,7 +9,7 @@ from config import config
 
 
 def test_rotating_file_handler_configured(tmp_path):
-    log_file = tmp_path / "test_voiceagent.log"
+    log_file = tmp_path / "new" / "log-directory" / "test_voiceagent.log"
     handlers = setup_logging(log_file=str(log_file))
 
     rotating_handlers = [h for h in handlers if isinstance(h, RotatingFileHandler)]

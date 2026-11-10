@@ -12,6 +12,7 @@ import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 from typing import Optional
 import uvicorn
 
@@ -44,6 +45,7 @@ from tunnel.tunnel_manager import TunnelManager
 def setup_logging(log_file: Optional[str] = None, max_bytes: int = 5 * 1024 * 1024, backup_count: int = 5):
     """Configure console and rotating file logging."""
     target_file = log_file or config.LOG_FILE
+    Path(target_file).parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     stream_handler = logging.StreamHandler(sys.stdout)

@@ -203,24 +203,38 @@ class SystemOps:
                 error="PROTECTED_PROCESS"
             )
 
-        terminated_count = 0
-        for proc in psutil.process_iter(['pid', 'name']):
-            try:
-                pname = (proc.info['name'] or '').lower()
-                if pname == target_name:
-                    proc.terminate()
-                    terminated_count += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
+        import win32con
+        import win32gui
+        import win32process
+        import pywintypes
 
-        if terminated_count > 0:
-            return ActionResult(success=True, message=f"Requested closure of {terminated_count} instance(s) of '{process_name}'.")
-        else:
-            return ActionResult(
-                success=False,
-                message=f"No running process matching '{process_name}' found.",
-                error="PROCESS_NOT_FOUND"
-            )
+        windows = []
+        def matches(hwnd):
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            try:
+                return psutil.Process(pid).name().casefold() == target_name
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return False
+
+        def collect(hwnd, unused):
+            if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) and matches(hwnd):
+                windows.append(hwnd)
+            return True
+
+        try:
+            win32gui.EnumWindows(collect, None)
+            if not windows:
+                return ActionResult(False, "No visible window of the requested app was found.", error="WINDOW_NOT_FOUND")
+            foreground = win32gui.GetForegroundWindow()
+            if len(windows) > 1 and foreground not in windows:
+                return ActionResult(False, "Focus the window you want to close and try again.", error="AMBIGUOUS_WINDOW")
+            hwnd = foreground if foreground in windows else windows[0]
+            if not matches(hwnd):
+                return ActionResult(False, "The selected window has changed.", error="WINDOW_CHANGED")
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+        except (OSError, pywintypes.error):
+            return ActionResult(False, "Windows could not request closure of that window.", error="CLOSE_FAILED")
+        return ActionResult(True, "Asked the application to close one window. Review any save prompt it displays.")
 
     def list_running_apps(self, limit: int = 25) -> ActionResult:
         """Return a list of top active user processes."""

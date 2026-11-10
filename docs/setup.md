@@ -20,6 +20,9 @@
 5. Hover over the island, open **Open workspace**, then choose **App access**.
    Enable the features you want. For example, enable **Microphone** for voice
    or **Local Ollama** for local AI. Account connections require your own sign-in.
+   For a first check, enable **System information**, select **Single command**,
+   type `check battery` and click **Run command**. A PC without a battery may
+   report that the battery is unavailable.
 6. If setup fails, read `%TEMP%\ZENO-setup.log`. Check network access to PyPI
    and GitHub, and to Hugging Face or Ollama for the selected models. Retry
    setup or deselect the failing model and add it later using the steps below.
@@ -31,6 +34,18 @@ apps → ZENO Desktop → Uninstall**. The uninstaller removes its runtime, appl
 files and shortcuts. User-created files, settings and speech models in
 `%LOCALAPPDATA%\ZENO` are retained, as are Ollama and its models. Review the
 [data locations](privacy.md) before removing personal data.
+
+For commands in this guide that use `.\.venv\Scripts\python.exe`, EXE users
+can first run `Set-Location "$env:LOCALAPPDATA\Programs\ZENO Desktop"` in PowerShell.
+The installer includes its own Python. For another supported Windows x64 PC,
+download the EXE there and run setup under the intended user's Windows account.
+
+File reads return a preview of up to 200 lines or 64 KiB. Ordinary file commands
+block common credential files, hard-linked files, and tree operations containing
+protected files or links. Close-app requests go to one visible window. If several
+match, focus the desired window and retry. Respond to save prompts in the app.
+Existing logs and task reports may retain private text from older versions;
+see the [privacy guide](privacy.md) before sharing them.
 
 ## Manual installation
 

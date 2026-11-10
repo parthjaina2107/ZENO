@@ -12,8 +12,8 @@ try {
     # scratch experiments and the builder's virtual environment stay out.
     $files = @('awareness','brain','desktop','executor','server','tunnel','voice',
         'app_access.py','config.py','main.py','user_paths.py','.env.example',
-        'Start-ZENO.cmd','requirements*.txt','docs/setup.md','docs/desktop.md',
-        'docs/awareness.md','docs/privacy.md','packaging/windows')
+        'Start-ZENO.cmd','requirements*.txt','docs','README.md','CHANGELOG.md',
+        'SECURITY.md','SUPPORT.md','packaging/windows')
     git -C $root archive --format=zip "--output=$stage\source.zip" HEAD -- @files
     if ($LASTEXITCODE) { throw 'Source export failed.' }
     Expand-Archive -LiteralPath "$stage\source.zip" -DestinationPath $payload

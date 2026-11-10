@@ -123,13 +123,13 @@ def test_permission_audit_log_records_execution_result(tmp_path):
 
     action = PlannedAction(
         action_type="run_command",
-        parameters={"command": "dir"},
-        description="Run dir",
+        parameters={"command": "private-argument"},
+        description="Run private-argument",
         risk_level="medium"
     )
 
     pm.log_decision(action, approved=True, source="test")
-    res = ActionResult(success=True, message="Volume set to 50%")
+    res = ActionResult(success=True, message="private-result")
     pm.log_result(action, res, source="test")
 
     lines = audit_file.read_text(encoding="utf-8").strip().splitlines()
@@ -140,7 +140,8 @@ def test_permission_audit_log_records_execution_result(tmp_path):
     assert entry1["approved"] is True
     assert entry2["event"] == "execution_result"
     assert entry2["success"] is True
-    assert entry2["message"] == "Volume set to 50%"
+    assert "parameters" not in entry1 and "description" not in entry1
+    assert "private-result" not in lines[1]
 
 
 

@@ -402,6 +402,6 @@ class ActionPlanner:
             results.append(res)
             # If an intermediate step fails, stop sequential multi-step execution
             if not res.success:
-                logger.warning(f"Stopping multi-step execution due to failure in '{action.action_type}': {res.error}")
+                logger.warning("Stopping multi-step execution after failed '%s'", action.action_type)
                 break
         return results

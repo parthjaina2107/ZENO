@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Ordinary file commands block credential locations and protected folder trees.
+  File reads stop at 200 lines or 64 KiB and identify truncated previews.
+- Close-app requests ask one visible window to close and allow the application's
+  usual save prompt. Ambiguous requests ask the user to focus the intended window.
+- New diagnostic logs omit action arguments; audit logs and saved task reports
+  record outcomes without copying free-form action descriptions or file text.
+  Existing log files are retained. Custom log directories are created at startup.
+
 - Dashboard buttons shimmer on hover and keyboard focus, and Run task has a
   rotating accent border. Expanded island action buttons show a matching sheen.
   Reduce motion disables these effects. Setup reviewed; no setup change is needed.

@@ -10,7 +10,9 @@ Run the unsigned preview installer on Windows 10 or 11 with an internet
 connection. It installs Python and the desktop dependencies for your Windows
 account, offers speech and local AI model downloads, and adds **ZENO Desktop**
 to Start. Open **App access** in the dashboard to choose which tools ZENO may use.
-See the [installation and troubleshooting guide](docs/setup.md#windows-installer).
+For a first command, enable **System information** and type **check battery**.
+The installer includes the setup, desktop, privacy and troubleshooting guides
+in its `docs` folder. [Installation and troubleshooting](docs/setup.md#windows-installer)
 
 ![ZENO desktop workspace with voice input, command composer and task status](docs/workspace-preview.jpg)
 

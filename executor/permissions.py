@@ -40,8 +40,6 @@ class PermissionManager:
             "source": source,
             "action_type": action.action_type,
             "risk_level": action.risk_level,
-            "description": action.description,
-            "parameters": action.parameters,
             "approved": approved,
             "reason": reason or ("User approved" if approved else "User denied / timed out")
         }
@@ -69,8 +67,6 @@ class PermissionManager:
             "source": source,
             "action_type": action.action_type,
             "success": getattr(result, "success", False),
-            "message": getattr(result, "message", ""),
-            "error": getattr(result, "error", None)
         }
 
         try:
