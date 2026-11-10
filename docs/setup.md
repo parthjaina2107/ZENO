@@ -1,5 +1,48 @@
 # Windows setup guide
 
+## Windows installer
+
+1. Use a 64-bit Intel or AMD PC running Windows 10 or 11. Connect to the internet
+   and allow several GB of free disk space for Python, Qt and model downloads.
+   Quit an existing instance of ZENO before installing or updating.
+2. [Download ZENO-Setup-x64.exe](https://github.com/parthjaina2107/ZENO/raw/refs/heads/main/installers/ZENO-Setup-x64.exe).
+   This preview is unsigned. To check the download, run
+   `Get-FileHash "$HOME\Downloads\ZENO-Setup-x64.exe" -Algorithm SHA256` in
+   PowerShell and compare the result with the [published SHA-256](../installers/ZENO-Setup-x64.exe.sha256).
+   If your organization blocks unsigned apps, use its approved installation process.
+3. Double-click the EXE. Local speech recognition is selected by default.
+   Select **Install Ollama and download qwen3:4b** for local AI reasoning.
+   That option uses Windows App Installer (winget) if Ollama is missing and
+   downloads several additional GB. Leave speech unchecked for a text-only start.
+4. Click **Install**. Keep the setup window open while it downloads the private
+   Python runtime, verified packages and selected models. Choose **Open ZENO
+   Desktop** on the last page. Later, open it from Start.
+5. Hover over the island, open **Open workspace**, then choose **App access**.
+   Enable the features you want. For example, enable **Microphone** for voice
+   or **Local Ollama** for local AI. Account connections require your own sign-in.
+6. If setup fails, read `%TEMP%\ZENO-setup.log`. Check network access to PyPI
+   and GitHub, and to Hugging Face or Ollama for the selected models. Retry
+   setup or deselect the failing model and add it later using the steps below.
+   If the EXE itself cannot run, use the manual installation path.
+
+The installer uses `%LOCALAPPDATA%\Programs\ZENO Desktop`. To update, quit
+ZENO and run the newer installer. To uninstall, open **Settings → Apps → Installed
+apps → ZENO Desktop → Uninstall**. The uninstaller removes its runtime, application
+files and shortcuts. User-created files, settings and speech models in
+`%LOCALAPPDATA%\ZENO` are retained, as are Ollama and its models. Review the
+[data locations](privacy.md) before removing personal data.
+
+## Manual installation
+
+1. Install Git and Python 3.11 x64 using [Prerequisites](#1-prerequisites).
+2. Open PowerShell and follow [Download and install](#2-download-and-install)
+   to create a private environment and install dependencies.
+3. Follow [Configure your API key and preferences](#3-configure-your-api-key-and-preferences)
+   to create a local configuration and choose your AI runtime. For local speech,
+   run `.\.venv\Scripts\python.exe main.py --setup-speech` from the ZENO folder.
+4. From that folder run `.\Start-ZENO.cmd`. Open the workspace from the top
+   island and choose your permissions under **App access**.
+
 ## Separate Aurora prototype
 
 The independent music-lyrics prototype lives in `standalone/aurora`. Follow its
@@ -23,8 +66,7 @@ The reference-inspired Edge light appearance is selected once on upgrade: dark
 centre, perimeter glow and floating lyrics. Restart Aurora to apply it; old styles
 remain in the style selector. No dependency, account or wallpaper-setting changes.
 
-This guide covers the source-based development preview. There is no signed ZENO
-installer yet. Follow these steps in PowerShell as your normal Windows user.
+For a source installation, follow these steps in PowerShell as your normal Windows user.
 Administrator privileges are not required for the usual installation.
 
 ## 1. Prerequisites
@@ -58,7 +100,7 @@ git clone https://github.com/parthjaina2107/ZENO.git
 Set-Location .\ZENO
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-speech.txt -r requirements-awareness.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-desktop.txt -r requirements-speech.txt -r requirements-awareness.txt -r requirements-coding.txt
 ```
 
 These commands install the base application, desktop UI, CPU speech recognition,
@@ -68,7 +110,7 @@ so there is no PowerShell execution-policy change to make.
 
 If you already use [uv](https://docs.astral.sh/uv/), the equivalents are
 `uv venv --python 3.11` and
-`uv pip install --python .venv/Scripts/python.exe -r requirements.txt -r requirements-desktop.txt -r requirements-speech.txt -r requirements-awareness.txt`.
+`uv pip install --python .venv/Scripts/python.exe -r requirements.txt -r requirements-desktop.txt -r requirements-speech.txt -r requirements-awareness.txt -r requirements-coding.txt`.
 Use either installation method in the same `.venv`.
 
 For optional Windows accessibility tools, install `pywinauto`:

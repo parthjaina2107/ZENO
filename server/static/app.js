@@ -131,6 +131,7 @@ document
     button.addEventListener("click", () => view(button.dataset.view)),
   );
 function controls() {
+  document.body.classList.toggle("task-running", busy);
   $("run").disabled = !ready || busy;
   $("mic").disabled = !ready || busy || (!recognition && !desktopMode);
   $("stop").disabled = !ready || !busy;
@@ -226,7 +227,7 @@ function microphoneVisual(active) {
   document.body.classList.toggle('mic-active', active);
   $("voiceState").textContent = active ? "MICROPHONE ON" : "MICROPHONE OFF";
   $("voiceTitle").textContent = active ? "Go ahead. I'm listening." : "Ready when you are.";
-  $("voiceDescription").textContent = active ? "Speak naturally. Your workspace is listening." : "One thought. One request. A little less friction.";
+  $("voiceDescription").textContent = active ? "Speak naturally. Your workspace is listening." : "Type a request or start voice input below.";
   if (!active) document.body.style.setProperty('--mic-level', '0');
 }
 function assistantPhase(state) {

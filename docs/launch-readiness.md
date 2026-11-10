@@ -33,6 +33,11 @@ implied. Record evidence and the tested commit before checking off a release gat
 
 ## Distribution, dependencies and updates
 
+An unsigned per-user preview installer, its SHA-256 and the manual fallback
+are available from the README. Clean-machine validation and signing remain
+pending. The package build and its hashed Windows Python dependencies are in
+`packaging/windows`.
+
 - [ ] Produce a versioned, reproducible Windows installer from a clean build.
   Existing local `build/` or `dist/` directories are not published release evidence.
 - [ ] Lock the complete release dependency graph, record hashes and generate a

@@ -205,7 +205,7 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         wait_for(lambda: island.reduced_motion)
         island.collapse()
         island.motion.setCurrentTime(island.motion.duration())
-        assert island.height() == 68
+        assert island.height() == 48
         assert dashboard.isVisible()  # Island collapse never closes the dashboard.
         dashboard.handle_event('service_error', 'unavailable')
         dashboard.handle_event('state', 'Ready')

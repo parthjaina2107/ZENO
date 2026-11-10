@@ -2,6 +2,16 @@
 
 > **ZENO**: Run supported computer tasks by voice—locally using your microphone or remotely from your smartphone—with validated plans, action permissions, and progress reporting.
 
+## Install ZENO Desktop for Windows
+
+**[Download ZENO Setup for Windows x64](https://github.com/parthjaina2107/ZENO/raw/refs/heads/main/installers/ZENO-Setup-x64.exe)** · [Installer checksum](installers/ZENO-Setup-x64.exe.sha256) · [Step-by-step manual installation](docs/setup.md#manual-installation)
+
+Run the unsigned preview installer on Windows 10 or 11 with an internet
+connection. It installs Python and the desktop dependencies for your Windows
+account, offers speech and local AI model downloads, and adds **ZENO Desktop**
+to Start. Open **App access** in the dashboard to choose which tools ZENO may use.
+See the [installation and troubleshooting guide](docs/setup.md#windows-installer).
+
 Local AI is now the default: Ollama runs `qwen3:4b`, while cloud calls stay off
 until a billing-disabled Gemini Free-tier project is explicitly confirmed.
 See [local/free-cloud setup](docs/setup.md#3-configure-your-api-key-and-preferences).
@@ -68,9 +78,8 @@ See [implementation and verification notes](docs/agent-task-upgrade.md).
 
 > **ZENO**: Control your computer via local voice commands or your smartphone, with confirmation for deletion, shutdown, and restart.
 
-**Status: development preview.** Source installation is available today. A signed
-installer, automatic updates and a commercial release are not available yet.
-Licensing remains undecided.
+**Status: development preview.** The installer is unsigned. Licensing and
+commercial release checks remain open.
 
 Start with the **[complete Windows setup guide](docs/setup.md)**. It covers a clean
 checkout, dependencies, API configuration, microphone setup, first use and updates.
