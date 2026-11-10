@@ -12,6 +12,8 @@ account, offers speech and local AI model downloads, and adds **ZENO Desktop**
 to Start. Open **App access** in the dashboard to choose which tools ZENO may use.
 See the [installation and troubleshooting guide](docs/setup.md#windows-installer).
 
+![ZENO desktop workspace with voice input, command composer and task status](docs/workspace-preview.jpg)
+
 Local AI is now the default: Ollama runs `qwen3:4b`, while cloud calls stay off
 until a billing-disabled Gemini Free-tier project is explicitly confirmed.
 See [local/free-cloud setup](docs/setup.md#3-configure-your-api-key-and-preferences).
