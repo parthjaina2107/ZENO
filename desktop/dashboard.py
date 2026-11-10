@@ -184,7 +184,7 @@ class DashboardWindow(QWebEngineView):
         self.profile.setUrlRequestInterceptor(self.interceptor)
         self.dashboard_page = DashboardPage(self.profile, self)
         self.setPage(self.dashboard_page)
-        self.dashboard_page.setBackgroundColor(QColor('#1a1a1a'))
+        self.dashboard_page.setBackgroundColor(QColor('#040405'))
         self.dashboard_page.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         self.dashboard_page.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         self.channel = QWebChannel(self.dashboard_page)

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The dashboard moves a persistent ribbon layer during cursor tracking and the
+  compact island repaints its orb independently, reducing flicker. Setup reviewed;
+  restart ZENO after updating.
+
 - The island icon and expanded voice orb follow the cursor with highlights from
   the dashboard's synchronized ribbon palette. Setup reviewed; no configuration change.
 

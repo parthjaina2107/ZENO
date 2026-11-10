@@ -371,7 +371,9 @@ class ActivityOverlay(QWidget):
         if not self.reduced_motion:
             offset = QPointF(local - self.mark.mapTo(self, self.mark.rect().center()))
             direction = offset / max(50.0, math.hypot(offset.x(), offset.y()))
-            direction = self.mark.direction + (direction - self.mark.direction) * .18
+            difference = direction - self.mark.direction
+            if difference.manhattanLength() > .005:
+                direction = self.mark.direction + difference * .18
         if self.mark.hue != self._spotlight_hue or self.mark.direction != direction:
             self.mark.hue = self._spotlight_hue
             self.mark.direction = direction
@@ -396,7 +398,7 @@ class ActivityOverlay(QWidget):
             self.bars.update()
         if self.showing_music() and not self.reduced_motion:
             self.player.update()
-        if not self.reduced_motion or self.expanded or self.microphone_active or self._glow > 0.01:
+        if not self.reduced_motion and (self.microphone_active or (self.expanded and not self.showing_music())):
             self.update()
 
     def _collapse_on_leave(self):

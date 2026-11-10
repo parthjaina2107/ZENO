@@ -932,87 +932,85 @@ $("settingsDisconnect").addEventListener("click", () =>
 
 // Decorative ribbon renderer shared by the browser and the native dashboard.
 const systemReducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const ribbon = document.createElement("canvas");
+const ribbon = document.createElement("div");
 ribbon.className = "workspace-ribbon";
 ribbon.setAttribute("aria-hidden", "true");
-document.body.prepend(ribbon);
-const ribbonContext = ribbon.getContext("2d");
-const ribbonColors = [266, 204, 165, 322];
-let ribbonTime = 0, lastFrame = null, ribbonFrame = 0;
-let pointerX = .62, pointerY = .45, followX = pointerX, followY = pointerY;
-let lastHue = null;
-
-function drawRibbon(now) {
-  ribbonFrame = 0;
-  if (!ribbonContext || document.hidden) return;
-  const still = systemReducedMotion.matches || document.body.classList.contains("reduce-motion");
-  const dt = lastFrame === null ? 0 : now - lastFrame;
-  if (still || lastFrame === null || dt >= 32) {
-    lastFrame = now;
-    if (!still) ribbonTime += Math.min(dt, 80);
-    const blend = 1 - Math.exp(-dt / 270);
-    followX += (pointerX - followX) * blend;
-    followY += (pointerY - followY) * blend;
-    // The desktop island uses the same wall-clock phase, even across window opens.
-    const phase = still ? 1 : Date.now() / 16000;
-    const index = Math.floor(phase) % ribbonColors.length;
-    const mix = Math.min(1, (phase % 1) * 4);
-    const from = ribbonColors[(index + ribbonColors.length - 1) % ribbonColors.length];
-    const delta = (ribbonColors[index] - from + 540) % 360 - 180;
-    const hue = Math.round(from + delta * mix * mix * (3 - 2 * mix));
-    if (lastHue !== hue) {
-      document.body.style.setProperty("--ribbon-hue", hue);
-      lastHue = hue;
+const svgNS = "http://www.w3.org/2000/svg";
+const silk = document.createElementNS(svgNS, "svg");
+silk.setAttribute("viewBox", "0 0 1000 600");
+silk.setAttribute("preserveAspectRatio", "none");
+silk.setAttribute("fill", "none");
+// Build the strands once. Only their container moves during interaction.
+for (let layer = 0; layer < 3; layer++) {
+  for (let strand = 0; strand < 16; strand++) {
+    const path = document.createElementNS(svgNS, "path");
+    const points = [];
+    const u = strand / 15;
+    const shift = layer * .24;
+    for (let step = 0; step <= 64; step++) {
+      const x = step / 64;
+      const y = .72 - .52*x + .16*Math.sin(x*6.2 + shift) + .10*Math.sin(x*4.1 + shift)
+        + (u-.5)*.12*Math.sin(x*5 + shift);
+      points.push((step ? "L" : "M") + (x*1000).toFixed(1) + " " + (y*600).toFixed(1));
     }
-    // Sampling below display resolution softens the light and limits paint cost.
-    const w = Math.max(1, Math.round(innerWidth * .65));
-    const h = Math.max(1, Math.round(innerHeight * .65));
-    if (ribbon.width !== w || ribbon.height !== h) { ribbon.width = w; ribbon.height = h; }
-    const ctx = ribbonContext;
-    ctx.clearRect(0, 0, w, h);
-    const t = ribbonTime / 3600;
-    for (let layer = 0; layer < 3; layer++) {
-      const tint = hue + layer * 14;
-      const shift = layer * .24;
-      const y = x => h * (.62 - .36 * x + .15 * Math.sin(x * 6.2 + t * .45 + shift + (followX - .62) * 1.6)
-        + .10 * Math.sin(x * 4.1 - t * .32 + shift)
-        + (followY - .45) * .62 * Math.exp(-9 * (x - followX) ** 2));
-      for (let strand = 0; strand < 16; strand++) {
-        const u = strand / 15;
-        ctx.beginPath();
-        for (let step = 0; step <= 64; step++) {
-          const x = step / 64;
-          const spread = h * .12 * Math.sin(x * 5 + t * .38 + shift + followX);
-          const py = y(x) + (u - .5) * spread;
-          if (step === 0) ctx.moveTo(0, py); else ctx.lineTo(x * w, py);
-        }
-        ctx.strokeStyle = 'hsla(' + tint + ',88%,' + (45 + u * 28) + '%,' + (.065 + u ** 4 * .19) + ')';
-        ctx.lineWidth = strand === 15 ? 1.3 : 3;
-        ctx.stroke();
-      }
-    }
+    path.setAttribute("d", points.join(" "));
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", strand === 15 ? 1.3 : 3);
+    path.setAttribute("opacity", (.065 + u**4 * .19).toFixed(3));
+    silk.append(path);
   }
-  if (!still) ribbonFrame = requestAnimationFrame(drawRibbon);
 }
-function refreshRibbon() {
-  cancelAnimationFrame(ribbonFrame);
-  lastFrame = null;
-  ribbonFrame = requestAnimationFrame(drawRibbon);
+ribbon.append(silk);
+document.body.prepend(ribbon);
+const ribbonColors = [266, 204, 165, 322];
+let paletteTimer = 0;
+let pointerFrame = 0;
+let offsetX = 0, offsetY = 0;
+function stillRibbon() {
+  return systemReducedMotion.matches || document.body.classList.contains("reduce-motion");
+}
+function updatePalette() {
+  clearTimeout(paletteTimer);
+  if (document.hidden) return;
+  const still = stillRibbon();
+  const phase = still ? 1 : Date.now() / 16000;
+  const index = Math.floor(phase) % ribbonColors.length;
+  const mix = Math.min(1, (phase % 1) * 4);
+  const from = ribbonColors[(index + ribbonColors.length - 1) % ribbonColors.length];
+  const delta = (ribbonColors[index] - from + 540) % 360 - 180;
+  const hue = Math.round(from + delta * mix * mix * (3 - 2 * mix));
+  document.body.style.setProperty("--ribbon-hue", hue);
+  if (!still) paletteTimer = setTimeout(updatePalette, mix < 1 ? 125 : Math.ceil((1-phase%1)*16000));
+}
+function moveRibbon(x, y) {
+  offsetX = x;
+  offsetY = y;
+  if (!pointerFrame) pointerFrame = requestAnimationFrame(() => {
+    pointerFrame = 0;
+    ribbon.style.transform = 'translate(' + offsetX + 'px,' + offsetY + 'px)';
+  });
 }
 document.addEventListener("pointermove", event => {
-  if (event.pointerType !== "touch") {
-    pointerX = event.clientX / Math.max(1, innerWidth);
-    pointerY = event.clientY / Math.max(1, innerHeight);
+  if (event.pointerType !== "touch" && !stillRibbon()) {
+    moveRibbon((event.clientX / Math.max(1,innerWidth) - .5)*84,
+               (event.clientY / Math.max(1,innerHeight) - .5)*64);
   }
 }, {passive:true});
-document.documentElement.addEventListener("pointerleave", () => { pointerX = .62; pointerY = .45; });
-document.addEventListener("visibilitychange", refreshRibbon);
-window.addEventListener("resize", refreshRibbon);
-new MutationObserver(refreshRibbon).observe(document.body, {attributes:true, attributeFilter:["class"]});
+document.documentElement.addEventListener("pointerleave", () => moveRibbon(0, 0));
+document.addEventListener("visibilitychange", updatePalette);
+let previousStill = stillRibbon();
+new MutationObserver(() => {
+  const still = stillRibbon();
+  if (still !== previousStill) {
+    previousStill = still;
+    moveRibbon(0, 0);
+    updatePalette();
+  }
+}).observe(document.body, {attributes:true, attributeFilter:["class"]});
 systemReducedMotion.addEventListener("change", () => {
   $("motion").checked = systemReducedMotion.matches || storage.get("zeno_motion") === "true";
   document.body.classList.toggle("reduce-motion", $("motion").checked);
   if (desktopMode) send({type:"motion", reduced:$("motion").checked});
-  refreshRibbon();
+  updatePalette();
 });
-refreshRibbon();
+updatePalette();

@@ -1,5 +1,5 @@
 /* Only the native island loads these density adjustments. Shared UI stays intact. */
-html { background: #1a1a1a; }
+html { background: #040405; }
 body.desktop-island { font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
 /* Paint the native dashboard's glass with gradients and inset shadows. Sampling
    stacked backdrops during scrolling or hover invalidates large WebEngine layers. */
