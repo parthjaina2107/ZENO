@@ -14,7 +14,15 @@ try {
     $wheel = Join-Path $PSScriptRoot 'uv-wheel.zip'
     Write-Host 'Downloading verified Python setup tools...'
     Invoke-WebRequest -UseBasicParsing -Uri 'https://files.pythonhosted.org/packages/c2/5d/8e0b84503b77ead843ef57e4f9305eb32a95cac6806c0e0d54b9404a5f7b/uv-0.12.19-py3-none-win_amd64.whl' -OutFile $wheel
-    if ((Get-FileHash $wheel).Hash -ne 'dcbc531a96762569bbfe9639b4f45f00aabff51f427540711f63e7c23f225fdf') { throw 'Python setup tool checksum mismatch.' }
+    $stream = [IO.File]::OpenRead($wheel)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+    if ($digest -ne 'dcbc531a96762569bbfe9639b4f45f00aabff51f427540711f63e7c23f225fdf') { throw 'Python setup tool checksum mismatch.' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($wheel)
     try {
