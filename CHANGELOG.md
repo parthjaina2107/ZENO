@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Moving the cursor off the expanded island immediately starts its usual closing animation.
+- Moving the cursor off the expanded island immediately starts a gentler
+  460 ms closing animation. Setup reviewed; no configuration change is needed.
 
 - The docked island curves slightly outward where it meets the screen edge.
   Setup reviewed; this is a visual change only.

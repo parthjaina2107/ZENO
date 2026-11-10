@@ -267,7 +267,8 @@ class ActivityOverlay(QWidget):
         self._animation_target = target
         self.motion.setStartValue(0.0)
         self.motion.setEndValue(1.0)
-        self.motion.setDuration(max(120, int(380 * abs(target - self._reveal))))
+        duration_ms = 460 if target < self._reveal else 380
+        self.motion.setDuration(max(120, int(duration_ms * abs(target - self._reveal))))
         self.motion.start()
         if self.reduced_motion:
             self.motion.setCurrentTime(self.motion.duration())
