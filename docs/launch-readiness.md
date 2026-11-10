@@ -93,6 +93,16 @@ pending. The package build and its hashed Windows Python dependencies are in
 
 ## Release-candidate verification record
 
+The Windows x64 installer at `3c023e1` contains application revision
+`2539de7`. Its public download matched SHA-256
+`c473a9977f4d829c6ca621a6d198247fc407f1c250e577f7d38d4c786193ebc0`.
+A standard-user install into a fresh directory on the development PC verified
+private Python, installed guides, desktop/dashboard startup, uninstall and user
+file retention. Optional model downloads were deselected for this run. All 391
+tests passed on the [GitHub Windows runner](https://github.com/parthjaina2107/ZENO/actions/runs/42874732475).
+To repeat the EXE test on a separate Windows account, see the
+[installer verification instructions](../packaging/windows/README.md).
+
 The unsigned preview EXE built from `84f0d80` was downloaded from GitHub
 and verified against SHA-256
 `e47dbf394bdef1749abc8e32d466e653e8787d1fd8a9d42bb5913376efb0fd8b`.

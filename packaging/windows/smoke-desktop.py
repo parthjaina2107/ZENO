@@ -10,7 +10,11 @@ def open_workspace(host, *args):
     init(host, *args)
     host.open_dashboard()
     def check():
-        if host.dashboard.bridge.connected:
+        if host.dashboard.bridge.connected and host.dashboard.isVisible():
+            image = host.dashboard.grab().toImage()
+            if image.isNull():
+                QTimer.singleShot(100, check)
+                return
             ready.append(True)
             host.request_quit()
         else:

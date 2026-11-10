@@ -12,7 +12,7 @@ $scratch = Join-Path $env:TEMP ('zeno-installer-test-' + [guid]::NewGuid())
 New-Item -ItemType Directory $scratch | Out-Null
 $appDir = Join-Path $scratch 'ZENO Desktop'
 $env:ZENO_DATA_DIR = Join-Path $scratch 'test-profile'
-$env:QT_QPA_PLATFORM = 'offscreen'
+$env:QT_QPA_PLATFORM = 'windows'
 $env:AWARENESS_ENABLED = 'false'
 $argsList = '/VERYSILENT /SP- /SUPPRESSMSGBOXES /NORESTART /NOICONS /MERGETASKS=!speech,!localai,!desktopicon'
 $p = Start-Process $exe -ArgumentList "$argsList /DIR=""$appDir"" /LOG=""$scratch\install.log""" -WindowStyle Hidden -PassThru -Wait
