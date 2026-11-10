@@ -5,9 +5,9 @@
 - Added an unsigned Windows x64 preview installer with private Python, optional
   model setup, Start menu integration and uninstall support. The README links
   directly to the EXE, checksum and manual installation guide.
-- Redesigned the dashboard with navy surfaces, blue navigation highlights and a
-  microphone indicator. View changes and active tasks use motion that respects
-  reduced-motion preferences.
+- The black dashboard now has flowing ribbons that bend toward the pointer.
+  The ribbon and gradient buttons share an accent that changes every 16 seconds.
+  Reduce motion freezes the background and palette.
 
 - The desktop island is pinned to the top center of the primary display and can
   no longer be dragged.

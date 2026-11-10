@@ -426,7 +426,9 @@ input produces an editable draft: review it and press Run. Voice capture require
 a browser that supports SpeechRecognition and microphone access; typing remains
 available. Browser preferences include spoken replies, recognition language, and
 reduced motion. Changes to the operating system motion preference apply while
-the dashboard is open. Reduced motion disables cursor lighting.
+the dashboard is open. The dashboard ribbons follow the cursor and shift accent
+color every 16 seconds. Reduced motion freezes both the ribbons and the matching
+button colors.
 
 See [the UI verification notes](ui-redesign.md) and
 [agent implementation notes](agent-task-upgrade.md). Local CLI and native desktop

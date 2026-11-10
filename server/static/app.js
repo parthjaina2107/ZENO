@@ -930,71 +930,88 @@ $("settingsDisconnect").addEventListener("click", () =>
   $("disconnect").click(),
 );
 
-// One frame per pointer update; retain the native cursor and stationary controls.
-const pointerSurface = document.createElement("div");
-pointerSurface.className = "ambient-pointer";
-pointerSurface.setAttribute("aria-hidden", "true");
-if (!desktopMode) document.body.prepend(pointerSurface);
-const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
+// Decorative ribbon renderer shared by the browser and the native dashboard.
 const systemReducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-let pointerFrame = 0;
-let pointerPosition = null;
-let illuminatedPanel = null;
-function clearPointerLight() {
-  cancelAnimationFrame(pointerFrame);
-  pointerFrame = 0;
-  pointerPosition = null;
-  document.body.classList.remove("pointer-active");
-  illuminatedPanel?.classList.remove("pointer-lit");
-  illuminatedPanel = null;
-}
-function paintPointerLight() {
-  pointerFrame = 0;
-  if (!pointerPosition) return;
-  const { x, y, panel } = pointerPosition;
-  pointerSurface.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-  document.body.classList.add("pointer-active");
-  if (illuminatedPanel !== panel) {
-    illuminatedPanel?.classList.remove("pointer-lit");
-    illuminatedPanel = panel;
-  }
-  if (panel) {
-    const bounds = panel.getBoundingClientRect();
-    panel.style.setProperty("--pointer-x", `${x - bounds.left}px`);
-    panel.style.setProperty("--pointer-y", `${y - bounds.top}px`);
-    panel.classList.add("pointer-lit");
-  }
-}
-if (!desktopMode) document.addEventListener(
-  "pointermove",
-  (event) => {
-    if (
-      !finePointer.matches ||
-      systemReducedMotion.matches ||
-      $("motion").checked ||
-      event.pointerType !== "mouse"
-    ) {
-      clearPointerLight();
-      return;
+const ribbon = document.createElement("canvas");
+ribbon.className = "workspace-ribbon";
+ribbon.setAttribute("aria-hidden", "true");
+document.body.prepend(ribbon);
+const ribbonContext = ribbon.getContext("2d");
+const ribbonColors = [266, 204, 165, 322];
+let ribbonTime = 0, lastFrame = null, ribbonFrame = 0;
+let pointerX = .62, pointerY = .45, followX = pointerX, followY = pointerY;
+let lastHue = null;
+
+function drawRibbon(now) {
+  ribbonFrame = 0;
+  if (!ribbonContext || document.hidden) return;
+  const still = systemReducedMotion.matches || document.body.classList.contains("reduce-motion");
+  const dt = lastFrame === null ? 0 : now - lastFrame;
+  if (still || lastFrame === null || dt >= 32) {
+    lastFrame = now;
+    if (!still) ribbonTime += Math.min(dt, 80);
+    const blend = 1 - Math.exp(-dt / 270);
+    followX += (pointerX - followX) * blend;
+    followY += (pointerY - followY) * blend;
+    const phase = ribbonTime / 16000;
+    const index = Math.floor(phase) % ribbonColors.length;
+    const mix = Math.min(1, (phase % 1) * 4);
+    const from = ribbonColors[(index + ribbonColors.length - 1) % ribbonColors.length];
+    const delta = (ribbonColors[index] - from + 540) % 360 - 180;
+    const hue = Math.round(from + delta * mix * mix * (3 - 2 * mix));
+    if (lastHue !== hue) {
+      document.body.style.setProperty("--ribbon-hue", hue);
+      lastHue = hue;
     }
-    pointerPosition = {
-      x: event.clientX,
-      y: event.clientY,
-      panel:
-        event.target instanceof Element ? event.target.closest(".glass") : null,
-    };
-    if (!pointerFrame) pointerFrame = requestAnimationFrame(paintPointerLight);
-  },
-  { passive: true },
-);
-document.documentElement.addEventListener("pointerleave", clearPointerLight);
-window.addEventListener("blur", clearPointerLight);
-window.addEventListener("scroll", clearPointerLight, { passive: true });
-$("motion").addEventListener("change", clearPointerLight);
-finePointer.addEventListener("change", clearPointerLight);
+    // Sampling below display resolution softens the light and limits paint cost.
+    const w = Math.max(1, Math.round(innerWidth * .65));
+    const h = Math.max(1, Math.round(innerHeight * .65));
+    if (ribbon.width !== w || ribbon.height !== h) { ribbon.width = w; ribbon.height = h; }
+    const ctx = ribbonContext;
+    ctx.clearRect(0, 0, w, h);
+    const t = ribbonTime / 3600;
+    for (let layer = 0; layer < 3; layer++) {
+      const tint = hue + layer * 14;
+      const shift = layer * .24;
+      const y = x => h * (.62 - .36 * x + .15 * Math.sin(x * 6.2 + t * .45 + shift + (followX - .62) * 1.6)
+        + .10 * Math.sin(x * 4.1 - t * .32 + shift)
+        + (followY - .45) * .62 * Math.exp(-9 * (x - followX) ** 2));
+      for (let strand = 0; strand < 16; strand++) {
+        const u = strand / 15;
+        ctx.beginPath();
+        for (let step = 0; step <= 64; step++) {
+          const x = step / 64;
+          const spread = h * .12 * Math.sin(x * 5 + t * .38 + shift + followX);
+          const py = y(x) + (u - .5) * spread;
+          if (step === 0) ctx.moveTo(0, py); else ctx.lineTo(x * w, py);
+        }
+        ctx.strokeStyle = 'hsla(' + tint + ',88%,' + (45 + u * 28) + '%,' + (.065 + u ** 4 * .19) + ')';
+        ctx.lineWidth = strand === 15 ? 1.3 : 3;
+        ctx.stroke();
+      }
+    }
+  }
+  if (!still) ribbonFrame = requestAnimationFrame(drawRibbon);
+}
+function refreshRibbon() {
+  cancelAnimationFrame(ribbonFrame);
+  lastFrame = null;
+  ribbonFrame = requestAnimationFrame(drawRibbon);
+}
+document.addEventListener("pointermove", event => {
+  if (event.pointerType !== "touch") {
+    pointerX = event.clientX / Math.max(1, innerWidth);
+    pointerY = event.clientY / Math.max(1, innerHeight);
+  }
+}, {passive:true});
+document.documentElement.addEventListener("pointerleave", () => { pointerX = .62; pointerY = .45; });
+document.addEventListener("visibilitychange", refreshRibbon);
+window.addEventListener("resize", refreshRibbon);
+new MutationObserver(refreshRibbon).observe(document.body, {attributes:true, attributeFilter:["class"]});
 systemReducedMotion.addEventListener("change", () => {
   $("motion").checked = systemReducedMotion.matches || storage.get("zeno_motion") === "true";
   document.body.classList.toggle("reduce-motion", $("motion").checked);
-  if (desktopMode) send({type: "motion", reduced: $("motion").checked});
-  clearPointerLight();
+  if (desktopMode) send({type:"motion", reduced:$("motion").checked});
+  refreshRibbon();
 });
+refreshRibbon();
