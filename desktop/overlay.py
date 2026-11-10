@@ -6,7 +6,7 @@ from PySide6.QtGui import QColor, QCursor, QPainter, QLinearGradient, QRadialGra
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
 from .light_engine import MicrophoneLights
 from .music_island import MusicIsland
-from .island_components import ActivityBars, BrandMark, GlassButton, paint_metal_shell
+from .island_components import ActivityBars, BrandMark, GlassButton, island_outline, paint_metal_shell
 
 
 class ActivityOverlay(QWidget):
@@ -492,9 +492,8 @@ class ActivityOverlay(QWidget):
         for spread, alpha in [(4, 12), (2, 24)]:
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor(0, 0, 0, alpha))
-            p.drawRoundedRect(surface.adjusted(-spread, 0, spread, spread), radius, radius)
-        shape = QPainterPath()
-        shape.addRoundedRect(surface, radius, radius)
+            p.drawPath(island_outline(surface.adjusted(-spread, 0, spread, spread), radius))
+        shape = island_outline(surface, radius)
         p.setClipPath(shape)
         if self.showing_music() or not self.expanded:
             p.fillPath(shape, QColor('#050505'))
@@ -523,8 +522,7 @@ class ActivityOverlay(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
-        shape = QPainterPath()
-        shape.addRoundedRect(surface, 29, 29)
+        shape = island_outline(surface, 29)
         p.setClipPath(shape)
         paint_metal_shell(p, surface, 29, 0 if self.reduced_motion else self._phase,
                          self._pointer, 0 if self.reduced_motion else self._glow)

@@ -97,6 +97,18 @@ def paint_spotlight(p, rect, radius, pointer, presence, hue=220):
     p.restore()
 
 
+def island_outline(rect, radius):
+    radius = min(radius, rect.height() / 2, rect.width() / 2)
+    path = QPainterPath(rect.topLeft())
+    path.lineTo(rect.topRight())
+    path.lineTo(rect.right(), rect.bottom() - radius)
+    path.quadTo(rect.bottomRight(), QPointF(rect.right() - radius, rect.bottom()))
+    path.lineTo(rect.left() + radius, rect.bottom())
+    path.quadTo(rect.bottomLeft(), QPointF(rect.left(), rect.bottom() - radius))
+    path.closeSubpath()
+    return path
+
+
 def paint_metal_shell(p, rect, radius, phase=0.0, pointer=None, presence=0.0):
     """Original Qt adaptation of Joly UI's black-center liquid-metal border.
 
@@ -105,12 +117,10 @@ def paint_metal_shell(p, rect, radius, phase=0.0, pointer=None, presence=0.0):
     """
     p.save()
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    outer = QPainterPath()
-    outer.addRoundedRect(rect, radius, radius)
+    outer = island_outline(rect, radius)
     inset = .75
     inner_rect = rect.adjusted(inset, inset, -inset, -inset)
-    inner = QPainterPath()
-    inner.addRoundedRect(inner_rect, radius - inset, radius - inset)
+    inner = island_outline(inner_rect, radius - inset)
     ring = outer.subtracted(inner)
     # Alternating bright and dark reflection bands give the rim its chrome depth.
     # One shared cycle travels around the full perimeter rather than reversing.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The desktop island has square upper corners and rounded lower corners at its
+  existing sizes. Setup reviewed; the shape changes only how the window is drawn.
+
 - Music now has a dedicated black pill that expands on hover into a player with
   album art, elapsed and remaining time, and Windows playback controls. Restart
   desktop mode to load the new layout.
