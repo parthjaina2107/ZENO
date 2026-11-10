@@ -3,8 +3,9 @@ import math
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QVariantAnimation, QEasingCurve, QPointF
 from PySide6.QtGui import QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QPainterPath, QConicalGradient
-from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
+from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
 from .light_engine import MicrophoneLights
+from .music_island import MusicIsland
 from .island_components import ActivityBars, BrandMark, GlassButton, paint_metal_shell
 
 
@@ -83,6 +84,11 @@ class ActivityOverlay(QWidget):
         header.addWidget(self.title)
         header.addWidget(self.status, 1)
         self.playback = None
+        self.assistant_selected = False
+        self.player = MusicIsland(self)
+        self.player.hide()
+        self.player.exit.connect(self.quit_requested.emit)
+        self.player.assistant.connect(self.open_assistant)
         self.media_card = QWidget()
         media_layout = QHBoxLayout(self.media_card)
         media_layout.setContentsMargins(0, 0, 0, 0)
@@ -97,16 +103,8 @@ class ActivityOverlay(QWidget):
         self.track.setTextFormat(Qt.TextFormat.PlainText)
         self.track.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         lines.addWidget(self.track)
-        timeline = QHBoxLayout()
-        self.elapsed, self.remaining = QLabel(), QLabel()
-        self.progress = QProgressBar()
-        self.progress.setFixedHeight(3)
-        self.progress.setTextVisible(False)
-        self.progress.setStyleSheet("QProgressBar{background:#393940;border:0} QProgressBar::chunk{background:#c9b8e4}")
-        timeline.addWidget(self.elapsed)
-        timeline.addWidget(self.progress, 1)
-        timeline.addWidget(self.remaining)
-        lines.addLayout(timeline)
+        self.task_detail = QLabel()
+        lines.addWidget(self.task_detail)
         media_layout.addLayout(lines, 1)
         header.addWidget(self.media_card, 1)
         self.media_card.hide()
@@ -117,6 +115,16 @@ class ActivityOverlay(QWidget):
         self.quit_button.setToolTip('Exit ZENO')
         self.quit_button.clicked.connect(self.quit_requested.emit)
         self.quit_button.setParent(self)
+        self.quick_mic = QPushButton('\ue720', self)
+        self.quick_exit = QPushButton('\ue8bb', self)
+        for button, name in ((self.quick_mic, 'Talk'), (self.quick_exit, 'Exit ZENO')):
+            button.setToolTip(name)
+            button.setAccessibleName(name)
+            button.setStyleSheet("QPushButton{font:14px 'Segoe MDL2 Assets'; color:#dadade;"
+                                 "background:transparent;border:none;border-radius:12px}"
+                                 "QPushButton:hover{background:#303033}")
+        self.quick_mic.clicked.connect(self.activate)
+        self.quick_exit.clicked.connect(self.quit_requested.emit)
         self.body = QWidget(self)
         self.body_scroll = QScrollArea(self)
         self.body_scroll.setWidgetResizable(True)
@@ -197,7 +205,7 @@ class ActivityOverlay(QWidget):
         self.dismiss.setSingleShot(True)
         self.dismiss.timeout.connect(self._auto_collapse)
         self.body.hide()
-        self.setFixedSize(300, 68)
+        self.setFixedSize(222, 48)
         self._layout_contents()
         self.position_at_top()
         app = QApplication.instance()
@@ -212,13 +220,22 @@ class ActivityOverlay(QWidget):
             area = screen.availableGeometry()
             self.move(area.center().x() - self.width() // 2, area.top() + 16)
 
+    def showing_music(self):
+        return bool(self.playback and not (self.assistant_selected or self.busy or self.request_id
+                    or self.microphone_active or self.typing or self.mail_code or self.service_error))
+
+    def open_assistant(self):
+        self.assistant_selected = True
+        self.expand()
+
     def expand(self):
         self.dismiss.stop()
         self.body.layout().activate()
         self.body.setMinimumHeight(self.body.minimumSizeHint().height())
         target_height = max(400, 94 + self.body.minimumHeight())
-        resized_content = self.expanded_size[1] != target_height
-        self.expanded_size = (480, target_height)
+        target = (348, 151) if self.showing_music() else (480, target_height)
+        resized_content = self.expanded_size != target
+        self.expanded_size = target
         if not self.expanded or resized_content:
             self.expanded = True
             self.body_scroll.show()
@@ -231,6 +248,7 @@ class ActivityOverlay(QWidget):
             return  # Keep a pending approval visible until answered or expired.
         self.dismiss.stop()
         self.expanded = False
+        self.assistant_selected = False
         self.entry.hide()
         if self.typing:
             self.typing = False
@@ -258,7 +276,8 @@ class ActivityOverlay(QWidget):
         start_width, start_height, start_reveal = self._animation_start
         self._reveal = start_reveal + (self._animation_target - start_reveal) * float(value)
         end_width = self._expanded_width if self._animation_target else self._compact_width()
-        end_height = self._expanded_height if self._animation_target else 68
+        end_height = self._expanded_height if self._animation_target else (
+            68 if self.showing_music() or self.microphone_active or self.busy else 48)
         width = round(start_width + (end_width - start_width) * float(value))
         height = round(start_height + (end_height - start_height) * float(value))
         self.setFixedSize(width, height)
@@ -272,54 +291,58 @@ class ActivityOverlay(QWidget):
         self.update()
 
     def _layout_contents(self):
-        music = self.playback is not None and not self.busy and not self.request_id and not self.microphone_active
+        music = self.showing_music()
+        compact = not self.expanded and not self.microphone_active and not music
+        self.player.setVisible(music)
+        self.quick_mic.setVisible(compact)
+        self.quick_exit.setVisible(compact)
+        self.start.setVisible(not compact)
+        self.quit_button.setVisible(not music and not compact)
+        self.quick_mic.setGeometry(self.width()-74, (self.height()-28)//2, 28, 28)
+        self.quick_exit.setGeometry(self.width()-44, (self.height()-28)//2, 28, 28)
+        self.quick_mic.setText('\ue71a' if self.busy else '\ue720')
+        self.quick_mic.setAccessibleName('Stop' if self.busy else 'Talk')
+        self.quick_mic.setToolTip(self.quick_mic.accessibleName())
+        self.body_scroll.setVisible(self.expanded and not music)
+        if music:
+            self.header.hide()
+            self.player.setGeometry(5, 4, self.width()-10, self.height()-9)
+            self.player.configure(self.playback, self.expanded)
+            return
         task = self.busy and not self.microphone_active and not self.expanded
-        self.media_card.setVisible(music or task)
+        self.media_card.setVisible(task)
         if task:
             self.activity_icon.setText("●")
             self.track.setText(self.status.text())
             self.track.setToolTip(self.caption.text())
-            self.elapsed.setText(self.elapsed.fontMetrics().elidedText(
-                self.caption.text().split('\n')[0], Qt.TextElideMode.ElideRight, max(55, self.width() - 275)))
-            self.remaining.clear()
-            self.progress.hide()
+            self.task_detail.setText(self.task_detail.fontMetrics().elidedText(
+                self.caption.text().split('\n')[0], Qt.TextElideMode.ElideRight, max(55, self.width() - 160)))
             self.media_card.setAccessibleName(self.status.text())
         for label in (self.mark, self.title, self.status):
-            label.setVisible(not (music or task))
+            label.setVisible(not task)
         self.header.setVisible(not self.microphone_active or self.expanded)
-        self.header.setGeometry(24, 16, self.width() - 110, 36)
+        if compact:
+            self.header.setGeometry(17, (self.height()-36)//2, self.width()-95, 36)
+        else:
+            self.header.setGeometry(24, 16, self.width() - 110, 36)
         self.quit_button.setGeometry(self.width() - 78, 17, 54, 34)
         # Fixed-height content is clipped by the growing window, never squashed.
         self.body_scroll.setGeometry(24, 72, self.width() - 48, getattr(self, '_expanded_height', 400) - 94)
 
     def _compact_width(self):
         screen = self.screen() or QApplication.primaryScreen()
-        width = 360 if self.microphone_active or self.busy else 300
+        width = 360 if self.microphone_active or self.busy else 222
         if self.playback and not self.busy:
-            width = 424
+            width = 308
         return min(width, screen.availableGeometry().width() - 24)
 
     def set_playback(self, playback):
         changed_layout = bool(playback) != bool(self.playback)
         self.playback = playback
-        if playback:
-            self.activity_icon.setText("♫")
-            title, artist, playing, position, duration = playback
-            name = title + (' · ' + artist if artist else '')
-            self.track.setText(name)
-            self.track.setToolTip(name)
-            def stamp(seconds):
-                return f'{seconds // 60}:{seconds % 60:02d}'
-            self.elapsed.setText(stamp(position) if duration else ('Playing' if playing else 'Paused'))
-            self.remaining.setText('−' + stamp(duration - position) if duration else '')
-            self.progress.setVisible(duration > 0)
-            self.progress.setRange(0, max(duration, 1))
-            self.progress.setValue(position)
-            self.media_card.setAccessibleName(('Playing ' if playing else 'Paused ') + name)
-            if not playing and duration:
-                self.elapsed.setText('Ⅱ ' + stamp(position))
         self._layout_contents()
-        if changed_layout and not self.expanded:
+        if self.expanded and changed_layout:
+            self.expand()
+        elif changed_layout:
             self._transition(0.0)
 
     def _finish_reveal(self):
@@ -364,6 +387,8 @@ class ActivityOverlay(QWidget):
                 button.update()
         if self.expanded:
             self.bars.update()
+        if self.showing_music() and not self.reduced_motion:
+            self.player.update()
         if not self.reduced_motion or self.expanded or self.microphone_active or self._glow > 0.01:
             self.update()
 
@@ -471,6 +496,13 @@ class ActivityOverlay(QWidget):
         shape = QPainterPath()
         shape.addRoundedRect(surface, radius, radius)
         p.setClipPath(shape)
+        if self.showing_music() or not self.expanded:
+            p.fillPath(shape, QColor('#050505'))
+            p.setClipping(False)
+            p.setPen(QPen(QColor(255, 255, 255, 42), .65))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawPath(shape)
+            return
         paint_metal_shell(p, surface, radius, 0 if self.reduced_motion else self._phase,
                          self._pointer, 0 if self.reduced_motion else self._glow)
         if self._reveal > .5:
@@ -548,6 +580,7 @@ class ActivityOverlay(QWidget):
                 self.bars.timer.stop()
                 self.set_approval("", "")
                 if self.expanded:
+                    self.expand()
                     self.dismiss.start(6000)
             else:
                 self.bars.timer.start()

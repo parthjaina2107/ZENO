@@ -523,7 +523,9 @@ approval settings are retained. See [assistant controls and preview](assistant-e
 Enable **Media and volume** to show the current Windows media session on the
 island. Players that publish a timeline show elapsed and remaining time.
 Live streams without a duration show playback status. ZENO's current task and
-microphone take priority. Hover to open the island controls.
+microphone take priority. Hover over the black music pill to expand the artwork,
+timeline and playback controls. Previous, play/pause and next follow the player's
+supported actions. Select the microphone icon to open ZENO's assistant controls.
 
 Open the native dashboard and choose **App access** in the sidebar. Switch on the
 accounts, installed applications and tools you want ZENO to use. New profiles

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Music now has a dedicated black pill that expands on hover into a player with
+  album art, elapsed and remaining time, and Windows playback controls. Restart
+  desktop mode to load the new layout.
+
 - The native island shows the current track, artist and playback timeline for
   supported Windows players. Compact task updates and microphone capture take
   priority. Enable Media and volume in App access to display playback.

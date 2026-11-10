@@ -471,7 +471,7 @@ def test_island_hover_animation_reverses_without_jumping():
         island.collapse()
         assert island.size() == midway
         island.motion.setCurrentTime(island.motion.duration())
-        assert island.height() == 68 and island.body.isHidden()
+        assert island.height() == 48 and island.body.isHidden()
         island.expand()
         island.motion.setCurrentTime(island.motion.duration())
         assert island.height() == island.expanded_size[1] and not island.body.isHidden()
@@ -549,18 +549,28 @@ def test_live_island_switches_between_media_and_work():
     app = QApplication.instance() or QApplication([])
     island = ActivityOverlay()
     try:
+        island.reduced_motion = True
         island.set_playback(('Test track', 'Singer', True, 65, 185))
-        assert not island.media_card.isHidden()
-        assert island.elapsed.text() == '1:05' and island.remaining.text() == '−2:00'
+        assert not island.player.isHidden()
+        assert island.header.isHidden()
+        island.expand()
+        assert island.height() == 151 and island.body_scroll.isHidden()
+        commands = []
+        island.player.command.connect(commands.append)
+        island.player.buttons['Pause'].click()
+        assert commands == ['pause']
+        island.player.buttons['Assistant'].click()
+        assert island.player.isHidden() and not island.body_scroll.isHidden()
+        island.collapse()
         island.handle_event('state', 'Working')
         island.handle_event('detail', 'Saving a draft')
         assert island.track.text() == 'Working'
         island.handle_event('state', 'Ready')
-        assert island.track.text() == 'Test track · Singer'
+        assert not island.player.isHidden()
         island.set_playback(('Radio', '', True, 0, 0))
-        assert island.progress.isHidden() and island.elapsed.text() == 'Playing'
+        assert island.player.accessibleName() == 'Playing Radio, '
         island.set_playback(None)
-        assert island.media_card.isHidden()
+        assert island.player.isHidden()
     finally:
         island.close()
 

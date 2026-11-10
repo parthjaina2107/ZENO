@@ -267,6 +267,8 @@ def run_desktop():
     from .live_media import MediaMonitor
     media = MediaMonitor(desktop)
     media.changed.connect(desktop.overlay.set_playback)
+    player = desktop.overlay.player
+    player.command.connect(lambda action: media.commands.put((player.playback[-1], action)))
     media.worker.start()
     desktop.overlay.show()
     try:
