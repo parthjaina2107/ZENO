@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The native island shows the current track, artist and playback timeline for
+  supported Windows players. Compact task updates and microphone capture take
+  priority. Enable Media and volume in App access to display playback.
+
 - App access now confirms each switch separately. Changing another permission or
   refreshing the page while a save is pending keeps the selected switch in place.
   Setup reviewed. Reopen ZENO to load the updated dashboard and controller.

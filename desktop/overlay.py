@@ -3,7 +3,7 @@ import math
 
 from PySide6.QtCore import Qt, QTimer, QRectF, Signal, QVariantAnimation, QEasingCurve, QPointF
 from PySide6.QtGui import QColor, QCursor, QPainter, QLinearGradient, QRadialGradient, QPen, QPainterPath, QConicalGradient
-from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
+from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QVBoxLayout, QWidget, QHBoxLayout, QPushButton, QLineEdit, QScrollArea, QGraphicsOpacityEffect, QSizePolicy
 from .light_engine import MicrophoneLights
 from .island_components import ActivityBars, BrandMark, GlassButton, paint_metal_shell
 
@@ -82,6 +82,34 @@ class ActivityOverlay(QWidget):
         header.addWidget(self.mark)
         header.addWidget(self.title)
         header.addWidget(self.status, 1)
+        self.playback = None
+        self.media_card = QWidget()
+        media_layout = QHBoxLayout(self.media_card)
+        media_layout.setContentsMargins(0, 0, 0, 0)
+        self.activity_icon = icon = QLabel("♫")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(30, 30)
+        icon.setStyleSheet("background:#343044;color:#e5d6ff;border-radius:8px;font-size:19px")
+        media_layout.addWidget(icon)
+        lines = QVBoxLayout()
+        lines.setSpacing(1)
+        self.track = QLabel()
+        self.track.setTextFormat(Qt.TextFormat.PlainText)
+        self.track.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        lines.addWidget(self.track)
+        timeline = QHBoxLayout()
+        self.elapsed, self.remaining = QLabel(), QLabel()
+        self.progress = QProgressBar()
+        self.progress.setFixedHeight(3)
+        self.progress.setTextVisible(False)
+        self.progress.setStyleSheet("QProgressBar{background:#393940;border:0} QProgressBar::chunk{background:#c9b8e4}")
+        timeline.addWidget(self.elapsed)
+        timeline.addWidget(self.progress, 1)
+        timeline.addWidget(self.remaining)
+        lines.addLayout(timeline)
+        media_layout.addLayout(lines, 1)
+        header.addWidget(self.media_card, 1)
+        self.media_card.hide()
         header.addWidget(self.start)
         self.quit_button = GlassButton('Exit', quiet=True)
         self.quit_button.setFixedWidth(54)
@@ -244,6 +272,20 @@ class ActivityOverlay(QWidget):
         self.update()
 
     def _layout_contents(self):
+        music = self.playback is not None and not self.busy and not self.request_id and not self.microphone_active
+        task = self.busy and not self.microphone_active and not self.expanded
+        self.media_card.setVisible(music or task)
+        if task:
+            self.activity_icon.setText("●")
+            self.track.setText(self.status.text())
+            self.track.setToolTip(self.caption.text())
+            self.elapsed.setText(self.elapsed.fontMetrics().elidedText(
+                self.caption.text().split('\n')[0], Qt.TextElideMode.ElideRight, max(55, self.width() - 275)))
+            self.remaining.clear()
+            self.progress.hide()
+            self.media_card.setAccessibleName(self.status.text())
+        for label in (self.mark, self.title, self.status):
+            label.setVisible(not (music or task))
         self.header.setVisible(not self.microphone_active or self.expanded)
         self.header.setGeometry(24, 16, self.width() - 110, 36)
         self.quit_button.setGeometry(self.width() - 78, 17, 54, 34)
@@ -252,7 +294,33 @@ class ActivityOverlay(QWidget):
 
     def _compact_width(self):
         screen = self.screen() or QApplication.primaryScreen()
-        return min(360 if self.microphone_active else 300, screen.availableGeometry().width() - 24)
+        width = 360 if self.microphone_active or self.busy else 300
+        if self.playback and not self.busy:
+            width = 424
+        return min(width, screen.availableGeometry().width() - 24)
+
+    def set_playback(self, playback):
+        changed_layout = bool(playback) != bool(self.playback)
+        self.playback = playback
+        if playback:
+            self.activity_icon.setText("♫")
+            title, artist, playing, position, duration = playback
+            name = title + (' · ' + artist if artist else '')
+            self.track.setText(name)
+            self.track.setToolTip(name)
+            def stamp(seconds):
+                return f'{seconds // 60}:{seconds % 60:02d}'
+            self.elapsed.setText(stamp(position) if duration else ('Playing' if playing else 'Paused'))
+            self.remaining.setText('−' + stamp(duration - position) if duration else '')
+            self.progress.setVisible(duration > 0)
+            self.progress.setRange(0, max(duration, 1))
+            self.progress.setValue(position)
+            self.media_card.setAccessibleName(('Playing ' if playing else 'Paused ') + name)
+            if not playing and duration:
+                self.elapsed.setText('Ⅱ ' + stamp(position))
+        self._layout_contents()
+        if changed_layout and not self.expanded:
+            self._transition(0.0)
 
     def _finish_reveal(self):
         if not self.expanded:
@@ -373,6 +441,7 @@ class ActivityOverlay(QWidget):
 
     def set_approval(self, request_id, prompt):
         self.request_id = request_id
+        self._layout_contents()
         self.approval_row.setVisible(bool(request_id))
         if request_id:
             self.allow.setEnabled(True)
@@ -466,6 +535,7 @@ class ActivityOverlay(QWidget):
                 self.send_draft.hide()
             self.send_draft.setEnabled(not self.busy)
             self.status.setText('AI unavailable' if value == 'Ready' and self.service_error else value)
+            self.set_playback(self.playback)
             self.start.setText("Stop" if self.busy else "Retry" if self.service_error and self.last_request else "Talk")
             self.start.glyph = "square" if self.busy else "mic"
             self.start.setEnabled(value != "Stopping")
@@ -516,6 +586,7 @@ class ActivityOverlay(QWidget):
                 self.last_request = value
             if not self.request_id:
                 self.caption.setText(value)
+                self._layout_contents()
         elif kind == "mail_review":
             self.mail_code = value
             self.send_draft.setVisible(bool(value))

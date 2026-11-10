@@ -264,10 +264,16 @@ def run_desktop():
         return 1
     settings_path = config.DATA_DIR / 'desktop.json'
     desktop = DesktopApplication(application, DesktopSettings.load(settings_path), settings_path)
+    from .live_media import MediaMonitor
+    media = MediaMonitor(desktop)
+    media.changed.connect(desktop.overlay.set_playback)
+    media.worker.start()
     desktop.overlay.show()
     try:
         return application.exec()
     finally:
+        media.stopped.set()
+        media.worker.join(timeout=4)
         desktop.hotkey.close()
         lock.unlock()
         application.shutdown()

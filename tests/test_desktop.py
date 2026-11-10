@@ -543,6 +543,28 @@ async def test_provider_outage_finishes_without_speaking_or_running_actions():
     engine.brain.planner.execute_action.assert_not_called()
 
 
+def test_live_island_switches_between_media_and_work():
+    from PySide6.QtWidgets import QApplication
+    from desktop.overlay import ActivityOverlay
+    app = QApplication.instance() or QApplication([])
+    island = ActivityOverlay()
+    try:
+        island.set_playback(('Test track', 'Singer', True, 65, 185))
+        assert not island.media_card.isHidden()
+        assert island.elapsed.text() == '1:05' and island.remaining.text() == '−2:00'
+        island.handle_event('state', 'Working')
+        island.handle_event('detail', 'Saving a draft')
+        assert island.track.text() == 'Working'
+        island.handle_event('state', 'Ready')
+        assert island.track.text() == 'Test track · Singer'
+        island.set_playback(('Radio', '', True, 0, 0))
+        assert island.progress.isHidden() and island.elapsed.text() == 'Playing'
+        island.set_playback(None)
+        assert island.media_card.isHidden()
+    finally:
+        island.close()
+
+
 def test_mic_island_stays_compact_and_stops_on_ready():
     pytest.importorskip('PySide6')
     from PySide6.QtCore import Qt

@@ -520,6 +520,11 @@ approval settings are retained. See [assistant controls and preview](assistant-e
 
 ## App access and quitting ZENO
 
+Enable **Media and volume** to show the current Windows media session on the
+island. Players that publish a timeline show elapsed and remaining time.
+Live streams without a duration show playback status. ZENO's current task and
+microphone take priority. Hover to open the island controls.
+
 Open the native dashboard and choose **App access** in the sidebar. Switch on the
 accounts, installed applications and tools you want ZENO to use. New profiles
 start with these switches off. For voice, enable **Microphone**. For local AI,

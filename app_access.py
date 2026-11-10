@@ -18,7 +18,7 @@ FEATURES = (
     ("files", "Desktop", "Files and folders", "Manage files in the folders permitted by ZENO."),
     ("input", "Desktop", "Keyboard and mouse", "Type, paste, press shortcuts and click controls."),
     ("browser", "Desktop", "Web browser", "Open websites and run web searches."),
-    ("media", "Desktop", "Media and volume", "Control the active player and Windows audio."),
+    ("media", "Desktop", "Media and volume", "Show current playback in the island and control the active player and Windows audio."),
     ("system", "Computer tools", "System information", "Read battery, CPU, memory and running applications."),
     ("power", "Computer tools", "Power controls", "Request lock, sleep, restart or shutdown."),
     ("terminal", "Computer tools", "Terminal diagnostics", "Run supported diagnostic commands."),
