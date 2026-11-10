@@ -685,6 +685,7 @@ def test_short_display_keeps_approval_controls_reachable_at_the_edge(monkeypatch
     app = QApplication.instance() or QApplication([])
     area = QRect(20, 25, 600, 360)
     screen = MagicMock()
+    screen.geometry.return_value = QRect(20, 0, 600, 385)
     screen.availableGeometry.return_value = area
     island = ActivityOverlay()
     monkeypatch.setattr(island, "screen", lambda: screen)

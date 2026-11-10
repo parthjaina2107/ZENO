@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The island now meets the top of the monitor with no transparent gap or
+  horizontal border across its top edge, including during expansion.
+
 - The desktop island has square upper corners and rounded lower corners at its
   existing sizes. Setup reviewed; the shape changes only how the window is drawn.
 

@@ -230,7 +230,7 @@ without a terminal.
    blocks it, review microphone access for desktop apps in Windows Settings.
 4. Press your shortcut once. Wait for **Listening**, say **“what time is it”**,
    then pause naturally. There are 15 seconds to begin and 25 seconds per phrase.
-   The island appears at the top of the screen. Click the listening pill for
+   The island sits flush against the top edge of the screen. Click the listening pill for
    controls. Hover over the idle pill to see the transcript and progress.
    It returns to its compact size when you move away. An open draft or pending
    approval keeps the panel expanded.

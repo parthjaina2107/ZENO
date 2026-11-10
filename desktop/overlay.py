@@ -218,7 +218,7 @@ class ActivityOverlay(QWidget):
         screen = QApplication.screenAt(self.pos()) or QApplication.primaryScreen()
         if screen:
             area = screen.availableGeometry()
-            self.move(area.center().x() - self.width() // 2, area.top() + 16)
+            self.move(area.center().x() - self.width() // 2, screen.geometry().top())
 
     def showing_music(self):
         return bool(self.playback and not (self.assistant_selected or self.busy or self.request_id
@@ -284,7 +284,7 @@ class ActivityOverlay(QWidget):
         screen = self.screen() or QApplication.primaryScreen()
         area = screen.availableGeometry()
         x = max(area.left(), min(round(self._anchor_x - width / 2), area.right() + 1 - width))
-        y = max(area.top(), min(self.y(), area.bottom() + 1 - height))
+        y = max(screen.geometry().top(), min(self.y(), area.bottom() + 1 - height))
         self.move(x, y)
         self._layout_contents()
         self.body_opacity.setOpacity(max(0.0, (self._reveal - 0.25) / 0.75))
@@ -480,13 +480,18 @@ class ActivityOverlay(QWidget):
             self.deny.setEnabled(False)
             self.approval_decided.emit(self.request_id, approved)
 
+    def _shell_surface(self):
+        # Extend the top stroke past the window edge when docked so no seam shows.
+        docked = self.y() == self.screen().geometry().top()
+        return QRectF(self.rect()).adjusted(5, -2 if docked else 4, -5, -5)
+
     def paintEvent(self, event):
         if self.microphone_active and not self.expanded:
             self._paint_listening_island()
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
+        surface = self._shell_surface()
         radius = 29 + 7 * self._reveal
         # A tight, layered shadow stays inside the transparent native window.
         for spread, alpha in [(4, 12), (2, 24)]:
@@ -521,7 +526,7 @@ class ActivityOverlay(QWidget):
         """Compact live activity; only an open capture stream enables this view."""
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        surface = QRectF(self.rect()).adjusted(5, 4, -5, -5)
+        surface = self._shell_surface()
         shape = island_outline(surface, 29)
         p.setClipPath(shape)
         paint_metal_shell(p, surface, 29, 0 if self.reduced_motion else self._phase,
@@ -650,7 +655,7 @@ class ActivityOverlay(QWidget):
             screen = QApplication.screenAt(event.globalPosition().toPoint()) or QApplication.primaryScreen()
             area = screen.availableGeometry()
             self.move(max(area.left(), min(position.x(), area.right() - self.width() + 1)),
-                      max(area.top(), min(position.y(), area.bottom() - self.height() + 1)))
+                      max(screen.geometry().top(), min(position.y(), area.bottom() - self.height() + 1)))
 
     def mouseReleaseEvent(self, event):
         self._drag_offset = None
