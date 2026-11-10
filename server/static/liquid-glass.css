@@ -121,7 +121,7 @@ dialog::backdrop { background: #0808109c; backdrop-filter: blur(14px); }
 /* The supplied SVG optics is scoped to a decorative hover layer, never text.
    Browsers without SVG backdrop support retain the CSS reflection and blur. */
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  body:has(.liquid-filter):not(.reduce-motion) button:hover:not(:disabled)::before {
+  body:not(.desktop-island):has(.liquid-filter):not(.reduce-motion) button:hover:not(:disabled)::before {
     -webkit-backdrop-filter: url("#zeno-liquid-glass") blur(1px);
     backdrop-filter: url("#zeno-liquid-glass") blur(1px);
   }

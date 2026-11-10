@@ -234,6 +234,8 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
             systemReducedMotion.dispatchEvent(new Event('change')); true""")
         wait_for(lambda: not island.reduced_motion)
         assert not js("document.body.classList.contains('reduce-motion')")
+        assert js("document.querySelector('.ambient-pointer') === null")
+        assert js("['header', '.rail', '#run'].every(s => getComputedStyle(document.querySelector(s)).backdropFilter === 'none')")
         dashboard.setMinimumSize(0, 0)
         dashboard.resize(390, 844)
         wait_for(lambda: js('innerWidth') == 390)

@@ -1,6 +1,15 @@
 /* Only the native island loads these density adjustments. Shared UI stays intact. */
 html { background: #1a1a1a; }
 body.desktop-island { font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+/* Paint the native dashboard's glass with gradients and inset shadows. Sampling
+   stacked backdrops during scrolling or hover invalidates large WebEngine layers. */
+body.desktop-island { background-attachment: scroll; }
+.desktop-island::before { content: none; }
+.desktop-island :is(.glass, .rail, .composer, .task-panel, .media, header, button),
+.desktop-island dialog::backdrop {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 .desktop-island .shell { padding: 16px; gap: 20px; }
 .desktop-island .rail { width: 176px; padding: 20px 12px; top: 16px; height: calc(100vh - 32px); }
 .desktop-island .brand { font-size: 32px; }

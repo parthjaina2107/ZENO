@@ -917,7 +917,7 @@ $("settingsDisconnect").addEventListener("click", () =>
 const pointerSurface = document.createElement("div");
 pointerSurface.className = "ambient-pointer";
 pointerSurface.setAttribute("aria-hidden", "true");
-document.body.prepend(pointerSurface);
+if (!desktopMode) document.body.prepend(pointerSurface);
 const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
 const systemReducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let pointerFrame = 0;
@@ -948,7 +948,7 @@ function paintPointerLight() {
     panel.classList.add("pointer-lit");
   }
 }
-document.addEventListener(
+if (!desktopMode) document.addEventListener(
   "pointermove",
   (event) => {
     if (

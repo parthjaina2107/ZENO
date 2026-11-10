@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Removed the moving background light and layered backdrop filters from the native
+  dashboard to reduce flicker during hover and scrolling. Setup was reviewed.
+  Reopen ZENO to load the updated dashboard assets.
+
 - Added App access to the desktop dashboard, with per-user switches for supported
   accounts, applications, device controls, AI services and background sources.
   Fresh profiles require opt-in. Review the setup guide and enable desired tools.
