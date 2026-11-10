@@ -396,7 +396,6 @@ class ActivityOverlay(QWidget):
     def _collapse_on_leave(self):
         if self.expanded and not self.typing and not self.request_id and self._drag_offset is None:
             self.collapse()
-            self.motion.setCurrentTime(self.motion.duration())
 
     def _auto_collapse(self):
         if not self.typing and not self.rect().contains(self.mapFromGlobal(QCursor.pos())) and self._drag_offset is None:
