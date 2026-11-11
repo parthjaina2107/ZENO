@@ -16,6 +16,7 @@ implied. Record evidence and the tested commit before checking off a release gat
 - [x] The default branch rejects deletion and force pushes (GitHub ruleset 27020606).
 - [x] Require pull requests, resolution of review conversations and both Windows test and installer checks on the default branch (ruleset 27055129).
 - [x] Enable dependency alerts, automated security fixes and default CodeQL analysis.
+- [x] Require CodeQL results for main. New high or critical security findings and error-level findings block merges. Repository Actions require SHA-pinned actions and allow GitHub-owned actions. External contributors' fork workflows need maintainer approval.
 - [ ] Require independent review when a second write collaborator is available.
 
 The remote-control tests cover simulated desktop lock, pairing consent, origin
@@ -97,6 +98,16 @@ pending. The package build and its hashed Windows Python dependencies are in
 - [ ] Run the clean-machine checks below and retain results for the exact artifact.
 
 ## Release-candidate verification record
+
+The unsigned preview installer at `5ec8871` contains application revision
+`462217d`. Its SHA-256 is
+`2b3f7516c0d758323835423a243d032f28910d680ca30c16e6a116c67b7b1e1f`.
+The [hosted Windows run](https://github.com/parthjaina2107/ZENO/actions/runs/43081845872)
+passed 402 tests, installed the EXE in a fresh directory, compared application
+files with Git, opened the dashboard and verified uninstall preserved a user file.
+Speech and Ollama model downloads were deselected. The [PR CodeQL scan](https://github.com/parthjaina2107/ZENO/actions/runs/43081838684)
+reported zero findings for Python, JavaScript/TypeScript and Actions.
+The Windows runner does not cover a physical microphone, a phone, or a standard user on a clean consumer PC.
 
 The Windows x64 installer at `3c023e1` contains application revision
 `2539de7`. Its public download matched SHA-256

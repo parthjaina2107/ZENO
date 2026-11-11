@@ -26,10 +26,26 @@ try {
         Get-Content -Raw (Join-Path $PSScriptRoot 'smoke-desktop.py') | & '.\.venv\Scripts\python.exe' -
         if ($LASTEXITCODE) { throw 'Installed desktop failed to open its dashboard.' }
         Set-Content 'user-note.txt' 'installer test marker'
+        # A failed dependency update must leave the usable environment in place.
+        $broken = Join-Path $scratch 'broken-dependencies'
+        New-Item -ItemType Directory $broken | Out-Null
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'bootstrap.ps1') -Destination $broken
+        Set-Content (Join-Path $broken 'requirements.lock') 'invalid requirement ???'
+        Set-Content '.venv\zeno-smoke-marker.txt' 'original environment'
+        $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $p = Start-Process $ps -ArgumentList "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""$broken\bootstrap.ps1"" -AppDir ""$appDir""" -WindowStyle Hidden -PassThru -Wait
+        if ($p.ExitCode -eq 0 -or !(Test-Path '.venv\zeno-smoke-marker.txt')) { throw 'Failed upgrade changed the active environment.' }
+        & '.\.venv\Scripts\python.exe' -c 'import PySide6.QtWebEngineWidgets'
+        if ($LASTEXITCODE) { throw 'Original runtime is unusable after a failed update.' }
+        $p = Start-Process $exe -ArgumentList "$argsList /DIR=""$appDir"" /LOG=""$scratch\upgrade.log""" -WindowStyle Hidden -PassThru -Wait
+        if ($p.ExitCode -ne 0 -or !(Test-Path 'runtime\zeno-previous-env\zeno-smoke-marker.txt') -or
+            (Test-Path '.venv\zeno-smoke-marker.txt') -or !(Test-Path 'user-note.txt')) { throw 'Upgrade did not switch environments or preserve user data.' }
+        Get-Content -Raw (Join-Path $PSScriptRoot 'smoke-desktop.py') | & '.\.venv\Scripts\python.exe' -
+        if ($LASTEXITCODE) { throw 'Upgraded dashboard did not open.' }
     } finally { Pop-Location }
 } finally {
     $p = Start-Process "$appDir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -WindowStyle Hidden -PassThru -Wait
     if ($p.ExitCode -ne 0 -or (Test-Path "$appDir\main.py")) { throw 'Uninstall failed.' }
 }
 if (!(Test-Path "$appDir\user-note.txt")) { throw 'Uninstall removed user data.' }
-Write-Output "Verified EXE checksum, private Python, desktop/dashboard startup, guides, uninstall, and data retention."
+Write-Output "Verified EXE checksum, Git payload, dashboard, failed and successful dependency updates, uninstall, and user data retention."
