@@ -76,7 +76,7 @@ class AuthManager:
         self.record_attempt(client_id, valid)
         return valid
 
-    def create_session_token(self, client_id: str = "remote-user", device_id: str = "", generation: str = "") -> str:
+    def create_session_token(self, client_id: str = "remote-user", device_id: str = "", generation: str = "", grant_id: str = "") -> str:
         """Create a 24-hour JWT session token."""
         now = int(time.time())
         expires = now + (self.expiration_hours * 3600)
@@ -87,6 +87,7 @@ class AuthManager:
             "role": "controller",
             "device_id": device_id,
             "generation": generation,
+            "grant_id": grant_id,
         }
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 

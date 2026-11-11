@@ -329,6 +329,7 @@ function handle(data) {
     case "auth_ok":
       setConnection(true, "Connected");
       if ($("auth").open) $("auth").close();
+      if (data.scope === "media") $("inputHint").textContent = "Media only · play, pause, next, previous or stop";
       send({ type: "get_telemetry" });
       break;
     case "app_access":
@@ -526,16 +527,18 @@ $("authForm").addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         token,
+        pairing_code: $("pairingCode").value.trim(),
         device_id: browserDeviceId,
         device_label: "ZENO browser",
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(40000),
     });
     const data = await response.json();
     if (!response.ok || !data.jwt_token)
       throw new Error(data.detail || "Connection failed. Check your token.");
     storage.set("voice_agent_jwt", data.jwt_token);
     $("token").value = "";
+    $("pairingCode").value = "";
     connect();
   } catch (error) {
     $("authError").textContent =

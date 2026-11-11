@@ -256,13 +256,13 @@ scripts\unregister_task.bat
 
 ## 📱 Connecting from your Phone
 
-1. Start the agent with `--mode all` or `--mode server`.
-2. The agent will display your connection links:
-   - **Local Wi-Fi URL**: `http://<your-laptop-ip>:8765`
-   - **Public Ngrok URL**: `https://<random-id>.ngrok-free.app` (if `NGROK_AUTH_TOKEN` is set)
-3. Open the URL in Safari, Chrome, or any mobile browser.
-4. Enter your secret `ACCESS_TOKEN` passphrase.
-5. Tap and hold the **🎤 Hold to Speak** button, speak your command, and approve or deny any planned actions with one tap!
+1. On the unlocked Windows PC, configure `NGROK_AUTH_TOKEN` and run
+   `.venv\Scripts\python.exe main.py --mode server --tunnel`.
+2. Open the printed HTTPS URL on the phone. Enter the PC's private access token
+   and the one-use terminal code, then accept the Windows pairing prompt.
+3. The phone can control media for up to 15 minutes. Broader commands require
+   `--remote-control` at startup and approval on the PC. Press Ctrl+C to disconnect.
+   [Browser setup and upgrade instructions](docs/setup.md)
 
 ---
 

@@ -2,6 +2,8 @@
 from unittest.mock import MagicMock
 import importlib
 import pytest
+
+pytestmark = pytest.mark.usefixtures("browser_grant")
 from fastapi.testclient import TestClient
 from brain.zeno_brain import ZenoBrain
 from brain.planner import ActionResult
@@ -25,9 +27,9 @@ def remote(monkeypatch, tmp_path):
     registry = DeviceRegistry(tmp_path / "devices.json")
     device = registry.pair("agent-test-device", "Test browser", "testclient")
     monkeypatch.setattr(server, "device_registry", registry)
-    token = server.auth_manager.create_session_token("test-agent", device_id="agent-test-device", generation=device["generation"])
-    with TestClient(server.app) as client:
-        with client.websocket_connect("/ws") as ws:
+    token = server.auth_manager.create_session_token("test-agent", device_id="agent-test-device", generation=device["generation"], grant_id=server.remote_grant.id)
+    with TestClient(server.app, base_url="http://localhost") as client:
+        with client.websocket_connect("ws://localhost/ws") as ws:
             ws.send_json({"type": "auth", "token": token})
             assert ws.receive_json()["type"] == "auth_ok"
             yield ws, executor, permissions
@@ -107,15 +109,15 @@ def test_workspace_assets_and_browser_pairing(monkeypatch, tmp_path):
     from server.pairing import DeviceRegistry
     registry = DeviceRegistry(tmp_path / "devices.json")
     monkeypatch.setattr(server, "device_registry", registry)
-    with TestClient(server.app) as client:
+    with TestClient(server.app, base_url="http://localhost") as client:
         for path in ("/", "/static/app.js", "/static/app.css", "/static/liquid-glass.css", "/static/glass-loop.png", "/static/vendor/lucide.min.js"):
             assert client.get(path).status_code == 200
-        response = client.post("/auth", data={"token": server.auth_manager.access_token,
+        response = client.post("/auth", data={"pairing_code": "test-code", "token": server.auth_manager.access_token,
                                "device_id": "workspace-browser", "device_label": "ZENO browser"})
         assert response.status_code == 200
         token = response.json()["jwt_token"]
         assert server.auth_manager.verify_session_token(token)["device_id"] == "workspace-browser"
-        with client.websocket_connect("/ws") as ws:
+        with client.websocket_connect("ws://localhost/ws") as ws:
             ws.send_json({"type": "auth", "token": token})
             assert ws.receive_json()["type"] == "auth_ok"
             ws.send_json({"type": "get_telemetry"})
@@ -164,9 +166,10 @@ def test_two_remote_clients_finish_their_own_folder_requests(tmp_path, monkeypat
         until(socket, lambda m: m.get("type") == "command_finished")
         return response["message"]
 
-    with TestClient(server.app) as client, client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+    with TestClient(server.app, base_url="http://localhost") as client, client.websocket_connect("ws://localhost/ws") as a, client.websocket_connect("ws://localhost/ws") as b:
         for socket, name in [(a, "first"), (b, "second")]:
-            token = client.post("/auth", data={"token": server.auth_manager.access_token, "device_id": name}).json()["jwt_token"]
+            server.remote_grant.code = "test-code"
+            token = client.post("/auth", data={"pairing_code": "test-code", "token": server.auth_manager.access_token, "device_id": name}).json()["jwt_token"]
             socket.send_json({"type": "auth", "token": token})
             assert socket.receive_json()["type"] == "auth_ok"
         assert "name" in command(a, "create a folder on desktop")

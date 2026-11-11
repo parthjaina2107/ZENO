@@ -190,7 +190,6 @@ class Config:
     }
 
     # Server Settings
-    SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0").strip()
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8765"))
 
     # Logging

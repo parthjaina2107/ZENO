@@ -5,6 +5,7 @@ communication with permission negotiation.
 """
 
 import json
+import ipaddress
 import logging
 import asyncio
 import uuid
@@ -15,7 +16,8 @@ from typing import Optional, Dict, Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException, status, Request, Header
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
+from .remote_access import owner_approves
+from brain.planner import PlannedAction
 import app_access
 import psutil
 
@@ -36,19 +38,30 @@ logger = logging.getLogger("VoiceAgent.Server")
 app = FastAPI(title="ZENO Remote Control", version="2.0.0")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
-# Restrict CORS to own origins and ngrok proxy domains
-ALLOWED_ORIGINS = [
-    f"http://localhost:{config.SERVER_PORT}",
-    f"http://127.0.0.1:{config.SERVER_PORT}",
-]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https?://([a-zA-Z0-9-]+\.)?ngrok(-free)?\.(app|io)(:\d+)?$",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
+remote_grant = None
+
+
+def trusted_endpoint(connection):
+    if remote_grant is None:
+        return False
+    host = connection.headers.get("host", "")
+    origin = connection.headers.get("origin")
+    scheme = "http" if host.split(":")[0] in {"localhost", "127.0.0.1"} else "https"
+    expected = f"{scheme}://{host}"
+    if scheme == "https" and connection.headers.get("x-forwarded-proto") != "https":
+        return False
+    return expected in remote_grant.origins and (origin is None or origin == expected)
+
+
+@app.middleware("http")
+async def check_endpoint(request, call_next):
+    if not trusted_endpoint(request):
+        return JSONResponse({"detail": "Unrecognized workspace address."}, status_code=403)
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 
 
 def get_client_ip(request: Request) -> str:
@@ -58,7 +71,10 @@ def get_client_ip(request: Request) -> str:
     if is_proxy:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            return xff.split(",")[-1].strip()
+            try:
+                return str(ipaddress.ip_address(xff.split(",")[-1].strip()))
+            except ValueError:
+                pass
     return direct_ip
 
 # Shared subsystems (initialized from main.py or initialized lazily on-demand)
@@ -117,17 +133,25 @@ async def serve_home():
 
 
 @app.post("/auth")
-async def authenticate(request: Request, token: str = Form(...), device_id: str = Form(default=""), device_label: str = Form(default="Unnamed device")):
+async def authenticate(request: Request, token: str = Form(...), pairing_code: str = Form(default=""), device_id: str = Form(default=""), device_label: str = Form(default="Unnamed device")):
     """Pair an identified device after passphrase validation and issue a scoped session."""
     client_ip = get_client_ip(request)
     if auth_manager.verify_passphrase(token, client_id=client_ip):
+        grant = remote_grant
+        if not grant.consume(pairing_code):
+            raise HTTPException(403, "A fresh code from the PC terminal is required.")
+        if not await asyncio.to_thread(owner_approves, f"Allow this browser ({client_ip}) {grant.scope} access for this session?"):
+            raise HTTPException(403, "Pairing was declined or timed out. Restart server mode for a new code.")
+        if not grant.active():
+            raise HTTPException(403, "Session ended.")
         try:
             # Kept for older clients; current UI always supplies a random stable ID.
             device_id = device_id or f"legacy-{client_ip}"
             device = device_registry.pair(device_id, device_label, client_ip)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-        jwt_token = auth_manager.create_session_token(client_id=client_ip, device_id=device_id, generation=device["generation"])
+        grant.last_activity = time.monotonic()
+        jwt_token = auth_manager.create_session_token(client_id=client_ip, device_id=device_id, generation=device["generation"], grant_id=grant.id)
         return JSONResponse(content={"status": "authenticated", "jwt_token": jwt_token, "device": device})
     else:
         locked, remaining = auth_manager.is_locked_out(client_ip)
@@ -143,21 +167,18 @@ async def authenticate(request: Request, token: str = Form(...), device_id: str 
 
 
 @app.get("/health")
-async def health_check(authorization: Optional[str] = Header(None), token: Optional[str] = None):
+async def health_check(authorization: Optional[str] = Header(None)):
     """Health status and telemetry endpoint, protected by JWT."""
     jwt_val = None
     if authorization and authorization.startswith("Bearer "):
         jwt_val = authorization[len("Bearer "):].strip()
-    elif token:
-        jwt_val = token.strip()
-
     if not verified_session(jwt_val):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required for health endpoint."
         )
 
-    if not app_access.allowed("system"):
+    if remote_grant.scope != "controller" or not app_access.allowed("system"):
         return {"status": "healthy", "cpu_percent": None, "ram_percent": None, "battery": None}
     battery = psutil.sensors_battery()
     return {
@@ -169,8 +190,12 @@ async def health_check(authorization: Optional[str] = Header(None), token: Optio
 
 
 def verified_session(token: str, client_ip: str = "") -> Optional[Dict[str, Any]]:
+    if not isinstance(token, str):
+        return None
     payload = auth_manager.verify_session_token(token)
     if not payload or not isinstance(payload.get("exp"), (float, int)) or payload["exp"] <= time.time():
+        return None
+    if not remote_grant or not remote_grant.active() or payload.get("grant_id") != remote_grant.id:
         return None
     if not device_registry.accepts_session(payload.get("device_id", ""), payload.get("generation", "")):
         return None
@@ -184,6 +209,8 @@ async def paired_devices(authorization: Optional[str] = Header(None)):
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     if not verified_session(token):
         raise HTTPException(status_code=401, detail="Authentication required.")
+    if remote_grant.scope != "controller":
+        raise HTTPException(403, "Controller access required.")
     return {"devices": device_registry.list_safe()}
 
 
@@ -193,6 +220,8 @@ async def revoke_device(device_id: str, authorization: Optional[str] = Header(No
     payload = verified_session(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Authentication required.")
+    if remote_grant.scope != "controller":
+        raise HTTPException(403, "Controller access required.")
     if payload.get("device_id") == device_id:
         raise HTTPException(status_code=400, detail="Use another paired device to revoke this device.")
     if not device_registry.revoke(device_id):
@@ -205,6 +234,8 @@ async def read_audit(limit: int = 100, authorization: Optional[str] = Header(Non
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     if not verified_session(token):
         raise HTTPException(status_code=401, detail="Authentication required.")
+    if remote_grant.scope != "controller":
+        raise HTTPException(403, "Controller access required.")
     limit = max(1, min(limit, 500))
     path = config.BASE_DIR / "audit_log.jsonl"
     events, skipped, truncated = [], 0, False
@@ -247,39 +278,28 @@ async def serve_audit_dashboard():
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+async def websocket_endpoint(websocket: WebSocket):
     """Real-time bi-directional channel for remote voice/text control."""
+    if not trusted_endpoint(websocket) or "token" in websocket.query_params:
+        await websocket.close(code=4003)
+        return
     await websocket.accept()
-
-    auth_payload = None
-    if token:
+    try:
+        message = json.loads(await asyncio.wait_for(websocket.receive_text(), timeout=10))
+        token = message.get("token") if isinstance(message, dict) and message.get("type") == "auth" else None
         auth_payload = verified_session(token, websocket.client.host if websocket.client else "")
-
+    except (ValueError, TypeError, asyncio.TimeoutError, WebSocketDisconnect):
+        auth_payload = None
     if not auth_payload:
-        # Await first WebSocket message containing {"type": "auth", "token": "..."}
-        try:
-            raw_first = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
-            msg_first = json.loads(raw_first)
-            cand_token = msg_first.get("token") or (msg_first.get("text") if msg_first.get("type") == "auth" else None)
-            if cand_token:
-                auth_payload = verified_session(cand_token, websocket.client.host if websocket.client else "")
-            if not auth_payload:
-                logger.warning("Rejected unauthorized WebSocket: invalid first message auth.")
-                await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized"}))
-                await websocket.close(code=4001, reason="Unauthorized")
-                return
-            else:
-                await websocket.send_text(json.dumps({"type": "auth_ok"}))
-        except Exception as e:
-            logger.warning(f"WebSocket auth handshake timed out or failed: {e}")
-            await websocket.close(code=4001, reason="Unauthorized")
-            return
-
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    await websocket.send_json({"type": "auth_ok", "scope": remote_grant.scope})
     logger.info(f"Remote client connected via WebSocket (user: {auth_payload.get('sub', 'unknown')}).")
 
     task_exec, planner, brain, perms, speaker = get_subsystems()
     brain = copy.copy(brain)
-    brain.gmail_mailbox = None
+    from awareness.gmail import GmailMailbox
+    brain.gmail_mailbox = GmailMailbox(approve_send=lambda review: owner_approves(review) and bool(verified_session(token)))
     brain.pending_folder_location = None
     brain.awaiting_clarification = False
     brain.memory = copy.copy(brain.memory)
@@ -302,10 +322,27 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
         """Keep receiving approvals and stop commands while planning/execution runs."""
         status = "responded"
         try:
+            if remote_grant.scope == "media":
+                commands = {"play": "play", "pause": "pause", "next": "next", "previous": "previous",
+                            "stop": "stop", "play music": "play", "pause music": "pause", "next track": "next",
+                            "previous track": "previous", "stop music": "stop"}
+                command = commands.get(user_text.casefold())
+                if not command:
+                    status = "blocked"
+                    await send_to_client({"type": "response", "message": "Media access allows play, pause, next, previous and stop."})
+                    return
+                result = await asyncio.to_thread(task_exec.execute, PlannedAction("media_control", {"command": command}))
+                status = "completed" if result.success else "blocked"
+                await send_to_client({"type": "response", "message": result.message})
+                return
+            if not await asyncio.to_thread(owner_approves, f"Allow ZENO to process this remote request?\n\n{user_text}") or not verified_session(token):
+                status = "blocked"
+                await send_to_client({"type": "response", "message": "PC approval was declined or expired."})
+                return
             brain_resp = await brain.think(user_text, agent_mode=True) if agent_mode else await brain.think(user_text)
             if brain_resp.kind in ("chat", "vision", "memory", "abort"):
                 if brain_resp.kind == "abort":
-                    coordinator.stop()
+                    coordinator.stop(connection_id)
                 speaker.speak(brain_resp.message)
                 await send_to_client({"type": "response", "message": brain_resp.message, "kind": brain_resp.kind})
                 return
@@ -317,7 +354,10 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                         payload["message"] = "Final confirmation: " + payload["message"]
                         await send_to_client(payload)
                     approved = await perms.request_permission_remote(action, send_final, config.REMOTE_CONFIRMATION_TIMEOUT, device_id=device_id)
-                return approved
+                if approved:
+                    details = json.dumps({"action": action.action_type, "parameters": action.parameters}, ensure_ascii=False, indent=2)
+                    approved = await asyncio.to_thread(owner_approves, "Allow this remote action?\n\n" + details)
+                return approved and bool(verified_session(token))
 
             async def emit(event):
                 await send_to_client(event)
@@ -350,7 +390,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 raw_data = await asyncio.wait_for(websocket.receive_text(), timeout=min(remaining, 2))
             except asyncio.TimeoutError:
                 raw_data = None
-            if time.time() >= auth_payload["exp"]:
+            if not remote_grant.active() or time.time() >= auth_payload["exp"]:
                 await websocket.close(code=4001, reason="Session expired")
                 break
             if not device_registry.accepts_session(device_id, auth_payload.get("generation", "")):
@@ -367,7 +407,9 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 continue
             msg_type = msg.get("type")
             text_value = msg.get("text", "")
-            if msg_type == "command" and isinstance(text_value, str):
+            if remote_grant.scope == "media" and msg_type not in {"command", "get_telemetry"}:
+                continue
+            if remote_grant.scope == "controller" and msg_type == "command" and isinstance(text_value, str):
                 stop_text = brain.strip_wake_prefix(text_value).lower().strip(" .!?,")
                 if stop_text in ("stop", "cancel", "cancel everything", "abort", "halt", "kill", "emergency stop"):
                     msg_type = "abort"
@@ -375,7 +417,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
 
             # Telemetry request
             if msg_type == "get_telemetry":
-                if not app_access.allowed("system"):
+                if remote_grant.scope != "controller" or not app_access.allowed("system"):
                     await send_to_client({"type": "telemetry", "cpu": None, "ram": None, "battery": None})
                     continue
                 battery = psutil.sensors_battery()
@@ -394,12 +436,14 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                 logger.warning("Emergency abort received over WebSocket.")
                 brain.pending_folder_location = None
                 brain.awaiting_clarification = False
-                coordinator.stop()
+                coordinator.stop(connection_id)
                 for t in list(active_tasks):
                     if not t.done():
                         t.cancel()
                 active_tasks.clear()
-                perms.cancel_all_pending("Emergency abort via WebSocket")
+                for request_id in owned_requests:
+                    perms.resolve_remote_permission(request_id, False, device_id=device_id)
+                owned_requests.clear()
                 speaker.speak("Emergency stop. No further steps will run.")
                 await send_to_client({
                     "type": "response",
@@ -436,6 +480,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
                     if not active_tasks:
                         await send_to_client({"type": "command_finished", "status": "blocked"})
                     continue
+                remote_grant.last_activity = time.monotonic()
                 task = asyncio.create_task(handle_command(user_text, agent_mode=msg.get("mode") == "agent"))
                 active_tasks.add(task)
                 task.add_done_callback(active_tasks.discard)

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Browser control requires a fresh PC-issued code and Windows consent. Access
+  defaults to playback only, ends on a time limit or desktop lock, and uses
+  loopback unless an HTTPS tunnel is explicitly requested. Existing browser
+  sessions must pair again. See the browser instructions in `docs/setup.md`.
+
+
 - Ordinary file commands block credential locations and protected folder trees.
   File reads stop at 200 lines or 64 KiB and identify truncated previews.
 - Close-app requests ask one visible window to close and allow the application's

@@ -72,7 +72,7 @@ logger = logging.getLogger("VoiceAgent.Main")
 
 
 class VoiceAgentApp:
-    def __init__(self, mode: str = "all", port: int = config.SERVER_PORT):
+    def __init__(self, mode: str = "local", port: int = config.SERVER_PORT):
         self.mode = mode
         self.port = port
         self.running = False
@@ -89,6 +89,8 @@ class VoiceAgentApp:
         self.nlu = self.brain.nlu
         self.permissions = PermissionManager(listener=self.listener, speaker=self.speaker)
         self.tunnel_manager = TunnelManager(port=self.port)
+        self.enable_tunnel = False
+        self.remote_scope = "media"
         self.server_thread = None
         self._local_approval = None
         self._local_task = None
@@ -116,30 +118,42 @@ class VoiceAgentApp:
         print(f"  • Multimodal Vision  : {'Cloud configured; not tested' if cloud_allowed() and config.GEMINI_API_KEY else 'Basic Screen Telemetry'}")
         print(f"  • Proactive Updates  : {'Enabled — say brief me' if self.awareness else 'Disabled'}")
         print(f"  • Voice              : {config.TTS_VOICE if config.TTS_BACKEND == 'edge' else config.TTS_LOCAL_VOICE}")
-        print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None (LAN Only)'}")
+        print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None'}")
         print("  • Access Token       : [Configured in .env]")
         print("=" * 64)
 
     def start_web_server(self):
         """Start FastAPI uvicorn server in a background thread."""
-        logger.info(f"Starting Remote Web Server on {config.SERVER_HOST}:{self.port}...")
-        
-        # Start ngrok tunnel if token is set
-        tunnel_url = self.tunnel_manager.start_tunnel()
-        local_url = self.tunnel_manager.get_local_url()
+        from importlib import import_module
+        server_module = import_module("server.app")
+        from server.remote_access import RemoteGrant
+        uv_config = uvicorn.Config(
+            "server.app:app",
+            host="127.0.0.1",
+            proxy_headers=False,
+            access_log=False,
+            ws_max_size=65536,
+            port=self.port,
+            log_level="warning"
+        )
+        server = uvicorn.Server(uv_config)
 
-        print("\n🌐 REMOTE CONTROL ACCESS:")
-        print(f"   Local Wi-Fi URL : {local_url}")
+        listener = uv_config.bind_socket()
+        self.port = listener.getsockname()[1]
+        self.tunnel_manager.port = self.port
+        local_url = f"http://127.0.0.1:{self.port}"
+        origins = {local_url, f"http://localhost:{self.port}"}
+        tunnel_url = self.tunnel_manager.start_tunnel() if self.enable_tunnel else None
         if tunnel_url:
-            print(f"   Public Tunnel   : {tunnel_url}")
-            self.speaker.speak("Remote control tunnel is live. Check your console for the link.")
-        else:
-            print("   Public Tunnel   : Disabled (set NGROK_AUTH_TOKEN in .env to enable)")
-        print("   Passphrase      : Passphrase is in .env\n")
-
-        # Share existing subsystem singletons with web server
-        from server.app import init_shared_subsystems
-        init_shared_subsystems(
+            origins.add(tunnel_url)
+        grant = RemoteGrant(self.remote_scope, origins)
+        server_module.remote_grant = grant
+        print(f"Browser workspace: {local_url}")
+        if tunnel_url:
+            print(f"Phone workspace: {tunnel_url}")
+        print(f"One-use pairing code (5 minutes): {grant.code}")
+        print(f"Access: {grant.scope}, up to 15 minutes. Press Ctrl+C to end the session.")
+        server_module.init_shared_subsystems(
             executor=self.executor,
             brain=self.brain,
             permissions=self.permissions,
@@ -147,16 +161,20 @@ class VoiceAgentApp:
             planner=self.planner
         )
 
-        uv_config = uvicorn.Config(
-            "server.app:app",
-            host=config.SERVER_HOST,
-            port=self.port,
-            log_level="warning"
-        )
-        server = uvicorn.Server(uv_config)
-
         def run_server():
-            asyncio.run(server.serve())
+            async def serve():
+                task = asyncio.create_task(server.serve(sockets=[listener]))
+                try:
+                    while not task.done() and grant.active():
+                        await asyncio.sleep(1)
+                finally:
+                    server.should_exit = True
+                    try:
+                        await task
+                    finally:
+                        listener.close()
+                        self.tunnel_manager.stop_tunnel()
+            asyncio.run(serve())
 
         self.server_thread = threading.Thread(target=run_server, daemon=True, name="Uvicorn-Server")
         self.server_thread.start()
@@ -419,7 +437,7 @@ class VoiceAgentApp:
             print("\n🚀 Server-only mode running. Access via web UI.")
             print("   Press Ctrl+C to stop.")
             try:
-                while self.running:
+                while self.running and self.server_thread.is_alive():
                     import time
                     if self.awareness:
                         update = self.awareness.next_announcement()
@@ -445,7 +463,7 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["all", "local", "server"],
-        default="all",
+        default="local",
         help="Operating mode: 'all' (local voice + remote web), 'local' (voice only), 'server' (web only)"
     )
     parser.add_argument(
@@ -472,7 +490,11 @@ def main():
     parser.add_argument('--desktop', action='store_true', help='Open the native Windows press-to-talk app (no remote server)')
     # start_zeno.bat handles window visibility and forwards the original argv.
     parser.add_argument("--background", "-b", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--tunnel", action="store_true", help="Expose this browser session using an HTTPS ngrok tunnel")
+    parser.add_argument("--remote-control", action="store_true", help="Allow PC-approved commands beyond media playback")
     args = parser.parse_args()
+    if (args.tunnel or args.remote_control) and (args.mode == "local" or args.desktop):
+        parser.error("--tunnel and --remote-control require --mode server or --mode all")
 
     if args.gmail_compose and args.connect != 'gmail':
         parser.error('--gmail-compose requires --connect gmail')
@@ -528,6 +550,8 @@ def main():
     from brain.ollama_runtime import start_local_runtime
     start_local_runtime()
     agent = VoiceAgentApp(mode=args.mode, port=args.port)
+    agent.enable_tunnel = args.tunnel
+    agent.remote_scope = "controller" if args.remote_control else "media"
     agent.text_mode = args.text
     if args.text:
         agent.permissions.listener = None

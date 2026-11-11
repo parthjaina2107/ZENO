@@ -98,7 +98,13 @@ def test_draft_send_requires_matching_preview_and_is_single_use(monkeypatch):
     review = asyncio.run(mailbox.respond(mailbox.followup("1-2-3-4-5-6"), None))
     assert 'Alex@example.org' in review and 'Hello Alex!' in review and code in review
     assert 'does not match' in mailbox.answer(('send_draft', '000000'))
+    def deny_send(review):
+        assert all(value in review for value in ["Alex@example.org", "My Meeting", "Hello Alex!"])
+        return False
+    mailbox.approve_send = deny_send
+    assert "declined" in mailbox.answer(("send_draft", code))
     assert len(calls) == 1
+    mailbox.approve_send = lambda review: True
     assert 'confirmed' in mailbox.answer(mail_request('send draft ' + code))
     assert 'does not match' in mailbox.answer(('send_draft', code))
     assert len(calls) == 3

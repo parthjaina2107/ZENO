@@ -13,9 +13,14 @@ implied. Record evidence and the tested commit before checking off a release gat
 - [x] Contribution instructions, pull-request checklist and an unreleased changelog.
 - [x] Documentation validation and a Windows test workflow definition.
 - [ ] Record a successful GitHub Actions run for the release candidate.
-- [ ] Enable appropriate branch protection/required reviews and status checks in
+- [x] The default branch rejects deletion and force pushes (GitHub ruleset 27020606).
+- [ ] Configure required reviews and status checks in
   repository settings; publishing a workflow does not configure these settings.
 - [ ] Review repository security settings, secret scanning and dependency alerts.
+
+The remote-control tests cover simulated desktop lock, pairing consent, origin
+checks and media-only restrictions. A real phone over HTTPS, a physical Windows
+lock during control and the native approval dialog still need manual verification.
 
 ## Product scope and owner decisions
 

@@ -345,13 +345,30 @@ automatically. Messaging coverage is limited to notifications Windows exposes.
 .\.venv\Scripts\python.exe main.py --mode local --calibrate --wake-word
 ```
 
-For remote browser control, explicitly start `--mode server` (or `--mode all` for
-both local voice and server). The current default server host is `0.0.0.0`, which
-listens on all network interfaces. Set `SERVER_HOST=127.0.0.1` for this computer
-only; LAN access needs an appropriate interface and firewall configuration.
-Use the printed URL and your private `ACCESS_TOKEN`. The desktop mode itself does
-not start this server. Public tunneling is optional and needs a real ngrok token.
-Phone browser microphone access can depend on HTTPS and browser permissions.
+Browser access is optional. Start the following command on the unlocked Windows PC.
+The browser workspace listens on loopback, including on upgrades with an old
+`SERVER_HOST=0.0.0.0` setting. The desktop shortcut and default CLI start locally.
+
+```powershell
+.venv\Scripts\python.exe main.py --mode server
+```
+
+Open the printed loopback URL on the PC. For a phone, configure your ngrok token
+and append `--tunnel` to the command, then open the printed **HTTPS** URL.
+A saved ngrok credential alone does not open a tunnel. Direct LAN HTTP is disabled.
+
+1. Enter the host's private `ACCESS_TOKEN` and the one-use code displayed in
+   its terminal within five minutes. Approve the Windows prompt on the PC.
+2. The default grant accepts play, pause, next, previous and stop. Enable
+   **Media and volume** in the desktop dashboard for playback to work.
+3. To allow a broader command session, restart server mode with
+   `--remote-control`. The PC owner reviews each incoming command, and also
+   reviews actions that require permission. Sending a Gmail draft shows its recipient,
+   subject and body for a separate PC approval. Remote prompts time out after 30 seconds.
+4. Press Ctrl+C on the host to disconnect. The grant ends after 15 minutes,
+   five minutes without a command, or detection of a locked desktop.
+   Restart server mode for a fresh grant after expiry, denial or pairing another device.
+   Existing browsers must pair again after each restart. A started OS operation may finish.
 
 The older `start_zeno.bat --background` and `scripts/register_task.bat` launch the
 legacy local/server interface; they are not desktop startup installers. Do not run
@@ -418,12 +435,11 @@ The web dashboard is served by the same FastAPI process as `/auth`, `/ws`, and
 `http://127.0.0.1:8765` (or your configured `SERVER_PORT`). Your normal `.env`
 configuration supplies provider keys; never copy them into frontend code.
 
-After upgrading, restart ZENO and refresh the browser. Sessions issued before the device-generation upgrade require
-one fresh sign-in. Existing paired-device records upgrade at sign-in. Keep the
-project directory writable for the registry and its adjacent `paired_devices.lock`. The UI creates a random browser device ID,
-submits it with the access token, and sends the returned JWT as the first
-WebSocket message. Expiration closes an open connection. Revoking and later
-re-pairing the same device leaves its earlier sessions invalid.
+After upgrading, restart server mode and refresh the browser. Each launch
+requires new pairing, even for a remembered device. The browser sends its
+device ID, passphrase and one-use code over the pairing form. The WebSocket
+takes the session token in its first message. Keep the data directory writable
+for the registry and its adjacent `paired_devices.lock`.
 
 Terminal commands run a single allowlisted diagnostic. Use `run command hostname`
 or `run command echo Hello ZENO` for a local check. Shell chains and redirection

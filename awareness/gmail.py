@@ -151,7 +151,8 @@ def body_text(payload):
 
 
 class GmailMailbox:
-    def __init__(self):
+    def __init__(self, approve_send=None):
+        self.approve_send = approve_send
         self.results = []
         self.pending = None
         self.composing = None
@@ -277,6 +278,11 @@ class GmailMailbox:
                         self.pending = (code, draft["id"], draft["message"]["id"], raw)
                         return f'Gmail draft saved.\nTo: {address}\nSubject: {subject}\n\n{body}\n\nTo send this version, say "send draft {code}".'
                     _, draft_id, version, raw = self.pending
+                    if self.approve_send is not None:
+                        message = message_from_bytes(base64.urlsafe_b64decode(raw), policy=default)
+                        review = f'Send this email?\nTo: {message["To"]}\nSubject: {message["Subject"]}\n\n{message.get_content()}'
+                        if not self.approve_send(review):
+                            return "Sending was declined on the PC. The draft remains in Gmail."
                     self.pending = None
                     check = client.get(base + "/" + draft_id, params={"format": "minimal"})
                     check.raise_for_status()

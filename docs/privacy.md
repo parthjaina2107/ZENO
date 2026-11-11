@@ -20,7 +20,7 @@ configuration before using private content.
 | Windows notifications | Collects the notification text Windows exposes; this can include private previews |
 | AI update summaries | Explicit summary requests send up to ten collected titles/previews to local Ollama or, when enabled, Gemini; routine polling does not call the LLM |
 | Spoken update details | A readout can send private previews to online TTS when enabled |
-| Remote browser/tunnel | Commands, results and approvals pass between the browser and running server; a configured ngrok tunnel adds an external service |
+| Remote browser/tunnel | Commands, results and approvals pass between the browser and running server; starting with `--tunnel` routes that session through ngrok |
 
 The desktop interface does not save recordings. The legacy `whisper` backend may
 use a temporary WAV file during transcription and attempts to remove it afterward.

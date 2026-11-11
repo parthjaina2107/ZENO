@@ -114,3 +114,15 @@ def fake_speaker():
 def fake_listener():
     """Fixture providing a fake listener."""
     return FakeListener()
+
+@pytest.fixture
+def browser_grant(monkeypatch):
+    import importlib
+    from server.remote_access import RemoteGrant
+    server = importlib.import_module("server.app")
+    grant = RemoteGrant("controller", {"http://localhost"})
+    grant.code = "test-code"
+    monkeypatch.setattr(server, "remote_grant", grant)
+    monkeypatch.setattr("server.remote_access.desktop_unlocked", lambda: True)
+    monkeypatch.setattr(server, "owner_approves", lambda message: True)
+    return grant

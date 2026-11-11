@@ -47,14 +47,14 @@ class TunnelManager:
         try:
             from pyngrok import ngrok
             ngrok.set_auth_token(config.NGROK_AUTH_TOKEN)
-            self._tunnel = ngrok.connect(self.port, "http")
+            self._tunnel = ngrok.connect(f"127.0.0.1:{self.port}", "http", bind_tls=True)
             self.public_url = self._tunnel.public_url
             logger.info(f"Ngrok public tunnel established: {self.public_url}")
 
             # Save to file
             url_file = config.BASE_DIR / "remote_url.txt"
             with open(url_file, "w", encoding="utf-8") as f:
-                f.write(f"Public URL: {self.public_url}\nLocal LAN URL: {self.get_local_url()}\n")
+                f.write(f"Public URL: {self.public_url}\nLocal URL: http://127.0.0.1:{self.port}\n")
 
             return self.public_url
         except Exception as e:
