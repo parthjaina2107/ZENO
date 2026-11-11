@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Removed superseded implementation plans, historical design-review notes and unused screenshots from the repository. Reviewed the setup guide: installation steps and runtime dependencies are unchanged.
+
 - The voice setup guide now explains how to select and preview your own voice across all three speech providers.
 
 - Added optional ElevenLabs speech for replies with a provider voice ID and personal API key. It uses the dashboard’s online speech permission and falls back to Windows speech when unavailable.
