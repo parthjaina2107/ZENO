@@ -243,7 +243,7 @@ def test_repair_cannot_revive_prior_token_and_audit_skips_damaged_rows(tmp_path,
     from importlib import import_module
     from config import config
     server = import_module("server.app")
-    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     data = {"pairing_code": "test-code", "token": auth_manager.access_token, "device_id": "repeat"}
     old = client.post("/auth", data=data).json()["jwt_token"]
     assert server.device_registry.revoke("repeat")
@@ -251,7 +251,8 @@ def test_repair_cannot_revive_prior_token_and_audit_skips_damaged_rows(tmp_path,
     new = client.post("/auth", data=data).json()["jwt_token"]
     for endpoint in ["/health", "/api/devices", "/api/audit"]:
         assert client.get(endpoint, headers={"Authorization": "Bearer " + old}).status_code == 401
-    path = tmp_path / "audit_log.jsonl"
+    path = tmp_path / "audit" / "2026-01-01.jsonl"
+    path.parent.mkdir()
     path.write_bytes(b"x" * (5 * 1024 * 1024) + b'\n{"event":"a"}\nbroken\n[]\n{"event":"b"}\n')
     result = client.get("/api/audit", headers={"Authorization": "Bearer " + new}).json()
     assert result == {"events": [{"event": "a"}, {"event": "b"}], "skipped": 2, "truncated": True}
@@ -346,10 +347,12 @@ def test_media_scope_and_lock_enforced(browser_grant, monkeypatch):
     with client.websocket_connect("ws://localhost/ws") as ws:
         ws.send_json({"type": "auth", "token": token})
         assert ws.receive_json()["scope"] == "media"
+        last_activity = browser_grant.last_activity
         ws.send_json({"type": "command", "text": "read my email", "mode": "agent"})
         assert ws.receive_json()["type"] == "response"
         assert ws.receive_json()["status"] == "blocked"
         brain.think.assert_not_called()
+        assert browser_grant.last_activity == last_activity
         executor.execute.assert_not_called()
         executor.execute.return_value.message = "Paused"
         ws.send_json({"type": "command", "text": "pause"})
@@ -369,6 +372,26 @@ def test_idle_grant_expires(browser_grant):
     assert not browser_grant.active()
     assert not browser_grant.consume("test-code")
 
+
+def test_lock_notification_revokes_grant_after_fast_unlock(browser_grant, monkeypatch):
+    import win32gui
+    from server.remote_access import session_notifications
+    import win32ts
+    proc = {}
+    def register(window):
+        proc.update(window.lpfnWndProc)
+        return 1
+    monkeypatch.setattr(win32gui, "RegisterClass", register)
+    monkeypatch.setattr(win32gui, "CreateWindow", lambda *args: 100)
+    monkeypatch.setattr(win32gui, "DestroyWindow", lambda *args: None)
+    monkeypatch.setattr(win32gui, "UnregisterClass", lambda *args: None)
+    monkeypatch.setattr(win32ts, "WTSRegisterSessionNotification", lambda *args: None)
+    monkeypatch.setattr(win32ts, "WTSUnRegisterSessionNotification", lambda *args: None)
+    with session_notifications(browser_grant):
+        proc[0x2B1](100, 0x2B1, 7, 1)
+        proc[0x2B1](100, 0x2B1, 8, 1)
+        assert not browser_grant.active()
+
 def test_server_launcher_is_local_and_stops_on_grant_end(monkeypatch):
     import importlib
     import time
@@ -387,11 +410,13 @@ def test_server_launcher_is_local_and_stops_on_grant_end(monkeypatch):
     host.start_web_server()
     try:
         with httpx.Client(trust_env=False) as local:
-            for _ in range(50):
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
                 try:
                     response = local.get(f"http://127.0.0.1:{host.port}/", timeout=1)
                     break
-                except httpx.ConnectError:
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    assert host.server_thread.is_alive(), 'Loopback server exited before becoming ready'
                     time.sleep(0.05)
             else:
                 pytest.fail("Loopback server did not start")

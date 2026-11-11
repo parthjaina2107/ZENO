@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import app_access
 from config import config
 from brain.planner import ActionResult, PlannedAction
-from .file_ops import FileOps
+from .file_ops import FileOps, protected_tree
 from .file_publication import publish_new
 
 TEXT = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.ipynb', '.md', '.txt',
@@ -60,7 +60,7 @@ def resolve_workspace(value, file_ops=None):
         raise ValueError(error or 'Workspace is not permitted.')
     if not root.is_dir():
         raise ValueError('Choose an existing project folder containing the tutorial and project files.')
-    if root == Path.home().resolve() or root == Path(root.anchor):
+    if protected_tree(root, include_ancestors=True) or root == Path.home().resolve() or root == Path(root.anchor):
         raise ValueError('Choose a project folder, rather than your entire home folder or drive.')
     return root
 
@@ -191,7 +191,8 @@ def validate_plan(root, plan, originals):
             (before or b'').decode('utf-8-sig').splitlines(True), change.content.splitlines(True),
             fromfile=relative + ' (before)', tofile=relative + ' (proposed)'))
         result.append({'path': relative, 'before_sha256': digest(before) if before is not None else None,
-                       'after_sha256': digest(encoded), 'preview': preview[:2400]})
+                       'after_sha256': digest(encoded), 'preview': preview[:2400],
+                       'preview_truncated': len(preview) > 2400})
     return result
 
 
@@ -294,6 +295,15 @@ class ProcessTree:
             self.job = None
 
 
+def coding_environment():
+    # The external CLI uses its own sign-in. Never forward backend credentials.
+    names = {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP",
+             "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
+             "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "HOME", "LANG",
+             "LC_ALL", "CODEX_HOME"}
+    return {key: value for key, value in os.environ.items() if key.upper() in names}
+
+
 def propose(goal, staging, directory, control, on_progress=None):
     executable = coding_executable()
     output = directory / 'proposal.json'
@@ -324,10 +334,8 @@ def propose(goal, staging, directory, control, on_progress=None):
     )
     flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
     with (directory / 'agent-events.jsonl').open('wb') as events:
-        private_keys = {"ACCESS_TOKEN", "JWT_SECRET_KEY", "NGROK_AUTH_TOKEN", "GEMINI_API_KEY", "GOOGLE_API_KEY"}
-        environment = {k: v for k, v in os.environ.items() if k.upper() not in private_keys}
         process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=events, stderr=subprocess.STDOUT,
-                                   env=environment, cwd=staging, creationflags=flags, start_new_session=os.name != 'nt')
+                                   env=coding_environment(), cwd=staging, creationflags=flags, start_new_session=os.name != 'nt')
         tree = None
         try:
             tree = ProcessTree(process)  # Assign before sending any task to the process.

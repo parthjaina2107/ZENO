@@ -52,13 +52,20 @@ def main():
     if not browser.is_file():
         raise RuntimeError('Preview screenshots require Microsoft Edge on Windows')
 
+    def strip_scripts(html):
+        # Parse an inert document, without attaching any supplied nodes to the page.
+        import json
+        return js("(() => { const doc = new DOMParser().parseFromString(" +
+                  json.dumps(html) + ", 'text/html'); doc.querySelectorAll('script').forEach(s => s.remove());" +
+                  "return doc.documentElement.outerHTML; })()")
+
     def capture(name, html=None):
         # Freeze the actual DOM. Edge's headless renderer avoids Windows Qt's
         # offscreen compositor retaining stale frames. No application script,
         # authentication, device access or network request runs in this renderer.
         if html is None:
             html = js('document.documentElement.outerHTML')
-        html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.S)
+        html = strip_scripts(html)
         html = html.replace('</body>', '<script>for (const d of document.querySelectorAll("dialog[open]")) {d.close();d.showModal();}</script></body>')
         source = output / (name + '.html')
         source.write_text(html, encoding='utf-8')
@@ -110,7 +117,7 @@ def main():
         # device actions. This also checks its normal external stylesheet path.
         dashboard.resize(1400, 1080)
         html = (ROOT / 'server/templates/index.html').read_text(encoding='utf-8')
-        html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.S)
+        html = strip_scripts(html)
         for name in ('app.css', 'liquid-glass.css'):
             css = (STATIC / name).read_text(encoding='utf-8')
             css = re.sub(r'@import\s+url\([^;]+;', '', css)
@@ -122,7 +129,7 @@ def main():
         js("document.getElementById('auth').showModal(); true")
         capture('browser-sign-in')
         html = (ROOT / 'server/templates/audit.html').read_text(encoding='utf-8')
-        html = re.sub(r'<script\b[^>]*>.*?</script>', '', html, flags=re.S)
+        html = strip_scripts(html)
         css = (STATIC / 'liquid-glass.css').read_text(encoding='utf-8')
         html = html.replace('<link rel="stylesheet" href="/static/liquid-glass.css" />', '<style>' + css + '</style>')
         html = html.replace('Loading the latest 100 events…', 'Preview · no audit data loaded')

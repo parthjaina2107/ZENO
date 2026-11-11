@@ -21,6 +21,8 @@ try {
     Push-Location $appDir
     try {
         if (!(Test-Path 'docs\setup.md') -or !(Test-Path 'docs\desktop.md')) { throw 'Missing guides.' }
+        & '.\.venv\Scripts\python.exe' (Join-Path $PSScriptRoot 'check-payload.py') $root $appDir
+        if ($LASTEXITCODE) { throw 'Rebuild the installer from the committed application source.' }
         Get-Content -Raw (Join-Path $PSScriptRoot 'smoke-desktop.py') | & '.\.venv\Scripts\python.exe' -
         if ($LASTEXITCODE) { throw 'Installed desktop failed to open its dashboard.' }
         Set-Content 'user-note.txt' 'installer test marker'

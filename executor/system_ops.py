@@ -111,6 +111,44 @@ def installed_application(name: str):
     return None
 
 
+def foreground_target():
+    """Return the desktop-selected window and process; fail closed on lookup errors."""
+    try:
+        import win32gui
+        import win32process
+        hwnd = win32gui.GetForegroundWindow()
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        if not hwnd or not pid or pid == os.getpid():
+            return None
+        return hwnd, pid
+    except Exception:
+        return None
+
+
+def check_input_target(expected, point=None):
+    import win32gui
+    if expected is None or foreground_target() != expected:
+        raise ValueError("The target window changed. Focus the intended app and retry.")
+    if point is not None and win32gui.GetAncestor(win32gui.WindowFromPoint(point), 2) != expected[0]:
+        raise ValueError("The click falls outside the intended window.")
+
+
+def wait_for_opened_window(app):
+    executable = APP_EXECUTABLE_MAP.get(app, app).lower()
+    expected = {"code.cmd": "code.exe", "ms-settings:": "systemsettings.exe",
+                "wt.exe": "windowsterminal.exe", "calc.exe": "calculatorapp.exe"}.get(executable, executable)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        target = foreground_target()
+        try:
+            if target and psutil.Process(target[1]).name().casefold() in {expected, executable}:
+                return target
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        time.sleep(0.05)
+    return None
+
+
 class SystemOps:
     def __init__(self):
         self._last_opened_app = None
@@ -322,9 +360,9 @@ class SystemOps:
             shot = pyautogui.screenshot()
             
             # Ensure screenshots directory
-            save_dir = config.BASE_DIR / "screenshots"
-            save_dir.mkdir(exist_ok=True)
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_dir = config.DATA_DIR / "screenshots"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             file_path = save_dir / f"screenshot_{timestamp}.png"
             shot.save(str(file_path))
 
@@ -426,12 +464,12 @@ class SystemOps:
 
     # ==================== KEYBOARD & MOUSE ====================
 
-    def type_text(self, text: str) -> ActionResult:
+    def type_text(self, text: str, target=None) -> ActionResult:
         """Type text using clipboard paste for Unicode safety, restoring clipboard in finally."""
-        if self._last_opened_app in ("notepad", "notepad.exe"):
+        if target and psutil.Process(target[1]).name().lower() == "notepad.exe":
             try:
                 from .notepad_input import NotepadInput
-                output = NotepadInput().paste(text, pyperclip, pyautogui)
+                output = NotepadInput().paste(text, pyperclip, pyautogui, target=target)
                 return ActionResult(True, f"Typed and verified {len(text)} characters in Notepad.", output=output)
             except Exception as exc:
                 return ActionResult(False, f"Could not verify Notepad typing: {exc}", error="NOTEPAD_INPUT_FAILED")
@@ -443,6 +481,8 @@ class SystemOps:
                 old_clip = None
 
             pyperclip.copy(text)
+            if target:
+                check_input_target(target)
             pyautogui.hotkey("ctrl", "v")
             time.sleep(0.3)
 
@@ -456,22 +496,26 @@ class SystemOps:
                 except Exception:
                     pass
 
-    def keyboard_shortcut(self, keys: List[str]) -> ActionResult:
+    def keyboard_shortcut(self, keys: List[str], target=None) -> ActionResult:
         """Press keyboard shortcut keys simultaneously (e.g., ['ctrl', 's'])."""
         try:
             import pyautogui
             # Normalize keys to lowercase
             clean_keys = [k.strip().lower() for k in keys]
+            if target:
+                check_input_target(target)
             pyautogui.hotkey(*clean_keys)
             return ActionResult(success=True, message=f"Pressed hotkey: {' + '.join(clean_keys)}")
         except Exception as e:
             return ActionResult(success=False, message=f"Failed to trigger hotkey: {e}", error=str(e))
 
-    def mouse_click(self, x: int, y: int, button: str = "left") -> ActionResult:
+    def mouse_click(self, x: int, y: int, button: str = "left", target=None) -> ActionResult:
         """Click mouse at specified coordinate."""
         try:
             import pyautogui
             btn = button.lower() if button.lower() in ("left", "right", "middle") else "left"
+            if target:
+                check_input_target(target, (x, y))
             pyautogui.click(x=int(x), y=int(y), button=btn)
             return ActionResult(success=True, message=f"Clicked {btn} button at ({x}, {y}).")
         except Exception as e:
@@ -533,12 +577,11 @@ class SystemOps:
             paths = [part for part in args if part.lower() != "/b"]
             if len(paths) > 1:
                 return ActionResult(False, "Use dir with one directory.", error="INVALID_ARGUMENTS")
-            try:
-                folder = Path(paths[0] if paths else ".")
-                output = "\n".join(sorted(item.name for item in folder.iterdir()))[:2000]
-                return ActionResult(True, output or "Empty directory.", output=output)
-            except (ValueError, OSError) as exc:
-                return ActionResult(False, "Directory listing failed.", error=str(exc))
+            import app_access
+            from .file_ops import FileOps
+            if not app_access.allowed("files"):
+                return ActionResult(False, app_access.denial("files"), error="ACCESS_DISABLED")
+            return FileOps().directory_listing(paths[0] if paths else "Desktop")
         readonly = {"route": [["print"]], "ipconfig": [[], ["/all"]], "arp": [["-a"]]}
         if first_token in readonly and [arg.lower() for arg in args] not in readonly[first_token]:
             return ActionResult(False, "Use a read-only diagnostic invocation.", error="INVALID_ARGUMENTS")
@@ -554,20 +597,34 @@ class SystemOps:
         exec_args = [executable, *args]
 
         try:
-            res = subprocess.run(
-                exec_args,
-                shell=False,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            output = res.stdout if res.returncode == 0 else (res.stderr or res.stdout)
+            import threading
+            import locale
+            with subprocess.Popen(exec_args, shell=False, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
+                expired = threading.Event()
+                def expire():
+                    expired.set()
+                    proc.kill()
+                timer = threading.Timer(30, expire)
+                timer.start()
+                try:
+                    data = proc.stdout.read(65537)
+                    if len(data) > 65536:
+                        proc.kill()
+                        return ActionResult(False, "Diagnostic output exceeded 64 KiB.", error="OUTPUT_LIMIT")
+                    code = proc.wait()
+                    if expired.is_set():
+                        return ActionResult(False, "Command timed out after 30 seconds.", error="TIMEOUT")
+                finally:
+                    timer.cancel()
+                    timer.join()
+            output = data.decode(locale.getpreferredencoding(False), errors="replace")
             # Truncate long output
             if output and len(output) > 2000:
                 output = output[:2000] + "\n...[output truncated]"
 
-            success = res.returncode == 0
-            msg = f"Command finished with exit code {res.returncode}:\n{output}" if output else f"Command completed (code {res.returncode})."
+            success = code == 0
+            msg = f"Command finished with exit code {code}:\n{output}" if output else f"Command completed (code {code})."
             return ActionResult(success=success, message=msg, output=output)
         except subprocess.TimeoutExpired:
             return ActionResult(success=False, message="Command timed out after 30 seconds.", error="TIMEOUT")

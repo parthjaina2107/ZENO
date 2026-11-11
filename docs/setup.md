@@ -40,6 +40,10 @@ can first run `Set-Location "$env:LOCALAPPDATA\Programs\ZENO Desktop"` in PowerS
 The installer includes its own Python. For another supported Windows x64 PC,
 download the EXE there and run setup under the intended user's Windows account.
 
+Keyboard and mouse input checks the focused window before dispatch. Focus the intended app before issuing an input command. A click outside its window is declined.
+
+ZENO file commands cannot access its program or private data directories, even inside an allowed Desktop folder. Choose a separate project subfolder for coding. The terminal directory listing needs both file and terminal access, and defaults to the Desktop. Browser pairing credentials last for one tab; reopen the audit page in that tab.
+
 File reads return a preview of up to 200 lines or 64 KiB. Ordinary file commands
 block common credential files, hard-linked files, and tree operations containing
 protected files or links. Close-app requests go to one visible window. If several
@@ -58,28 +62,23 @@ see the [privacy guide](privacy.md) before sharing them.
 4. From that folder run `.\Start-ZENO.cmd`. Open the workspace from the top
    island and choose your permissions under **App access**.
 
-## Separate Aurora prototype
+## Existing data and upgrades
 
-The independent music-lyrics prototype lives in `standalone/aurora`. Follow its
-own setup guide and launcher; it has a separate
-environment and does not use ZENO accounts, keys or services. Its optional Windows
-media bridge supports optional LRCLIB lookup, local lyrics/preset storage, desktop
-overlay and opt-in tray/startup operation. Spotify play/pause and a YouTube Music
-sample with automatic lyrics were checked; full player smoke tests remain pending;
-an unsigned local portable build is available. ZENO installation and upgrades do
-not require Aurora dependencies. Aurora's guide documents its separate storage,
-online metadata transmission and startup removal.
-Aurora hosts desktop ambience below the icons in Explorer's wallpaper layer
-(`--desktop` or **Show desktop ambience**), remembered between launches. Restart
-Aurora after updating to remove the older canvas that covered icons. It runs while
-Aurora is open and preserves your saved wallpaper/lock screen. Unknown shell layouts
-leave ambience hidden; toggle it again after Explorer recreates its desktop.
-`--player Spotify.exe` selects Spotify explicitly. New tracks fetch automatically;
-temporary lookup failures retry with backoff. Search accepts matching title, lead
-artist and duration across album releases without requiring version selection.
-The reference-inspired Edge light appearance is selected once on upgrade: dark
-centre, perimeter glow and floating lyrics. Restart Aurora to apply it; old styles
-remain in the style selector. No dependency, account or wallpaper-setting changes.
+New screenshots, task reports, daily audit files, device registrations, memory and diagnostic logs use
+`%LOCALAPPDATA%\ZENO` by default. Set `ZENO_DATA_DIR` for a separate profile.
+On first use of the default profile, ZENO copies existing saved facts from the old installation
+if the new memory file is absent. For a custom profile, copy the memory file you want while ZENO is closed.
+Pair your browser again after upgrading. Older audit logs, screenshots and reports stay in the
+original installation folder. Review them there and remove them yourself when appropriate.
+
+An explicit `MEMORY_FILE` or `LOG_FILE` still takes precedence. Remove an old
+`LOG_FILE=voiceagent.log` entry to use the new per-user default. To expire generated
+screenshots, reports and audit files, set, for example, `HISTORY_RETENTION_DAYS=30`
+in your private `.env` and restart ZENO. Zero keeps them indefinitely.
+The installer stages updated dependencies separately and keeps the previous environment until the next upgrade.
+Allow disk space for two runtime environments and quit ZENO before updating.
+If an update is interrupted, rerun setup to finish. A previous EXE and a backup of your profile
+are still needed for a full version rollback.
 
 For a source installation, follow these steps in PowerShell as your normal Windows user.
 Administrator privileges are not required for the usual installation.
@@ -237,7 +236,7 @@ Useful preferences in `.env`:
 
 | Setting | Meaning |
 | --- | --- |
-| `TTS_BACKEND=elevenlabs` | Set `TTS_VOICE` to your ElevenLabs voice ID and `ELEVENLABS_API_KEY` in your private .env. Enable **App access → Online speech services**, then restart ZENO. Reply text is sent to ElevenLabs and uses account credits. Test with `.venv\Scripts\python.exe main.py --voice-preview`. |
+| `TTS_BACKEND=elevenlabs` | Set `TTS_VOICE` to your ElevenLabs voice ID and `ELEVENLABS_API_KEY` in your private .env. Enable **App access → Online speech playback**, then restart ZENO. Reply text is sent to ElevenLabs and uses account credits. Test with `.venv\Scripts\python.exe main.py --voice-preview`. |
 | `TTS_BACKEND=edge` | Soft online neural voice, with installed Windows speech fallback |
 | `TTS_BACKEND=sapi` | Installed Windows speech, without online neural TTS |
 | `TTS_VOICE` | Your Edge voice short name or ElevenLabs voice ID |
@@ -265,7 +264,9 @@ Choose one speech provider and edit its settings in that file.
 | Microsoft Edge (online) | Set `TTS_BACKEND=edge`. From the ZENO folder, run `.\.venv\Scripts\python.exe -m edge_tts --list-voices` and copy the short name of your chosen voice into `TTS_VOICE`. |
 | ElevenLabs (online) | Preview voices in your ElevenLabs account, choose one you have access to, and copy its voice ID into `TTS_VOICE`. Set `TTS_BACKEND=elevenlabs` and put your own text-to-speech API key in `ELEVENLABS_API_KEY`. |
 
-For either online provider, enable **Dashboard → App access → Online speech services**.
+After upgrading from the combined online speech switch, select each permission you want again. Enable **Online microphone transcription** separately if you use Google recognition.
+
+For either online provider, enable **Dashboard → App access → Online speech playback**.
 Spoken reply text goes to the selected provider. ElevenLabs may use account credits.
 
 Save the file, quit ZENO and reopen it. To hear your selection, run the following
@@ -383,7 +384,7 @@ Open the printed loopback URL on the PC. For a phone, configure your ngrok token
 and append `--tunnel` to the command, then open the printed **HTTPS** URL.
 A saved ngrok credential alone does not open a tunnel. Direct LAN HTTP is disabled.
 
-1. Enter the host's private `ACCESS_TOKEN` and the one-use code displayed in
+1. Enter the host's configured `ACCESS_TOKEN` (or the temporary passphrase printed in its terminal) and the one-use code displayed in
    its terminal within five minutes. Approve the Windows prompt on the PC.
 2. The default grant accepts play, pause, next, previous and stop. Enable
    **Media and volume** in the desktop dashboard for playback to work.

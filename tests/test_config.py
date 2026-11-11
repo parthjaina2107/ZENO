@@ -37,19 +37,16 @@ def test_auto_approve_actions():
     assert "list_apps" in config.AUTO_APPROVE_ACTIONS
 
 
-def test_ensure_secrets_creates_random_values(tmp_path):
+def test_generated_credentials_live_only_in_process(tmp_path, monkeypatch):
     from config import ensure_secrets
-    env_file = tmp_path / ".env"
-    access_token, jwt_secret = ensure_secrets(env_path=env_file)
-    assert env_file.exists()
-    assert len(access_token) >= 32
-    assert len(jwt_secret) >= 32
-    assert access_token not in ("voiceagent-secret-passphrase", "change_me_to_a_secure_passphrase")
-    assert jwt_secret not in ("voiceagent-jwt-super-secret-key", "change_me_to_a_random_secret_key")
-
-    content = env_file.read_text(encoding="utf-8")
-    assert f"ACCESS_TOKEN={access_token}" in content
-    assert f"JWT_SECRET_KEY={jwt_secret}" in content
+    monkeypatch.setattr(config, "ACCESS_TOKEN", "")
+    monkeypatch.setattr(config, "JWT_SECRET_KEY", "")
+    monkeypatch.setattr(config, "generated_passphrase", False)
+    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
+    ensure_secrets()
+    assert config.generated_passphrase
+    assert len(config.ACCESS_TOKEN) >= 32 and len(config.JWT_SECRET_KEY) >= 32
+    assert not list(tmp_path.iterdir())
 
 
 def test_token_forged_with_old_default_secret_rejected():
@@ -62,3 +59,21 @@ def test_token_forged_with_old_default_secret_rejected():
     with pytest.warns(jwt.InsecureKeyLengthWarning):
         forged = jwt.encode({"sub": "mobile_client", "role": "controller"}, old_default_secret, algorithm="HS256")
     assert am.verify_session_token(forged) is None
+
+
+def test_retention_only_removes_expired_generated_history(tmp_path, monkeypatch):
+    import os
+    from executor.history import prune_history
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "HISTORY_RETENTION_DAYS", 30)
+    shots = tmp_path / "screenshots"
+    shots.mkdir()
+    old = shots / "screenshot_20260101_100000.png"
+    personal = shots / "holiday.png"
+    recent = shots / "screenshot_20261111_100000_123456.png"
+    for path in (old, personal, recent):
+        path.write_bytes(b"test")
+    for path in (old, personal):
+        os.utime(path, (1000000000, 1000000000))
+    prune_history()
+    assert not old.exists() and recent.exists() and personal.exists()

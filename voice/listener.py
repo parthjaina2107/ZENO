@@ -182,7 +182,7 @@ class VoiceListener:
 
         if local_only or (config.STT_BACKEND != 'google' and not config.STT_ALLOW_ONLINE_FALLBACK):
             return None
-        if not app_access.allowed("online_voice"):
+        if not app_access.allowed("online_transcription"):
             return None
         # Google fallback sends captured audio online; it can be disabled in .env.
         try:

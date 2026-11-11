@@ -36,6 +36,7 @@ env/
 *.log
 voiceagent.log
 audit_log.jsonl
+audit/*.jsonl
 remote_url.txt
 zeno_memory.json
 paired_devices.json

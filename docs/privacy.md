@@ -36,22 +36,24 @@ make Gemini, connected-mail or explicitly enabled remote features offline.
 | Default location | Contents / lifecycle |
 | --- | --- |
 | `%USERPROFILE%\.ollama\models` | Local reasoning model weights; remove through Ollama when no longer needed |
-| Project `.env` | API configuration and remote secrets; retained until you change/remove it |
+| Project `.env` | User-configured API keys and remote credentials. A generated browser passphrase and signing key expire when the server exits |
 | `%LOCALAPPDATA%\ZENO\.env` if present | Older saved configuration fallback; not automatically removed by uninstalling a checkout |
 | `%LOCALAPPDATA%\ZENO\desktop.json` | Shortcut, input-device index and spoken-reply preference |
 | `%LOCALAPPDATA%\ZENO\accounts\*.token` | OAuth credentials; encrypted for the current Windows user with DPAPI |
 | `%LOCALAPPDATA%\ZENO\awareness.sqlite3` | Collected events/preferences/reminders; event retention is capped at seven days and 1,000 records |
 | `%LOCALAPPDATA%\ZENO\models` | Downloaded speech-model cache |
-| Project `zeno_memory.json` | Saved personal facts/preferences; recent conversation context is held in process memory |
-| Project `audit_log.jsonl` | Action type and ID, source, timestamps, permission decisions and success status; no built-in retention limit |
-| Project `task_reports` | Task status, step identifiers and verification flags; no built-in retention limit |
-| Project `screenshots` | Screenshots requested through the screenshot tool; no built-in retention limit |
-| Project `paired_devices.json` | Remote paired-device state. The adjacent `paired_devices.lock` coordinates writes. |
-| Project `voiceagent.log` | Diagnostics; default rotating files are 5 MiB with five backups |
+| `%LOCALAPPDATA%\ZENO\zeno_memory.json` | Saved personal facts and preferences |
+| `%LOCALAPPDATA%\ZENO\audit` | Daily action decisions and outcomes |
+| `%LOCALAPPDATA%\ZENO\task_reports` | Task status, step identifiers and verification flags |
+| `%LOCALAPPDATA%\ZENO\screenshots` | Screenshots the user asked to save |
+| `%LOCALAPPDATA%\ZENO\paired_devices.json` | Paired devices. An adjacent lock file coordinates writes. |
+| `%LOCALAPPDATA%\ZENO\voiceagent.log` | Rotating diagnostics, 5 MiB with five backups |
 
-`ZENO_DATA_DIR`, `MEMORY_FILE` and `LOG_FILE` can change some of these locations.
-The source preview does not yet put all runtime state in one per-user directory.
-Keep the checkout and data directory protected like other personal documents.
+`ZENO_DATA_DIR` sets the profile location. Explicit `MEMORY_FILE` and `LOG_FILE` paths take precedence.
+Set `HISTORY_RETENTION_DAYS` to a positive number to remove older generated audit files,
+screenshots and task reports at startup. The default of zero keeps them until you remove them.
+Older installations may also have personal files in the installation folder. See the
+[upgrade instructions](setup.md#existing-data-and-upgrades).
 
 ## Stop collection, disconnect or remove local data
 

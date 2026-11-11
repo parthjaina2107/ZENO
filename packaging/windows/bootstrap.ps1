@@ -8,6 +8,7 @@ try {
         & $File @Arguments
         if ($LASTEXITCODE -ne 0) { throw "$([IO.Path]::GetFileName($File)) failed (exit $LASTEXITCODE)." }
     }
+    $AppDir = [IO.Path]::GetFullPath($AppDir)
     $runtime = Join-Path $AppDir 'runtime'
     New-Item -ItemType Directory -Force -Path $runtime | Out-Null
     $uv = Join-Path $runtime 'uv.exe'
@@ -35,10 +36,13 @@ try {
     $env:UV_LINK_MODE = 'copy'
     Run $uv @('python','install','3.11.16','--no-bin','--no-registry')
     $venv = Join-Path $AppDir '.venv'
-    $python = Join-Path $venv 'Scripts\python.exe'
-    if (-not (Test-Path -LiteralPath $python)) {
-        Run $uv @('venv','--managed-python','--python','3.11.16',$venv)
+    $previous = Join-Path $runtime 'zeno-previous-env'
+    if (!(Test-Path -LiteralPath $venv) -and (Test-Path -LiteralPath $previous)) {
+        [IO.Directory]::Move($previous, $venv)
     }
+    $candidate = Join-Path $AppDir ('.zeno-env-' + [guid]::NewGuid())
+    Run $uv @('venv','--managed-python','--python','3.11.16','--relocatable',$candidate)
+    $python = Join-Path $candidate 'Scripts\python.exe'
     Write-Host 'Installing desktop, speech and integration dependencies...'
     Run $uv @('pip','install','--python',$python,'--require-hashes','-r',(Join-Path $PSScriptRoot 'requirements.lock'))
     Run $python @('-c','import PySide6.QtWebEngineWidgets, faster_whisper, winrt.windows.media.control')
@@ -65,9 +69,37 @@ try {
         }
         Run $ollama @('pull','qwen3:4b')
     }
+    if (Test-Path -LiteralPath $previous) {
+        $old = Get-Item -LiteralPath $previous
+        if ($old.FullName -ne (Join-Path $runtime 'zeno-previous-env') -or
+            $old.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or
+            !(Test-Path -LiteralPath (Join-Path $previous 'pyvenv.cfg'))) {
+            throw 'Cannot identify previous ZENO environment. Check the setup log.'
+        }
+        Remove-Item -LiteralPath $old.FullName -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $venv) {
+        if (!(Test-Path -LiteralPath (Join-Path $venv 'pyvenv.cfg'))) { throw 'Unexpected existing .venv directory.' }
+        [IO.Directory]::Move($venv, $previous)
+    }
+    try {
+        [IO.Directory]::Move($candidate, $venv)
+        Run (Join-Path $venv 'Scripts\python.exe') @('-c','import PySide6.QtWebEngineWidgets, faster_whisper, winrt.windows.media.control')
+    } catch {
+        if (Test-Path -LiteralPath $venv) { [IO.Directory]::Move($venv, $candidate) }
+        if (Test-Path -LiteralPath $previous) { [IO.Directory]::Move($previous, $venv) }
+        throw
+    }
 } catch {
     Write-Host "Setup failed: $_"
     exit 1
 } finally {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+        $unused = Get-Item -LiteralPath $candidate
+        if ($unused.Parent.FullName -eq $AppDir -and $unused.Name -match '^\.zeno-env-[a-f0-9-]{36}$' -and
+            !$unused.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            Remove-Item -LiteralPath $unused.FullName -Recurse -Force
+        }
+    }
     Stop-Transcript | Out-Null
 }

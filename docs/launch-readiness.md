@@ -14,9 +14,9 @@ implied. Record evidence and the tested commit before checking off a release gat
 - [x] Documentation validation and a Windows test workflow definition.
 - [ ] Record a successful GitHub Actions run for the release candidate.
 - [x] The default branch rejects deletion and force pushes (GitHub ruleset 27020606).
-- [ ] Configure required reviews and status checks in
-  repository settings; publishing a workflow does not configure these settings.
-- [ ] Review repository security settings, secret scanning and dependency alerts.
+- [x] Require pull requests, resolution of review conversations and both Windows test and installer checks on the default branch (ruleset 27055129).
+- [x] Enable dependency alerts, automated security fixes and default CodeQL analysis.
+- [ ] Require independent review when a second write collaborator is available.
 
 The remote-control tests cover simulated desktop lock, pairing consent, origin
 checks and media-only restrictions. A real phone over HTTPS, a physical Windows
@@ -78,8 +78,8 @@ pending. The package build and its hashed Windows Python dependencies are in
   consent and production sign-in branding.
 - [ ] Provide explicit disconnect, export and deletion controls; test that local
   token removal and provider access revocation are handled distinctly.
-- [ ] Define and implement retention for audit logs, task reports and screenshots.
-  Review logs for personal content and sensitive provider errors.
+- [x] Provide configurable retention for new per-user audit logs, task reports and screenshots.
+- [ ] Review historical data, logs and provider errors for personal content.
 - [ ] Review secret storage for the final product; current OAuth tokens use DPAPI,
   while the user-provided Gemini key is configured in a local `.env` file.
 

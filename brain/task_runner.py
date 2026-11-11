@@ -258,8 +258,8 @@ class TaskRunner:
         except Exception as exc:
             report.status, report.message = "failed", str(exc)
         finally:
-            directory = config.BASE_DIR / "task_reports"
-            directory.mkdir(exist_ok=True)
+            directory = config.DATA_DIR / "task_reports"
+            directory.mkdir(parents=True, exist_ok=True)
             path = directory / f"task_{uuid.uuid4().hex}.json"
             report.report_path = str(path)
             # Keep full execution evidence in memory for the answer. Disk history

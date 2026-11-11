@@ -20,6 +20,18 @@ logger = logging.getLogger("VoiceAgent.Memory")
 class ZenoMemory:
     def __init__(self, storage_path: Optional[str] = None):
         self.storage_path = Path(storage_path or config.MEMORY_FILE)
+        if (storage_path is None and not os.getenv("ZENO_DATA_DIR") and not os.getenv("MEMORY_FILE")
+                and self.storage_path == config.DATA_DIR / "zeno_memory.json" and not self.storage_path.exists()):
+            previous = config.BASE_DIR / "zeno_memory.json"
+            if previous.is_file() and previous.resolve() != self.storage_path.resolve():
+                from executor.file_publication import stage_new_file
+                import shutil
+                self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    with stage_new_file(self.storage_path) as staged:
+                        shutil.copyfile(previous, staged)
+                except FileExistsError:
+                    pass  # Another process migrated the same profile.
         self.short_term_history: List[Dict[str, Any]] = []
         self.max_history_turns = 12
         self.long_term_data: Dict[str, Any] = {
