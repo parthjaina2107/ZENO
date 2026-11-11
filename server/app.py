@@ -17,7 +17,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from .remote_access import owner_approves
-from brain.planner import PlannedAction
+from brain.planner import PlannedAction, ActionResult
 import app_access
 import psutil
 
@@ -323,9 +323,18 @@ async def websocket_endpoint(websocket: WebSocket):
     connection_id = "remote:" + uuid.uuid4().hex
     owned_requests = set()
 
+    def session_active():
+        return bool(verified_session(token))
+
+    def execute_media(command):
+        if not session_active():
+            return ActionResult(False, "The browser session ended.", error="SESSION_ENDED")
+        return task_exec.execute(PlannedAction("media_control", {"command": command}))
 
     async def send_to_client(data: Dict[str, Any]):
         try:
+            if not session_active():
+                return
             if data.get("type") == "permission_request":
                 owned_requests.add(data["request_id"])
             await websocket.send_text(json.dumps(data))
@@ -345,7 +354,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     status = "blocked"
                     await send_to_client({"type": "response", "message": "Media access allows play, pause, next, previous and stop."})
                     return
-                result = await asyncio.to_thread(task_exec.execute, PlannedAction("media_control", {"command": command}))
+                result = await asyncio.to_thread(execute_media, command)
                 if result.success:
                     remote_grant.last_activity = time.monotonic()
                 status = "completed" if result.success else "blocked"
@@ -357,6 +366,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 return
             remote_grant.last_activity = time.monotonic()
             brain_resp = await brain.think(user_text, agent_mode=True) if agent_mode else await brain.think(user_text)
+            if not session_active():
+                return
             if brain_resp.kind in ("chat", "vision", "memory", "abort"):
                 if brain_resp.kind == "abort":
                     coordinator.stop(connection_id)
@@ -381,11 +392,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 if event["type"] == "response" or event.get("status") in ("completed", "blocked", "needs_input", "failed"):
                     speaker.speak(event.get("message", ""))
 
-            runner = AgentRunner(brain, perms, connection_id, approve, emit, planner=planner)
+            runner = AgentRunner(brain, perms, connection_id, approve, emit, planner=planner, session_active=session_active)
             status = await runner.run((brain_resp.data or {}).get("goal", brain_resp.message if brain_resp.kind == "task" else user_text),
                              actions=brain_resp.actions, agent_mode=brain_resp.kind == "task" or bool((brain_resp.data or {}).get("agent_mode")))
             following = (brain_resp.data or {}).get('following_mail')
-            if status == 'completed' and following:
+            if status == 'completed' and following and session_active():
                 await emit({"type": "response", "message": await brain.respond_to_mail(following)})
         except asyncio.CancelledError:
             status = "cancelled"

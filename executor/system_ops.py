@@ -134,7 +134,10 @@ def check_input_target(expected, point=None):
 
 
 def wait_for_opened_window(app):
-    executable = APP_EXECUTABLE_MAP.get(app, app).lower()
+    name = app.strip().lower()
+    executable = APP_EXECUTABLE_MAP.get(name, name)
+    if "." not in executable and not executable.endswith(":"):
+        executable += ".exe"
     expected = {"code.cmd": "code.exe", "ms-settings:": "systemsettings.exe",
                 "wt.exe": "windowsterminal.exe", "calc.exe": "calculatorapp.exe"}.get(executable, executable)
     deadline = time.monotonic() + 2
@@ -151,7 +154,6 @@ def wait_for_opened_window(app):
 
 class SystemOps:
     def __init__(self):
-        self._last_opened_app = None
         self._init_pyautogui()
 
     def media_control(self, command: str) -> ActionResult:
@@ -198,7 +200,6 @@ class SystemOps:
     def open_app(self, app_name: str) -> ActionResult:
         """Launch an application by friendly name or executable name."""
         name_clean = app_name.strip().lower()
-        self._last_opened_app = None
         known = {value.lower(): value for value in APP_EXECUTABLE_MAP.values()}
         target = APP_EXECUTABLE_MAP.get(name_clean) or known.get(name_clean)
         if target is None:
@@ -214,7 +215,6 @@ class SystemOps:
                 if executable is None:
                     return ActionResult(False, "Application executable was not found.", error="APP_NOT_FOUND")
                 os.startfile(str(executable))
-            self._last_opened_app = name_clean
             return ActionResult(True, f"Requested launch of '{app_name}'.")
         except Exception as e:
             logger.error(f"Failed to open app '{app_name}': {e}")

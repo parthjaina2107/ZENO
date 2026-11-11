@@ -4,6 +4,7 @@
 
 - Protected the app and data folders from file tools, restricted coding subprocess credentials, and scoped diagnostic listings to file access. Browser sessions use tab storage and only approved commands extend inactivity time. Online playback and microphone transcription now require separate opt-ins after upgrade.
 - Keyboard and mouse commands check the selected window. Windows lock and disconnect notifications revoke browser access. Server-generated passphrases and signing keys last for the process.
+- Remote requests recheck the grant before individual actions and before sending results from a pending task.
 - New activity files use the per-user profile. Set `HISTORY_RETENTION_DAYS` to expire generated audit files, task reports and screenshots on launch. The setup guide describes migration and browser re-pairing.
 - Windows setup prepares dependencies separately before switching environments. GitHub checks both the Python suite and the installed desktop, including an installed-source comparison.
 

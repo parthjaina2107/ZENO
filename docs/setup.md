@@ -393,7 +393,8 @@ A saved ngrok credential alone does not open a tunnel. Direct LAN HTTP is disabl
    reviews actions that require permission. Sending a Gmail draft shows its recipient,
    subject and body for a separate PC approval. Remote prompts time out after 30 seconds.
 4. Press Ctrl+C on the host to disconnect. The grant ends after 15 minutes,
-   five minutes without a command, or detection of a locked desktop.
+   five minutes without an accepted command, or Windows lock, logoff or disconnect.
+   ZENO checks the grant again before each remote action and before sending results.
    Restart server mode for a fresh grant after expiry, denial or pairing another device.
    Existing browsers must pair again after each restart. A started OS operation may finish.
 

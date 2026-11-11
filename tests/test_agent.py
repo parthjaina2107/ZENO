@@ -236,3 +236,13 @@ async def test_withdrawn_or_conditional_goal_runs_no_prefix(rig, goal):
 async def test_unverified_remote_action_is_not_completed(rig):
     rig.executor.execute.return_value = ActionResult(True, "Paste requested", {"verified": False})
     assert await rig.runner.run("type Hello", agent_mode=True) == "unverified"
+
+
+def test_expired_session_denies_dispatch():
+    from unittest.mock import Mock
+    from brain.planner import PlannedAction
+    planner = Mock()
+    runner = AgentRunner(Mock(), Mock(), "remote", Mock(), Mock(), planner=planner, session_active=lambda: False)
+    result = runner.execute_action(PlannedAction("system_info", {"info_type": "battery"}))
+    assert not result.success and result.error == "SESSION_ENDED"
+    planner.execute_action.assert_not_called()
