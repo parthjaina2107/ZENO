@@ -240,7 +240,7 @@ Useful preferences in `.env`:
 | `TTS_BACKEND=elevenlabs` | Set `TTS_VOICE` to your ElevenLabs voice ID and `ELEVENLABS_API_KEY` in your private .env. Enable **App access → Online speech services**, then restart ZENO. Reply text is sent to ElevenLabs and uses account credits. Test with `.venv\Scripts\python.exe main.py --voice-preview`. |
 | `TTS_BACKEND=edge` | Soft online neural voice, with installed Windows speech fallback |
 | `TTS_BACKEND=sapi` | Installed Windows speech, without online neural TTS |
-| `TTS_VOICE=en-IN-NeerjaNeural` | Default female neural voice |
+| `TTS_VOICE` | Your Edge voice short name or ElevenLabs voice ID |
 | `STT_BACKEND=faster-whisper` | Local CPU transcription with an explicitly downloaded model |
 | `STT_ALLOW_ONLINE_FALLBACK=false` | Disable Google audio fallback when local transcription is unavailable |
 | `STT_LANGUAGE=` | Automatic language selection; set `en` or `hi` to constrain it |
@@ -251,27 +251,30 @@ Process environment variables take precedence over the project `.env`. A saved
 values can mask those fallbacks. Use the project `.env` as the main configuration
 for a new source installation. Restart ZENO after changing it.
 
-### Use the Katie voice for spoken replies
+### Choose a voice for spoken replies
 
-1. Open the private `.env` alongside `main.py`. For a default EXE installation,
-   the folder is `%LOCALAPPDATA%\Programs\ZENO Desktop`. For a source installation,
-   use the repository folder. If the file is missing, copy `.env.example` to `.env`.
-2. Set the following three entries. Replace the placeholder with your own ElevenLabs
-   API key that has text-to-speech access. Keep that key in your private configuration.
+Open the private `.env` alongside `main.py`. For a default EXE installation,
+open `%LOCALAPPDATA%\Programs\ZENO Desktop`. For a source installation, open
+the repository folder. If `.env` is missing, copy `.env.example` to `.env`.
 
-   ```dotenv
-   TTS_BACKEND=elevenlabs
-   TTS_VOICE=m4hBEimiy2ffkQ0hHMVD
-   ELEVENLABS_API_KEY=your_personal_api_key
-   ```
+Choose one speech provider and edit its settings in that file.
 
-3. Open **Dashboard → App access → Online speech services** and enable it.
-   Quit ZENO and reopen it. To hear a sample, run
-   `.\.venv\Scripts\python.exe main.py --voice-preview` from the same folder.
-4. ElevenLabs receives the text of spoken replies and may charge your account
-   credits. If you hear the Windows voice, check the permission, key, voice access
-   and available credits. Restart after correcting the settings to retry immediately.
-   Set `TTS_BACKEND=sapi` to use Windows speech again.
+| Provider | How to choose your voice |
+| --- | --- |
+| Windows (offline) | Set `TTS_BACKEND=sapi` and `TTS_LOCAL_VOICE` to the name of an installed Windows speech voice. To list the voices ZENO can use, run `(New-Object -ComObject SAPI.SpVoice).GetVoices() \| ForEach-Object { $_.GetDescription() }` in PowerShell. |
+| Microsoft Edge (online) | Set `TTS_BACKEND=edge`. From the ZENO folder, run `.\.venv\Scripts\python.exe -m edge_tts --list-voices` and copy the short name of your chosen voice into `TTS_VOICE`. |
+| ElevenLabs (online) | Preview voices in your ElevenLabs account, choose one you have access to, and copy its voice ID into `TTS_VOICE`. Set `TTS_BACKEND=elevenlabs` and put your own text-to-speech API key in `ELEVENLABS_API_KEY`. |
+
+For either online provider, enable **Dashboard → App access → Online speech services**.
+Spoken reply text goes to the selected provider. ElevenLabs may use account credits.
+
+Save the file, quit ZENO and reopen it. To hear your selection, run the following
+from the ZENO folder. If an online voice falls back to Windows speech, check
+the online speech permission, voice name or ID, and any required account credentials.
+
+```powershell
+.\.venv\Scripts\python.exe main.py --voice-preview
+```
 
 ## 4. Prepare speech and check setup
 
