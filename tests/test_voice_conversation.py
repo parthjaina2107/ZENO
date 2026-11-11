@@ -269,3 +269,26 @@ def test_active_task_can_stop_after_wake_window_expires():
     clock.return_value = 300
     assert session.accept("stop", active_task=True).kind == "command"
     assert session.accept("open notepad", active_task=True).kind == "ignore"
+
+@pytest.mark.asyncio
+async def test_elevenlabs_renders_selected_voice(monkeypatch, tmp_path):
+    import httpx
+    from config import config
+    from voice.neural import render_speech
+
+    monkeypatch.setattr(config, "TTS_BACKEND", "elevenlabs")
+    monkeypatch.setattr(config, "TTS_VOICE", "test-voice")
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "test-key")
+    def respond(request):
+        assert request.url.path == "/v1/text-to-speech/test-voice"
+        assert request.headers["xi-api-key"] == "test-key"
+        assert request.url.params["output_format"] == "mp3_44100_128"
+        return httpx.Response(200, content=b"test audio", headers={"Content-Type": "audio/mpeg"})
+    client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: client(transport=httpx.MockTransport(respond), **kw))
+    path = tmp_path / "speech.mp3"
+    await render_speech("Hello", path)
+    assert path.read_bytes() == b"test audio"
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "")
+    with pytest.raises(ValueError, match="API key"):
+        await render_speech("Hello", path)

@@ -146,6 +146,7 @@ class Config:
     CONFIRMATION_TIMEOUT: int = int(os.getenv("CONFIRMATION_TIMEOUT", "8"))
     REMOTE_CONFIRMATION_TIMEOUT: int = int(os.getenv("REMOTE_CONFIRMATION_TIMEOUT", "60"))
     TTS_BACKEND: str = os.getenv("TTS_BACKEND", "sapi").strip().lower()
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "").strip()
     TTS_VOICE: str = os.getenv("TTS_VOICE", "en-IN-NeerjaNeural").strip()
     TTS_RATE: str = os.getenv("TTS_RATE", "-12%").strip()
     TTS_VOLUME: str = os.getenv("TTS_VOLUME", "-15%").strip()

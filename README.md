@@ -14,6 +14,8 @@ For a first command, enable **System information** and type **check battery**.
 The installer includes the setup, desktop, privacy and troubleshooting guides
 in its `docs` folder. [Installation and troubleshooting](docs/setup.md#windows-installer)
 
+For spoken replies in the Katie voice, follow the [ElevenLabs setup instructions](docs/setup.md#use-the-katie-voice-for-spoken-replies).
+
 ![ZENO desktop workspace with voice input, command composer and task status](docs/workspace-preview.jpg)
 
 Local AI is now the default: Ollama runs `qwen3:4b`, while cloud calls stay off

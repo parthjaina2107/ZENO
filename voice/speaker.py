@@ -118,7 +118,7 @@ class VoiceSpeaker:
                 pass
 
             # Neural speech is optional; a network failure falls back to local speech.
-            if config.TTS_BACKEND == "edge" and app_access.allowed("online_voice") and time.monotonic() >= self._neural_retry_at:
+            if config.TTS_BACKEND in {"edge", "elevenlabs"} and app_access.allowed("online_voice") and time.monotonic() >= self._neural_retry_at:
                 try:
                     from .neural import speak_neural
                     speak_neural(clean, lambda: self._running and generation == self._generation)

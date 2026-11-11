@@ -933,81 +933,93 @@ $("settingsDisconnect").addEventListener("click", () =>
   $("disconnect").click(),
 );
 
-// Decorative ribbon renderer shared by the browser and the native dashboard.
+// Violet Swirl by Serafim. Both dashboard entry points use bundled artwork.
 const systemReducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const ribbon = document.createElement("div");
-ribbon.className = "workspace-ribbon";
-ribbon.setAttribute("aria-hidden", "true");
-const svgNS = "http://www.w3.org/2000/svg";
-const silk = document.createElementNS(svgNS, "svg");
-silk.setAttribute("viewBox", "0 0 1000 600");
-silk.setAttribute("preserveAspectRatio", "none");
-silk.setAttribute("fill", "none");
-// Build the strands once. Only their container moves during interaction.
-for (let layer = 0; layer < 3; layer++) {
-  for (let strand = 0; strand < 16; strand++) {
-    const path = document.createElementNS(svgNS, "path");
-    const points = [];
-    const u = strand / 15;
-    const shift = layer * .24;
-    for (let step = 0; step <= 64; step++) {
-      const x = step / 64;
-      const y = .72 - .52*x + .16*Math.sin(x*6.2 + shift) + .10*Math.sin(x*4.1 + shift)
-        + (u-.5)*.12*Math.sin(x*5 + shift);
-      points.push((step ? "L" : "M") + (x*1000).toFixed(1) + " " + (y*600).toFixed(1));
-    }
-    path.setAttribute("d", points.join(" "));
-    path.setAttribute("stroke", "currentColor");
-    path.setAttribute("stroke-width", strand === 15 ? 1.3 : 3);
-    path.setAttribute("opacity", (.065 + u**4 * .19).toFixed(3));
-    silk.append(path);
-  }
-}
-ribbon.append(silk);
-document.body.prepend(ribbon);
-const ribbonColors = [266, 204, 165, 322];
+const swirl = document.querySelector(".workspace-swirl");
+const swirlCanvas = swirl.querySelector("canvas");
+const swirlPoster = swirl.querySelector("img");
+const frames = new Image();
+const paint = swirlCanvas.getContext("2d", {alpha: false});
+let animationTimer = 0;
+let animationStep = 0;
+let scrollTimer = 0;
+const themeHues = [266, 204, 165, 322];
 let paletteTimer = 0;
 let pointerFrame = 0;
 let offsetX = 0, offsetY = 0;
-function stillRibbon() {
+function stillBackground() {
   return systemReducedMotion.matches || document.body.classList.contains("reduce-motion");
 }
 function updatePalette() {
   clearTimeout(paletteTimer);
-  if (document.hidden) return;
-  const still = stillRibbon();
+  if (document.hidden || scrollTimer) return;
+  const still = stillBackground();
   const phase = still ? 1 : Date.now() / 16000;
-  const index = Math.floor(phase) % ribbonColors.length;
+  const index = Math.floor(phase) % themeHues.length;
   const mix = Math.min(1, (phase % 1) * 4);
-  const from = ribbonColors[(index + ribbonColors.length - 1) % ribbonColors.length];
-  const delta = (ribbonColors[index] - from + 540) % 360 - 180;
+  const from = themeHues[(index + themeHues.length - 1) % themeHues.length];
+  const delta = (themeHues[index] - from + 540) % 360 - 180;
   const hue = Math.round(from + delta * mix * mix * (3 - 2 * mix));
   document.body.style.setProperty("--ribbon-hue", hue);
   if (!still) paletteTimer = setTimeout(updatePalette, mix < 1 ? 125 : Math.ceil((1-phase%1)*16000));
 }
-function moveRibbon(x, y) {
+function moveSwirl(x, y) {
   offsetX = x;
   offsetY = y;
   if (!pointerFrame) pointerFrame = requestAnimationFrame(() => {
     pointerFrame = 0;
-    ribbon.style.transform = 'translate(' + offsetX + 'px,' + offsetY + 'px)';
+    swirl.style.transform = 'translate(' + offsetX + 'px,' + offsetY + 'px)';
   });
 }
 document.addEventListener("pointermove", event => {
-  if (event.pointerType !== "touch" && !stillRibbon()) {
-    moveRibbon((event.clientX / Math.max(1,innerWidth) - .5)*84,
+  if (!scrollTimer && event.pointerType !== "touch" && !stillBackground()) {
+    moveSwirl((event.clientX / Math.max(1,innerWidth) - .5)*84,
                (event.clientY / Math.max(1,innerHeight) - .5)*64);
   }
 }, {passive:true});
-document.documentElement.addEventListener("pointerleave", () => moveRibbon(0, 0));
-document.addEventListener("visibilitychange", updatePalette);
-let previousStill = stillRibbon();
+document.documentElement.addEventListener("pointerleave", () => moveSwirl(0, 0));
+function syncBackground() {
+  clearTimeout(animationTimer);
+  animationTimer = 0;
+  updatePalette();
+  if (!paint || !frames.naturalWidth || document.hidden || stillBackground() || scrollTimer) return;
+  drawSwirl();
+}
+
+// One small opaque drawing surface keeps video overlays out of the scrolling UI.
+function drawSwirl() {
+  const frame = animationStep < 60 ? animationStep : 118 - animationStep;
+  const {width, height} = swirlCanvas;
+  paint.drawImage(frames, frame % 8 * width, Math.floor(frame / 8) * height,
+                  width, height, 0, 0, width, height);
+  if (swirlCanvas.hidden) {
+    swirlCanvas.hidden = false;
+    swirlPoster.hidden = true;
+  }
+  animationStep = (animationStep + 1) % 118;
+  animationTimer = setTimeout(drawSwirl, 50);
+}
+
+document.addEventListener("scroll", () => {
+  clearTimeout(animationTimer);
+  clearTimeout(paletteTimer);
+  clearTimeout(scrollTimer);
+  animationTimer = 0;
+  scrollTimer = setTimeout(() => {
+    scrollTimer = 0;
+    syncBackground();
+  }, 150);
+}, {capture: true, passive: true});
+frames.onload = syncBackground;
+frames.src = swirlCanvas.dataset.frames;
+document.addEventListener("visibilitychange", syncBackground);
+let previousStill = stillBackground();
 new MutationObserver(() => {
-  const still = stillRibbon();
+  const still = stillBackground();
   if (still !== previousStill) {
     previousStill = still;
-    moveRibbon(0, 0);
-    updatePalette();
+    moveSwirl(0, 0);
+    syncBackground();
   }
 }).observe(document.body, {attributes:true, attributeFilter:["class"]});
 systemReducedMotion.addEventListener("change", () => {
@@ -1016,4 +1028,4 @@ systemReducedMotion.addEventListener("change", () => {
   if (desktopMode) send({type:"motion", reduced:$("motion").checked});
   updatePalette();
 });
-updatePalette();
+syncBackground();

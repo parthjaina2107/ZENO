@@ -141,6 +141,7 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
     try:
         dashboard.show()
         wait_for(lambda: dashboard.bridge.connected)
+        wait_for(lambda: js("frames.naturalWidth > 0 && (stillBackground() || !swirlCanvas.hidden)"))
         assert not island.isVisible()
         assert js("document.getElementById('statusText').textContent") == 'Connected'
         import app_access
@@ -203,6 +204,7 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         assert js("document.getElementById('activity').hidden") is False
         js("document.getElementById('motion').checked=true; preferences(); true")
         wait_for(lambda: island.reduced_motion)
+        assert js("animationTimer === 0")
         island.collapse()
         island.motion.setCurrentTime(island.motion.duration())
         assert island.height() == 48
@@ -245,6 +247,10 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         assert not js("document.body.classList.contains('reduce-motion')")
         assert js("document.querySelector('.ambient-pointer') === null")
         assert js("['header', '.rail', '#run'].every(s => getComputedStyle(document.querySelector(s)).backdropFilter === 'none')")
+        js("view('access'); document.querySelector('.workspace-scroll').scrollTop = 180; true")
+        wait_for(lambda: js("scrollTimer !== 0 && animationTimer === 0"))
+        assert js("document.querySelector('.workspace-scroll').scrollTop > 0 && window.scrollY === 0")
+        wait_for(lambda: js("scrollTimer === 0 && animationTimer !== 0"))
         dashboard.setMinimumSize(0, 0)
         dashboard.resize(390, 844)
         wait_for(lambda: js('innerWidth') == 390)

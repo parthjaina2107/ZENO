@@ -24,7 +24,7 @@ FEATURES = (
     ("terminal", "Computer tools", "Terminal diagnostics", "Run supported diagnostic commands."),
     ("local_ai", "AI services", "Local Ollama", "Use installed models for reasoning and screen interpretation."),
     ("cloud_ai", "AI services", "Google Gemini", "Use cloud reasoning when enabled in ZENO configuration."),
-    ("online_voice", "AI services", "Online speech services", "Use configured Google speech recognition or Microsoft Edge speech playback."),
+    ("online_voice", "AI services", "Online speech services", "Use configured Google speech recognition or Microsoft Edge or ElevenLabs speech playback."),
     ("coding", "Computer tools", "Coding workspace", "Allow approved project context and code edits through the coding agent."),
     ("monitor", "Computer tools", "Project and process monitoring", "Watch configured Git folders, processes and system health."),
     ("other_apps", "Applications", "Other installed applications", "Launch or close other supported executable names."),

@@ -15,6 +15,7 @@ configuration before using private content.
 | Local Ollama reasoning | Sends relevant requests/context to the loopback server on this PC; model setup downloads weights, inference does not require cloud |
 | Gemini reasoning | Disabled by default; confirmed free-cloud mode sends relevant requests, recent context, saved facts and selected tool observations to Google; free-tier terms may permit product improvement use |
 | Screen interpretation | Interprets requested screenshots using a local Ollama vision model or Gemini in enabled free-cloud mode |
+| ElevenLabs speech | With online speech permission, sends reply text and the configured voice ID to ElevenLabs. Authentication uses your private API key. Generated MP3 files are temporary during playback. |
 | Edge neural speech | Sends the text to speak to Microsoft's online speech service via edge-tts; `TTS_BACKEND=sapi` selects installed local speech |
 | Gmail/Outlook | Polls inbox metadata. Explicit Gmail commands can read message text and, with compose permission, save drafts and send reviewed messages |
 | Windows notifications | Collects the notification text Windows exposes; this can include private previews |

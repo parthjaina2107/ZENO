@@ -46,7 +46,8 @@ def dashboard_html():
 class LocalAssetsOnly(QWebEngineUrlRequestInterceptor):
     def interceptRequest(self, info):
         url = info.requestUrl()
-        allowed = {STATIC / 'app.js', STATIC / 'glass-loop.png', STATIC / 'vendor/lucide.min.js'}
+        allowed = {STATIC / 'app.js', STATIC / 'glass-loop.png', STATIC / 'vendor/lucide.min.js',
+                   STATIC / 'violet-swirl-frames.webp', STATIC / 'violet-swirl.webp'}
         local = url.isLocalFile() and Path(url.toLocalFile()).resolve() in allowed
         internal = url.scheme() in {'data', 'about'} or url.toString() == 'qrc:///qtwebchannel/qwebchannel.js'
         info.block(not (local or internal))
@@ -185,6 +186,7 @@ class DashboardWindow(QWebEngineView):
         self.dashboard_page = DashboardPage(self.profile, self)
         self.setPage(self.dashboard_page)
         self.dashboard_page.setBackgroundColor(QColor('#040405'))
+        self.dashboard_page.settings().setAttribute(QWebEngineSettings.WebAttribute.ScrollAnimatorEnabled, True)
         self.dashboard_page.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         self.dashboard_page.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
         self.channel = QWebChannel(self.dashboard_page)

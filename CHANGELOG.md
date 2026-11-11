@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added optional ElevenLabs speech for replies with a provider voice ID and personal API key. It uses the dashboard’s online speech permission and falls back to Windows speech when unavailable.
+
+- Replaced the dashboard ribbon with Serafim’s Violet Swirl animation. The background works offline and follows the existing accent cycle and reduced-motion preference. The desktop uses native smooth scrolling, and the swirl holds its frame while panels scroll.
+
 - Browser control requires a fresh PC-issued code and Windows consent. Access
   defaults to playback only, ends on a time limit or desktop lock, and uses
   loopback unless an HTTPS tunnel is explicitly requested. Existing browser

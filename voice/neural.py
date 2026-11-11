@@ -9,6 +9,23 @@ from config import config
 
 
 async def render_speech(text, path):
+    if config.TTS_BACKEND == "elevenlabs":
+        import httpx
+        from urllib.parse import quote
+        if not config.ELEVENLABS_API_KEY or not config.TTS_VOICE:
+            raise ValueError("ElevenLabs requires an API key and a voice ID.")
+        url = "https://api.elevenlabs.io/v1/text-to-speech/" + quote(config.TTS_VOICE, safe="")
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await asyncio.wait_for(client.post(
+                url, headers={"xi-api-key": config.ELEVENLABS_API_KEY, "Accept": "audio/mpeg"},
+                params={"output_format": "mp3_44100_128"},
+                json={"text": text, "model_id": "eleven_multilingual_v2"},
+            ), timeout=20)
+            response.raise_for_status()
+            if not response.content or not response.headers.get("content-type", "").startswith("audio/"):
+                raise ValueError("ElevenLabs returned no playable audio.")
+            path.write_bytes(response.content)
+        return
     import edge_tts
     communication = edge_tts.Communicate(text, config.TTS_VOICE, rate=config.TTS_RATE,
                                         volume=config.TTS_VOLUME, pitch=config.TTS_PITCH)
