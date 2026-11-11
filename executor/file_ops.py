@@ -13,12 +13,36 @@ from pathlib import Path
 import logging
 from typing import Optional, List, Dict, Any
 from brain.planner import ActionResult
-from config import config
+from config import BASE_DIR, config
 from user_paths import user_folder
 from .file_publication import stage_new_file
 
 logger = logging.getLogger("VoiceAgent.FileOps")
 MAX_READ_BYTES = 64 * 1024
+
+
+def protected_tree(path, *, include_ancestors=False):
+    for root in (BASE_DIR, config.DATA_DIR):
+        root = root.resolve()
+        if path.is_relative_to(root) or (include_ancestors and root.is_relative_to(path)):
+            return True
+    return False
+
+
+def _verified_read_handle(stream, expected):
+    info = os.fstat(stream.fileno())
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        return False
+    if os.name == "nt":
+        import msvcrt
+        import win32file
+        name = win32file.GetFinalPathNameByHandle(msvcrt.get_osfhandle(stream.fileno()), 0)
+        if name.startswith("\\\\?\\UNC\\"):
+            name = "\\\\" + name[8:]
+        else:
+            name = name.removeprefix("\\\\?\\")
+        return Path(name) == expected
+    return os.path.samestat(info, expected.stat())
 
 
 def _private_path(path):
@@ -105,6 +129,9 @@ class FileOps:
         if target == settings or (tree and target in settings.parents):
             return False, None, "App access settings can only be changed in the desktop dashboard."
 
+        if protected_tree(target, include_ancestors=tree):
+            return False, None, "ZENO's application and private data directories are protected."
+
         # Check blocked paths
         for blocked in config.BLOCKED_PATHS:
             if blocked.lower() in target_str:
@@ -131,6 +158,26 @@ class FileOps:
             except OSError:
                 return False, None, "Could not safely inspect all files in this folder."
         return True, target, None
+
+    def directory_listing(self, directory):
+        valid, target, error = self._resolve_and_validate_path(directory)
+        if not valid:
+            return ActionResult(False, error, error="PATH_VALIDATION_FAILED")
+        names = []
+        try:
+            with os.scandir(target) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= 200:
+                        names.append("... [listing limited]")
+                        break
+                    path = Path(entry.path)
+                    allowed, _, _ = self._resolve_and_validate_path(str(path))
+                    if allowed:
+                        names.append(entry.name)
+        except (OSError, ValueError):
+            return ActionResult(False, "Directory listing failed.", error="DIRECTORY_UNAVAILABLE")
+        output = "\n".join(names)[:2000]
+        return ActionResult(True, output or "Empty directory.", output=output)
 
     def folder_create(self, path: str) -> ActionResult:
         valid, target, error = self._resolve_and_validate_path(path)
@@ -208,8 +255,9 @@ class FileOps:
             if d_target.exists() and (not d_target.is_dir() or (d_target / s_target.name).exists()):
                 return ActionResult(False, "Destination already exists.", error="PATH_EXISTS")
             res = d_target / s_target.name if d_target.is_dir() else d_target
-            if res == (config.DATA_DIR / 'app-access.json').resolve():
-                return ActionResult(False, "App access settings can only be changed in the desktop dashboard.", error="DEST_PATH_ERROR")
+            valid, res, reason = self._resolve_and_validate_path(str(res))
+            if not valid:
+                return ActionResult(False, reason, error="DEST_PATH_ERROR")
             if os.name == "nt":
                 try:
                     os.rename(s_target, res)
@@ -242,8 +290,9 @@ class FileOps:
 
         try:
             res = d_target / s_target.name if s_target.is_file() and d_target.is_dir() else d_target
-            if res == (config.DATA_DIR / 'app-access.json').resolve():
-                return ActionResult(False, "App access settings can only be changed in the desktop dashboard.", error="DEST_PATH_ERROR")
+            valid, res, reason = self._resolve_and_validate_path(str(res))
+            if not valid:
+                return ActionResult(False, reason, error="DEST_PATH_ERROR")
             if s_target.is_dir() and res.is_relative_to(s_target):
                 return ActionResult(False, "A folder cannot be copied inside itself.", error="INVALID_DESTINATION")
             res.parent.mkdir(parents=True, exist_ok=True)
@@ -268,6 +317,8 @@ class FileOps:
 
         try:
             with target.open("rb") as f:
+                if not _verified_read_handle(f, target):
+                    return ActionResult(False, "The selected file changed. Select it again.", error="FILE_CHANGED")
                 data = f.read(MAX_READ_BYTES + 1)
             limited = len(data) > MAX_READ_BYTES
             preview = data[:MAX_READ_BYTES].decode("utf-8", errors="replace")
@@ -299,7 +350,7 @@ class FileOps:
                 return ActionResult(False, "Use a search pattern inside the selected directory.", error="INVALID_PATTERN")
             matches = []
             for p in target_dir.glob(pattern):
-                if (p.is_file() and not _private_path(p) and not _private_path(p.resolve())
+                if (p.is_file() and not protected_tree(p.resolve()) and not _private_path(p) and not _private_path(p.resolve())
                         and p.resolve().is_relative_to(target_dir)):
                     matches.append({"name": p.name, "path": str(p), "size_bytes": p.stat().st_size})
                 if len(matches) >= 50:

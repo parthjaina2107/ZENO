@@ -100,14 +100,17 @@ def test_create_and_copy_never_replace_existing_files(tmp_path, monkeypatch):
 
 def test_diagnostic_argument_policy_and_executable_resolution(monkeypatch):
     from unittest.mock import Mock
-    run = Mock()
-    monkeypatch.setattr("executor.system_ops.subprocess.run", run)
+    from unittest.mock import MagicMock
+    run = MagicMock()
+    monkeypatch.setattr("executor.system_ops.subprocess.Popen", run)
     ops = SystemOps()
     for command in ["echo ok & whoami", "dir | whoami", "echo ok > report.txt", "hostnameex",
                     "ipconfig /release", "route delete 0.0.0.0", "curl -o file https://example.com"]:
         assert not ops.run_command(command).success, command
     run.assert_not_called()
-    run.return_value.returncode, run.return_value.stdout = 0, "host"
+    process = run.return_value.__enter__.return_value
+    process.wait.return_value = 0
+    process.stdout.read.return_value = b"host"
     assert ops.run_command("HOSTNAME.EXE").output == "host"
     invocation = run.call_args
     assert Path(invocation.args[0][0]).stem.lower() == "hostname"
@@ -207,3 +210,36 @@ def test_cross_volume_move_collision_preserves_source(tmp_path, monkeypatch):
     assert not ops.file_move(str(source), str(destination)).success
     assert source.read_text() == "Keep original"
     assert list(destination.iterdir()) == []
+
+def test_install_and_profile_are_protected_inside_allowed_parent(tmp_path, monkeypatch):
+    from executor import file_ops
+    from executor.coding_workspace import resolve_workspace
+    import pytest
+    app = tmp_path / "ZENO"
+    app.mkdir()
+    private = tmp_path / "profile"
+    private.mkdir()
+    monkeypatch.setattr(file_ops, "BASE_DIR", app)
+    monkeypatch.setattr(file_ops.config, "DATA_DIR", private)
+    ops = FileOps([str(tmp_path)])
+    for directory in (app, private):
+        assert not ops.file_create(str(directory / "sample.txt")).success
+        assert not ops.directory_listing(str(directory)).success
+    assert not ops.file_move(str(tmp_path), str(tmp_path / "new")).success
+    with pytest.raises(ValueError):
+        resolve_workspace(str(tmp_path), ops)
+    assert ops.file_create(str(tmp_path / "ordinary.txt")).success
+
+
+def test_focus_change_blocks_input_before_dispatch(monkeypatch):
+    from executor import system_ops
+    from brain.planner import ActionPlanner
+    from executor.task_executor import TaskExecutor
+    from unittest.mock import MagicMock
+    executor = TaskExecutor()
+    executor.system.type_text = MagicMock()
+    monkeypatch.setattr(system_ops, "foreground_target", lambda: (100, 1))
+    action, = ActionPlanner(executor).plan({"understood": True, "action": "type_text", "parameters": {"text": "hello"}})
+    monkeypatch.setattr(system_ops, "foreground_target", lambda: (200, 2))
+    assert not executor.execute(action).success
+    executor.system.type_text.assert_not_called()

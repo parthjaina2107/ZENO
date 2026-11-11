@@ -5,6 +5,7 @@ import secrets
 import time
 import threading
 from ctypes import wintypes
+from contextlib import contextmanager
 
 
 def desktop_unlocked():
@@ -59,11 +60,14 @@ class RemoteGrant:
         self.attempts_left = 5
         self.started = self.last_activity = time.monotonic()
 
+    def revoke(self):
+        self.id = ""
+        self.code = ""
+
     def active(self):
         now = time.monotonic()
         if now - self.started >= 900 or now - self.last_activity >= 300 or not desktop_unlocked():
-            self.id = ""
-            self.code = ""
+            self.revoke()
         return bool(self.id)
 
     def consume(self, code):
@@ -76,3 +80,34 @@ class RemoteGrant:
             return False
         self.code = ""
         return True
+
+
+@contextmanager
+def session_notifications(grant):
+    """Subscribe before accepting requests so a brief lock also ends the grant."""
+    import win32api
+    import win32gui
+    import win32ts
+
+    def on_session_change(hwnd, message, event, session_id):
+        if event in {2, 4, 6, 7}:  # console/remote disconnect, logoff, lock
+            grant.revoke()
+        return 0
+
+    window = win32gui.WNDCLASS()
+    window.lpszClassName = "ZenoRemoteSession" + grant.id
+    window.hInstance = win32api.GetModuleHandle(None)
+    window.lpfnWndProc = {0x02B1: on_session_change}  # WM_WTSSESSION_CHANGE
+    atom = win32gui.RegisterClass(window)
+    try:
+        hwnd = win32gui.CreateWindow(atom, "", 0, 0, 0, 0, 0, 0, 0, window.hInstance, None)
+        try:
+            win32ts.WTSRegisterSessionNotification(hwnd, win32ts.NOTIFY_FOR_THIS_SESSION)
+            try:
+                yield win32gui.PumpWaitingMessages
+            finally:
+                win32ts.WTSUnRegisterSessionNotification(hwnd)
+        finally:
+            win32gui.DestroyWindow(hwnd)
+    finally:
+        win32gui.UnregisterClass(window.lpszClassName, window.hInstance)

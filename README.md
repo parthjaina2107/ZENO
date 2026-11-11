@@ -111,7 +111,7 @@ checkout, dependencies, API configuration, microphone setup, first use and updat
    - Local deletion/shutdown/restart retain double confirmation with exact action parameters.
    - Configure `CONFIRMATION_ACTIONS` and `CONFIRMATION_POWER_MODES` in `config.py` to change this policy. Existing path restrictions and command allowlists still apply.
    - Remote approvals bind to action IDs and the requesting paired device.
-   - Detailed audit log kept in `audit_log.jsonl` recording decisions, action IDs, and execution results.
+   - Detailed audit log kept under `%LOCALAPPDATA%\ZENO\audit` recording decisions, action IDs, and execution results.
    - Stop controls cancel pending work. Desktop mode uses the same keyboard shortcut to start and stop. Completed actions are not undone; OS calls already started may finish.
 
 2. **Dual-Mode Operation**:
@@ -139,7 +139,7 @@ checkout, dependencies, API configuration, microphone setup, first use and updat
 
 5. **Remote Security & Tunneling**:
    - Public HTTPS tunneling powered by `pyngrok` with automatic secret generation.
-   - Header-based JWT authentication (`Authorization: Bearer <token>`) for WebSocket and REST endpoints.
+   - WebSocket authentication uses the first message. Protected REST endpoints use an Authorization bearer header.
    - Brute-force rate limiting with client IP tracking (10 failed attempts triggers a 1-hour lockout).
    - CORS origin isolation.
    - Paired-device sessions: each browser receives a stable device identity, sessions are checked against a local revocation registry, and permission responses are accepted only from the device that requested the action.
@@ -190,7 +190,7 @@ Run `.venv\Scripts\python.exe main.py --mode local --text` for keyboard input. P
 task: Open Notepad, create Documents/zeno-demo.txt with the text Hello ZENO, then read the file back.
 ```
 
-The task runner requests one validated action at a time from Gemini, uses results to plan the next step, verifies saved file contents, and saves a JSON report under `task_reports/`. It stops after 12 steps, repeated actions, invalid actions, failed tools, or denied permissions. Routine steps run immediately; deletion/shutdown/restart keep confirmation.
+The task runner requests one validated action at a time from Gemini, uses results to plan the next step, verifies saved file contents, and saves a JSON report under the profile’s `task_reports/` directory. It stops after 12 steps, repeated actions, invalid actions, failed tools, or denied permissions. Routine steps run immediately; deletion/shutdown/restart keep confirmation.
 
 This first task engine supports existing app/file/diagnostic operations and verified typing into Notepad after opening it. Notepad typing requires `pywinauto` from `requirements-optional.txt`; it focuses the actual editor, appends text, and reads it back before reporting success. It preserves existing outputs, and reports unverified outcomes instead of trusting the model's claim of success. App launches are checked against running process names. Browser navigation and volume changes do not yet have independent outcome verification. General task-mode keyboard/mouse automation, browser page reading, and arbitrary project test runners remain future work. Use Ctrl+C to interrupt a local task; the phone STOP control cancels remote tasks. An OS operation already started may finish.
 

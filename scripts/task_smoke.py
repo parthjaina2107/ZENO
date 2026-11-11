@@ -18,7 +18,8 @@ from executor.permissions import PermissionManager
 
 
 async def run():
-    path = ROOT / "scratch" / f"task_smoke_{uuid.uuid4().hex}.txt"
+    from user_paths import user_folder
+    path = user_folder("documents") / "ZENO smoke tests" / f"task_smoke_{uuid.uuid4().hex}.txt"
     goal = f'Open Notepad, create the file {path} with exactly this text: "ZENO task engine test." Then read that file back to verify the saved text.'
     async def deny(action):
         return False

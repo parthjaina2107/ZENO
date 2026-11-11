@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from config import config
-from brain.planner import PlannedAction, describe_action, compute_action_id
+from brain.planner import PlannedAction, ActionResult, describe_action, compute_action_id
 
 
 @dataclass
@@ -49,10 +49,16 @@ coordinator = TaskCoordinator()
 
 
 class AgentRunner:
-    def __init__(self, brain, permissions, source, approve, emit, planner=None):
+    def __init__(self, brain, permissions, source, approve, emit, planner=None, session_active=None):
         self.brain, self.permissions = brain, permissions
         self.source, self.approve, self.emit = source, approve, emit
         self.planner = planner or brain.planner
+        self.session_active = session_active
+
+    def execute_action(self, action):
+        if self.session_active is not None and not self.session_active():
+            return ActionResult(False, "The browser session ended.", error="SESSION_ENDED")
+        return self.planner.execute_action(action)
 
     async def run(self, goal, actions=None, agent_mode=False):
         run = TaskRun(goal, self.source)
@@ -152,7 +158,7 @@ class AgentRunner:
                     seen.add(action.action_id)
                     # A thread cannot be force-killed. Retain desktop ownership until it returns,
                     # and never start the next action after cancellation.
-                    worker = asyncio.create_task(asyncio.to_thread(self.planner.execute_action, action))
+                    worker = asyncio.create_task(asyncio.to_thread(self.execute_action, action))
                     try:
                         result = await asyncio.shield(worker)
                     except asyncio.CancelledError:

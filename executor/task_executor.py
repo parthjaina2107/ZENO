@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any
 import app_access
 from brain.planner import PlannedAction, ActionResult
-from .system_ops import SystemOps
+from .system_ops import SystemOps, wait_for_opened_window, check_input_target
 from .browser_ops import BrowserOps
 from .file_ops import FileOps
 from .ui_inspector import UIInspector
@@ -65,19 +65,24 @@ class TaskExecutor:
                 return self.browser.web_search(query)
 
             # === KEYBOARD & MOUSE ===
-            elif act_type == "type_text":
+            if act_type in {"type_text", "keyboard_shortcut", "mouse_click"}:
+                target = wait_for_opened_window(action.input_app) if action.input_app else action.input_target
+                if target is None:
+                    return ActionResult(False, "Focus the intended application and retry.", error="FOCUS_CHANGED")
+                check_input_target(target)
+            if act_type == "type_text":
                 text = params.get("text", "")
-                return self.system.type_text(text)
+                return self.system.type_text(text, target)
 
             elif act_type == "keyboard_shortcut":
                 keys = params.get("keys", [])
-                return self.system.keyboard_shortcut(keys)
+                return self.system.keyboard_shortcut(keys, target)
 
             elif act_type == "mouse_click":
                 x = params.get("x", 0)
                 y = params.get("y", 0)
                 btn = params.get("button", "left")
-                return self.system.mouse_click(x, y, btn)
+                return self.system.mouse_click(x, y, btn, target)
 
             # === TERMINAL ===
             elif act_type == "run_command":

@@ -260,3 +260,10 @@ def test_project_snapshot_excludes_account_and_runtime_files(tmp_path):
     for name in ["client_secret_dev.json", "google-client.json", "zeno_memory.json"]:
         with pytest.raises(ValueError):
             cw.target_path(tmp_path, name)
+
+def test_external_coding_environment_drops_unknown_secrets(monkeypatch):
+    for name in ("ELEVENLABS_API_KEY", "GITHUB_TOKEN", "SYNTHETIC_FUTURE_PROVIDER"):
+        monkeypatch.setenv(name, "synthetic")
+    environment = cw.coding_environment()
+    assert "synthetic" not in environment.values()
+    assert any(key.upper() == "PATH" for key in environment)

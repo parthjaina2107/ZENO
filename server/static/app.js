@@ -7,22 +7,24 @@ const $ = (id) => document.getElementById(id);
 const storage = {
   get(k) {
     try {
-      return localStorage.getItem(k);
+      return (k === "voice_agent_jwt" ? sessionStorage : localStorage).getItem(k);
     } catch {
       return null;
     }
   },
   set(k, v) {
     try {
-      localStorage.setItem(k, v);
+      (k === "voice_agent_jwt" ? sessionStorage : localStorage).setItem(k, v);
     } catch {}
   },
   remove(k) {
     try {
-      localStorage.removeItem(k);
+      (k === "voice_agent_jwt" ? sessionStorage : localStorage).removeItem(k);
     } catch {}
   },
 };
+// Discard credentials saved by older versions. New sessions last for this tab.
+try { localStorage.removeItem("voice_agent_jwt"); } catch {}
 const browserDeviceId =
   storage.get("zeno_device_id") ||
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
@@ -199,11 +201,19 @@ function message(text, sender = "agent", image) {
   label.className = "sender";
   label.textContent = sender === "user" ? "YOU" : "ZENO";
   div.append(label, document.createTextNode(text || ""));
-  if (image && /^data:image\/(png|jpeg|webp);base64,/.test(image)) {
-    const img = document.createElement("img");
-    img.src = image;
-    img.alt = "Screenshot captured from the connected computer";
-    div.append(img);
+  if (typeof image === "string" && image.length <= 4 * 1024 * 1024) {
+    const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(image);
+    if (match) {
+      try {
+        const bytes = Uint8Array.from(atob(match[2]), char => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], {type: "image/" + match[1]}));
+        const img = document.createElement("img");
+        img.onload = img.onerror = () => URL.revokeObjectURL(url);
+        img.src = url;
+        img.alt = "Screenshot captured from the connected computer";
+        div.append(img);
+      } catch { /* Ignore malformed screenshot data. */ }
+    }
   }
   $("messages").append(div);
   $("messages").scrollTop = $("messages").scrollHeight;

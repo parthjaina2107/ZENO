@@ -160,6 +160,9 @@ class PlannedAction:
     confirmation_message: str = ""
     action_id: str = ""
 
+    input_target: Optional[tuple] = None
+    input_app: str = ""
+
     def __post_init__(self):
         if not self.action_id:
             self.action_id = compute_action_id(self.action_type, self.parameters)
@@ -180,6 +183,7 @@ def describe_action(action: PlannedAction) -> str:
         return (f"Apply these files in {params['workspace']}, back up originals, and request VS Code to open. "
                 f"Runtime tests will not run. Diff previews may be truncated; full proposal: {params.get('proposal', 'proposal.json')}\n" +
                 '\n\n'.join(f"{item['path']}\nBefore: {item['before_sha256']}\nAfter: {item['after_sha256']}\n{item['preview']}"
+                            + ('\n[Preview truncated. Review the full proposal before approving.]' if item.get('preview_truncated') else '')
                             for item in params['files']))
 
     if act_type == "task_plan":
@@ -273,6 +277,19 @@ class ActionPlanner:
         self.executor = executor
 
     def plan(self, nlu_response: Dict[str, Any]) -> List[PlannedAction]:
+        actions = self._plan(nlu_response)
+        opened = ""
+        for action in actions:
+            if action.action_type == "open_app":
+                opened = action.parameters["app_name"].lower()
+            elif action.action_type in {"type_text", "keyboard_shortcut", "mouse_click"}:
+                from executor.system_ops import foreground_target
+                action.input_app = opened
+                if not opened:
+                    action.input_target = foreground_target()
+        return actions
+
+    def _plan(self, nlu_response: Dict[str, Any]) -> List[PlannedAction]:
         """Convert NLU JSON into one or more PlannedAction instances."""
         if not nlu_response.get("understood", False):
             return [

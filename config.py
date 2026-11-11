@@ -32,80 +32,25 @@ KNOWN_DEFAULT_JWT_SECRETS = {
 }
 
 
-def ensure_secrets(env_path: Optional[Path] = None) -> tuple[str, str]:
-    """
-    Ensure ACCESS_TOKEN and JWT_SECRET_KEY are set and non-default.
-    Generates cryptographically random 32-byte urlsafe tokens and saves to .env if needed.
-    Returns (access_token, jwt_secret_key).
-    """
+def ensure_secrets():
+    """Initialize missing browser credentials in memory for this server process."""
     import secrets
-    target_env = Path(env_path) if env_path else BASE_DIR / ".env"
-
-    env_values = {}
-    if target_env.exists():
-        try:
-            for line in target_env.read_text(encoding="utf-8").splitlines():
-                if "=" in line and not line.strip().startswith("#"):
-                    k, v = line.split("=", 1)
-                    env_values[k.strip()] = v.strip()
-        except Exception:
-            pass
-
-    current_access = env_values.get("ACCESS_TOKEN") or (os.getenv("ACCESS_TOKEN", "").strip() if not env_path else "")
-    current_jwt = env_values.get("JWT_SECRET_KEY") or (os.getenv("JWT_SECRET_KEY", "").strip() if not env_path else "")
-
-    needs_access = not current_access or current_access in KNOWN_DEFAULT_ACCESS_TOKENS
-    needs_jwt = not current_jwt or current_jwt in KNOWN_DEFAULT_JWT_SECRETS
-
-    new_access = secrets.token_urlsafe(32) if needs_access else current_access
-    new_jwt = secrets.token_urlsafe(32) if needs_jwt else current_jwt
-
-    if needs_access or needs_jwt or not target_env.exists():
-        existing_lines = []
-        if target_env.exists():
-            try:
-                existing_lines = target_env.read_text(encoding="utf-8").splitlines()
-            except Exception:
-                existing_lines = []
-
-        updated_lines = []
-        found_access = False
-        found_jwt = False
-
-        for line in existing_lines:
-            if line.startswith("ACCESS_TOKEN="):
-                updated_lines.append(f"ACCESS_TOKEN={new_access}")
-                found_access = True
-            elif line.startswith("JWT_SECRET_KEY="):
-                updated_lines.append(f"JWT_SECRET_KEY={new_jwt}")
-                found_jwt = True
-            else:
-                updated_lines.append(line)
-
-        if not found_access:
-            updated_lines.append(f"ACCESS_TOKEN={new_access}")
-        if not found_jwt:
-            updated_lines.append(f"JWT_SECRET_KEY={new_jwt}")
-
-        target_env.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
-
-    os.environ["ACCESS_TOKEN"] = new_access
-    os.environ["JWT_SECRET_KEY"] = new_jwt
-    Config.ACCESS_TOKEN = new_access
-    Config.JWT_SECRET_KEY = new_jwt
-    if "config" in globals():
-        config.ACCESS_TOKEN = new_access
-        config.JWT_SECRET_KEY = new_jwt
-
-    return new_access, new_jwt
+    if not config.ACCESS_TOKEN or config.ACCESS_TOKEN in KNOWN_DEFAULT_ACCESS_TOKENS:
+        config.ACCESS_TOKEN = secrets.token_urlsafe(32)
+        config.generated_passphrase = True
+    if not config.JWT_SECRET_KEY or config.JWT_SECRET_KEY in KNOWN_DEFAULT_JWT_SECRETS:
+        config.JWT_SECRET_KEY = secrets.token_urlsafe(32)
 
 
 class Config:
+    generated_passphrase = False
     BASE_DIR: Path = BASE_DIR
+    DATA_DIR: Path = Path(os.getenv("ZENO_DATA_DIR", str(Path(os.getenv("LOCALAPPDATA", str(Path.home() / '.local' / 'share'))) / "ZENO")))
+    HISTORY_RETENTION_DAYS: int = max(0, int(os.getenv("HISTORY_RETENTION_DAYS", "0")))
 
     # Assistant Persona
     ASSISTANT_NAME: str = os.getenv("ASSISTANT_NAME", "ZENO").strip()
-    MEMORY_FILE: str = os.getenv("MEMORY_FILE", str(BASE_DIR / "zeno_memory.json")).strip()
+    MEMORY_FILE: str = os.getenv("MEMORY_FILE", str(DATA_DIR / "zeno_memory.json")).strip()
 
     # API & Auth Credentials
     GEMINI_API_KEY: str = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
@@ -164,7 +109,6 @@ class Config:
 
     # Auto-Approve Policy (safe read-only actions skip confirmation)
     # Local awareness state is separate from the repository and its Git history.
-    DATA_DIR: Path = Path(os.getenv("ZENO_DATA_DIR", str(Path(os.getenv("LOCALAPPDATA", str(Path.home() / '.local' / 'share'))) / "ZENO")))
     AWARENESS_ENABLED: bool = os.getenv("AWARENESS_ENABLED", "true").lower() == "true"
     AWARENESS_POLL_SECONDS: int = max(15, int(os.getenv("AWARENESS_POLL_SECONDS", "60")))
     BRIEFING_INTERVAL_SECONDS: int = max(60, int(os.getenv("BRIEFING_INTERVAL_SECONDS", "900")))
@@ -194,7 +138,7 @@ class Config:
     SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8765"))
 
     # Logging
-    LOG_FILE: str = os.getenv("LOG_FILE", str(BASE_DIR / "voiceagent.log"))
+    LOG_FILE: str = os.getenv("LOG_FILE") or str(DATA_DIR / "voiceagent.log")
 
     # Canonical Action Risk Mapping
     ACTION_RISK: dict = {
@@ -241,7 +185,6 @@ class Config:
         str(USER_HOME / "Documents"),
         str(USER_HOME / "Desktop"),
         str(USER_HOME / "Downloads"),
-        str(BASE_DIR),  # Allow working inside project dir
     ]
     for _drive_key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
         if os.getenv(_drive_key):
@@ -313,7 +256,7 @@ class Config:
         if not cls.NGROK_AUTH_TOKEN:
             msg = (
                 "ℹ️ NGROK_AUTH_TOKEN is not set. Remote access tunnel will be disabled. "
-                "Local Wi-Fi access will still work. Get token at: https://ngrok.com/"
+                "The browser workspace remains available on this PC."
             )
             if require_ngrok:
                 raise ValueError(msg)
@@ -321,7 +264,7 @@ class Config:
 
         if cls.ACCESS_TOKEN in ("change_me_to_a_secure_passphrase", "voiceagent-secret-passphrase", ""):
             warnings.append(
-                "⚠️ Default or empty ACCESS_TOKEN is in use. Set a secure passphrase in .env for mobile access."
+                "Server mode generates a temporary passphrase when no personal passphrase is configured."
             )
 
         return warnings

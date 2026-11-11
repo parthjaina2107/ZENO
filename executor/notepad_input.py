@@ -40,16 +40,25 @@ class NotepadInput:
     def normalized(text):
         return text.replace("\r\n", "\n").rstrip("\r")
 
-    def paste(self, text, clipboard, keyboard):
+    def paste(self, text, clipboard, keyboard, target=None):
+        from .system_ops import check_input_target
         window, editor = self.find_editor()
         before = self.normalized(self.read(editor))
+        if target:
+            check_input_target(target)
+            if window.handle != target[0]:
+                raise ValueError("The selected Notepad window changed.")
         window.set_focus()
         editor.set_focus()
         # Append explicitly instead of replacing an existing selection or document.
+        if target:
+            check_input_target(target)
         keyboard.hotkey("ctrl", "end")
         old_clipboard = clipboard.paste()
         try:
             clipboard.copy(text)
+            if target:
+                check_input_target(target)
             keyboard.hotkey("ctrl", "v")
             deadline = time.monotonic() + 4
             expected = self.normalized(before + text)

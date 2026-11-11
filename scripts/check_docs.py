@@ -60,7 +60,7 @@ def main():
                 or path.name in {"credentials.json", "google-client.json", "desktop.json", "desktop.lock",
                                  "zeno_memory.json", "audit_log.jsonl", "paired_devices.json", "app-access.json"}
                 or path.name.startswith("client_secret") or path.suffix in {".token", ".sqlite3", ".log"}
-                or lower.startswith(("accounts/", "screenshots/", "task_reports/"))):
+                or lower.startswith(("accounts/", "screenshots/", "task_reports/", "audit/"))):
             errors.append("Sensitive runtime path must not be tracked: " + name)
 
     if args.base:

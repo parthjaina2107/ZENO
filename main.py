@@ -119,14 +119,13 @@ class VoiceAgentApp:
         print(f"  • Proactive Updates  : {'Enabled — say brief me' if self.awareness else 'Disabled'}")
         print(f"  • Voice              : {config.TTS_VOICE if config.TTS_BACKEND in ('edge', 'elevenlabs') else config.TTS_LOCAL_VOICE}")
         print(f"  • Ngrok Auth Token   : {'Configured' if config.NGROK_AUTH_TOKEN else 'None'}")
-        print("  • Access Token       : [Configured in .env]")
         print("=" * 64)
 
     def start_web_server(self):
         """Start FastAPI uvicorn server in a background thread."""
         from importlib import import_module
         server_module = import_module("server.app")
-        from server.remote_access import RemoteGrant
+        from server.remote_access import RemoteGrant, session_notifications
         uv_config = uvicorn.Config(
             "server.app:app",
             host="127.0.0.1",
@@ -151,6 +150,8 @@ class VoiceAgentApp:
         print(f"Browser workspace: {local_url}")
         if tunnel_url:
             print(f"Phone workspace: {tunnel_url}")
+        if config.generated_passphrase:
+            print(f"Temporary access passphrase: {config.ACCESS_TOKEN}")
         print(f"One-use pairing code (5 minutes): {grant.code}")
         print(f"Access: {grant.scope}, up to 15 minutes. Press Ctrl+C to end the session.")
         server_module.init_shared_subsystems(
@@ -163,14 +164,21 @@ class VoiceAgentApp:
 
         def run_server():
             async def serve():
-                task = asyncio.create_task(server.serve(sockets=[listener]))
+                task = None
                 try:
-                    while not task.done() and grant.active():
-                        await asyncio.sleep(1)
+                    with session_notifications(grant) as pump:
+                        task = asyncio.create_task(server.serve(sockets=[listener]))
+                        while not task.done() and grant.active():
+                            pump()
+                            await asyncio.sleep(0.1)
+                except Exception:
+                    logger.exception("Remote session stopped. Windows session monitoring must be available.")
                 finally:
+                    grant.revoke()
                     server.should_exit = True
                     try:
-                        await task
+                        if task is not None:
+                            await task
                     finally:
                         listener.close()
                         self.tunnel_manager.stop_tunnel()
@@ -493,6 +501,8 @@ def main():
     parser.add_argument("--tunnel", action="store_true", help="Expose this browser session using an HTTPS ngrok tunnel")
     parser.add_argument("--remote-control", action="store_true", help="Allow PC-approved commands beyond media playback")
     args = parser.parse_args()
+    from executor.history import prune_history
+    prune_history()
     if (args.tunnel or args.remote_control) and (args.mode == "local" or args.desktop):
         parser.error("--tunnel and --remote-control require --mode server or --mode all")
 

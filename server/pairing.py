@@ -16,7 +16,7 @@ class DeviceRegistry:
     """Small local registry.  Only an authenticated pairing can create a device."""
 
     def __init__(self, path: Optional[Path] = None):
-        self.path = Path(path or (config.BASE_DIR / "paired_devices.json"))
+        self.path = Path(path or (config.DATA_DIR / "paired_devices.json"))
 
     @contextmanager
     def _transaction(self, *, write=True):

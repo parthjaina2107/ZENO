@@ -136,7 +136,6 @@ async def test_cancel_pending_approval_never_executes():
 @pytest.mark.asyncio
 async def test_task_runner_cancellation_saves_report_no_next_step(tmp_path, monkeypatch):
     from config import config
-    monkeypatch.setattr(config, "BASE_DIR", tmp_path)
     token = RunControl()
     brain = MagicMock()
     brain.planner = ActionPlanner(MagicMock())
@@ -151,7 +150,7 @@ async def test_task_runner_cancellation_saves_report_no_next_step(tmp_path, monk
     with pytest.raises(asyncio.CancelledError):
         await runner.run("battery", AsyncMock(), AsyncMock(), control=token)
     assert brain.planner.execute_action.call_count == 1
-    report = json.loads(next((tmp_path / "task_reports").glob("*.json")).read_text())
+    report = json.loads(next((config.DATA_DIR / "task_reports").glob("*.json")).read_text())
     assert report["status"] == "cancelled" and len(report["steps"]) == 1
 
 

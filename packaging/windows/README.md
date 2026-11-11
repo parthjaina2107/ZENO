@@ -23,6 +23,9 @@ copy of ZENO Desktop, run the following from the repository root:
 powershell.exe -NoProfile -File .\packaging\windows\test-installer.ps1
 ```
 
-The check installs to a fresh temporary folder, opens the installed dashboard
-using the private runtime, and checks that uninstall keeps a user-created file.
+The check installs to a fresh temporary folder, compares installed program files
+with Git and opens the installed dashboard using the private runtime. It simulates
+a failed dependency update, runs the installer again to test a successful update,
+and checks that uninstall keeps a user-created file. Rebuild the EXE when changing
+packaged application files.
 Speech and Ollama downloads are separate optional checks.

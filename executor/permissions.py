@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from brain.planner import PlannedAction, describe_action
 from config import config
+from .history import audit_path
 
 logger = logging.getLogger("VoiceAgent.Permissions")
 
@@ -22,8 +23,12 @@ class PermissionManager:
     def __init__(self, listener=None, speaker=None, audit_log_path: Optional[str] = None):
         self.listener = listener
         self.speaker = speaker
-        self.audit_log_path = Path(audit_log_path or (config.BASE_DIR / "audit_log.jsonl"))
+        self._audit_log_override = Path(audit_log_path) if audit_log_path else None
         self._pending_remote_requests: Dict[str, asyncio.Future] = {}
+
+    @property
+    def audit_log_path(self):
+        return self._audit_log_override or audit_path()
 
     def log_decision(
         self,
