@@ -174,6 +174,8 @@ def describe_action(action: PlannedAction) -> str:
     act_type = action.action_type
     params = action.parameters or {}
 
+    if act_type == "organize_desktop":
+        return action.description
     if act_type == 'coding_request':
         return (f"Read supported project files in {params['workspace']} and send a filtered snapshot "
                 "to Codex using your signed-in account to prepare code changes. Account usage limits apply. "

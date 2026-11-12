@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a local desktop organizer for typed and voice commands. Enable Files and folders, then review the suggested moves before applying them.
+
 - Protected the app and data folders from file tools, restricted coding subprocess credentials, and scoped diagnostic listings to file access. Browser sessions use tab storage and only approved commands extend inactivity time. Online playback and microphone transcription now require separate opt-ins after upgrade.
 - Keyboard and mouse commands check the selected window. Windows lock and disconnect notifications revoke browser access. Server-generated passphrases and signing keys last for the process.
 - Remote requests recheck the grant before individual actions and before sending results from a pending task.

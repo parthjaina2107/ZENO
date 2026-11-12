@@ -33,6 +33,9 @@ class TaskExecutor:
         logger.info("Executing action '%s'", act_type)
 
         try:
+            if act_type == "organize_desktop":
+                from .desktop_organizer import apply_desktop
+                return apply_desktop(self.file, params["moves"])
             if act_type == "media_control":
                 return self.system.media_control(params.get("command", ""))
 
