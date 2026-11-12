@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adopted MIT for ZENO’s original code and included the license in Windows setup. The README now demonstrates the desktop organizer’s approval flow.
+
 - Added a local desktop organizer for typed and voice commands. Enable Files and folders, then review the suggested moves before applying them.
 
 - Protected the app and data folders from file tools, restricted coding subprocess credentials, and scoped diagnostic listings to file access. Browser sessions use tab storage and only approved commands extend inactivity time. Online playback and microphone transcription now require separate opt-ins after upgrade.

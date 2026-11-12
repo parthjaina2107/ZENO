@@ -1,5 +1,7 @@
 # Windows setup guide
 
+The installer places the [MIT License](../LICENSE) for ZENO’s original code in the application folder. Third-party components retain their own terms.
+
 ## Windows installer
 
 1. Use a 64-bit Intel or AMD PC running Windows 10 or 11. Connect to the internet

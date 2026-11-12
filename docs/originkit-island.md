@@ -19,7 +19,7 @@ visual grounding. Those reference images remain in ignored scratch files; they
 are not shipped in ZENO. This is an original native Qt adaptation, not a WebGL
 shader port or imported OriginKit source. No OriginKit runtime or service is used.
 The bundled Lucide 0.468.0 icons retain their upstream ISC/Feather license in
-`desktop/assets/icons/LICENSE-lucide`. ZENO's own licensing remains undecided.
+`desktop/assets/icons/LICENSE-lucide`. ZENO’s original code uses the [MIT License](../LICENSE).
 
 ## Implemented layout
 
