@@ -42,6 +42,7 @@ FEATURES += tuple((key, "Applications", title, "Allow ZENO to launch or close th
                   for key, (title, _) in APPLICATIONS.items())
 LABELS = {key: title for key, _, title, _ in FEATURES}
 ACTION_FEATURES = {
+    "organize_desktop": "files",
     "system_info": "system", "list_apps": "system", "screenshot": "screen", "ui_inspect": "screen",
     "volume_set": "media", "volume_mute": "media", "media_control": "media", "run_command": "terminal",
     "keyboard_shortcut": "input", "type_text": "input", "mouse_click": "input", "shutdown": "power",

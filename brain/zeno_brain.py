@@ -152,6 +152,14 @@ class ZenoBrain:
                                  if self.conversation_unavailable else {'conversation_only': True})
 
         tool_text = re.sub(r"^(?:task|agent(?: task)?)\s*:\s*", "", clean_text, flags=re.I)
+        from executor.desktop_organizer import REQUEST, plan_desktop
+        if REQUEST.fullmatch(tool_text.strip()):
+            import asyncio
+            from executor.file_ops import FileOps
+            self.pending_folder_location = None
+            action, message = await asyncio.to_thread(plan_desktop, FileOps())
+            return BrainResponse(kind="action" if action else "chat", message=message,
+                                 actions=[action] if action else [])
         from awareness.gmail import mail_request
         from .folder_intent import folder_request
         from .nlu import excludes_execution, split_commands

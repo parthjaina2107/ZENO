@@ -53,6 +53,13 @@ see the [privacy guide](privacy.md) before sharing them.
 
 ## Manual installation
 
+Enable **Files and folders** and ask “Organize my desktop” to review up to ten
+suggested moves. ZENO groups named screenshots in Desktop/Screenshots and files
+older documents, pictures and archives under Documents/Desktop files by category.
+The age threshold is 30 days since the last edit. Check the names and destinations
+in the approval prompt. Ask again for the next batch. Cross-drive moves are skipped
+with a message. Existing folders, shortcuts and unclassified files stay in place.
+
 1. Install Git and Python 3.11 x64 using [Prerequisites](#1-prerequisites).
 2. Open PowerShell and follow [Download and install](#2-download-and-install)
    to create a private environment and install dependencies.
