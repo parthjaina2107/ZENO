@@ -1,6 +1,12 @@
-# 🎙️ ZENO — Secure Voice Automation & Remote Control
+# ZENO Desktop
 
-> **ZENO**: Run supported computer tasks by voice—locally using your microphone or remotely from your smartphone—with validated plans, action permissions, and progress reporting.
+A voice and keyboard assistant for Windows that lives in a Dynamic Island at the top of your screen.
+
+[![MIT license](https://img.shields.io/badge/license-MIT-444)](LICENSE) · [Download for Windows x64](https://github.com/parthjaina2107/ZENO/raw/refs/heads/main/installers/ZENO-Setup-x64.exe) · [Setup guide](docs/setup.md)
+
+![ZENO’s island expanding to show a sample Desktop file move and its approval controls](docs/desktop-organizer-demo.gif)
+
+**Try “Organize my desktop.”** With **Files and folders** enabled, ZENO inspects loose files and proposes where each one belongs. A screenshot might go into Desktop/Screenshots. An older receipt might go into Documents/Desktop files/Invoices and receipts. You see the destinations and reasons before approving a move.
 
 ## Install ZENO Desktop for Windows
 
@@ -84,8 +90,7 @@ See [implementation and verification notes](docs/agent-task-upgrade.md).
 
 > **ZENO**: Control your computer via local voice commands or your smartphone, with confirmation for deletion, shutdown, and restart.
 
-**Status: development preview.** The installer is unsigned. Licensing and
-commercial release checks remain open.
+**Status: development preview.** The installer is unsigned. Commercial release checks remain open.
 
 Start with the **[complete Windows setup guide](docs/setup.md)**. It covers a clean
 checkout, dependencies, API configuration, microphone setup, first use and updates.
@@ -327,3 +332,7 @@ The automated unit and integration tests verify:
 The desktop dashboard's **App access** page controls available accounts,
 applications and tools. **Exit** on the island or **Exit ZENO** in the dashboard
 quits the desktop application. See [setup](docs/setup.md#app-access-and-quitting-zeno).
+
+## License
+
+ZENO’s original code is available under the [MIT License](LICENSE). Third-party components and assets retain their own licenses and notices.

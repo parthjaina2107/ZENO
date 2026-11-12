@@ -53,7 +53,7 @@ design. These references are React/Motion components; ZENO uses original native
 Qt drawing and its existing signal/controller lifecycle. No upstream React source,
 web runtime, reference images or service requests are bundled. The existing Lucide
 icons retain their notices in `desktop/assets/icons/LICENSE-lucide`.
-ZENO's license remains undecided.
+ZENO’s original code uses the [MIT License](../LICENSE).
 
 ## Behavior
 

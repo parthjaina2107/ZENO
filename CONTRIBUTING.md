@@ -1,8 +1,7 @@
 # Contributing
 
-ZENO is a Windows development preview. Licensing is undecided; discuss substantial
-external contributions with the maintainer before submitting them. Do not assume
-a contribution agreement or distribution license has been established.
+ZENO is a Windows development preview. Original code is distributed under the [MIT License](LICENSE). Discuss substantial
+external contributions with the maintainer before submitting them.
 
 Use the [setup guide](docs/setup.md), then install development dependencies:
 

@@ -1,8 +1,7 @@
 # Commercial launch readiness
 
 ZENO is a development preview. This checklist is a release gate, not a statement
-that the product is launch-ready. The owner has explicitly left licensing
-undecided. No release date, legal approval or production support commitment is
+that the product is launch-ready. ZENO’s original code is under the [MIT License](../LICENSE). No release date, legal approval or production support commitment is
 implied. Record evidence and the tested commit before checking off a release gate.
 
 ## Repository foundation
@@ -25,8 +24,8 @@ lock during control and the native approval dialog still need manual verificatio
 
 ## Product scope and owner decisions
 
-- [ ] Choose the project license and commercial distribution model. A public
-  repository is not itself a selected open-source license.
+- [x] Adopt MIT for ZENO’s original code.
+- [ ] Decide the commercial distribution model.
 - [ ] Establish the supported Windows versions, minimum hardware, target users,
   product name/branding and support contact.
 - [ ] Decide customer-provided API keys versus a managed service, with budgets,
@@ -200,4 +199,4 @@ The automated suite passed 291 tests. The manual gates below remain open.
 - [ ] Complete real microphone, local speech and task-quality evaluation on the
   supported hardware. Synthetic text/model tests do not complete this gate.
 - [ ] Review local model distribution terms and changing cloud free-tier terms
-  before distributing a product. Repository licensing remains undecided.
+  before distributing a product.

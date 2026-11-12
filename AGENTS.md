@@ -24,4 +24,4 @@ Preserve user changes and never commit credentials or runtime content.
 Keep `docs/launch-readiness.md` honest. Do not describe the product as ready for
 commercial launch, select a license, publish a product release, or mark pending
 manual/security/provider checks complete without supporting evidence and authority.
-Licensing is currently undecided at the owner's request.
+The owner selected MIT for ZENO's original code. Preserve third-party notices.

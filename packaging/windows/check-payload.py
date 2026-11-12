@@ -7,7 +7,7 @@ import sys
 root, installed = map(Path, sys.argv[1:])
 paths = ("awareness", "brain", "desktop", "executor", "server", "tunnel", "voice",
          "app_access.py", "config.py", "main.py", "user_paths.py", ".env.example",
-         "Start-ZENO.cmd", "requirements*.txt")
+         "Start-ZENO.cmd", "LICENSE", "requirements*.txt")
 entries = subprocess.check_output(["git", "-C", str(root), "ls-files", "-s", "-z", "--", *paths])
 
 
