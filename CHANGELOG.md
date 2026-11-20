@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Activity searches session requests and replies. Edit request restores a typed request, its mode and its coding project for review before resubmission. These dashboard controls require no setup changes.
+
 - File creation verifies the published file and its size. Folder creation distinguishes an existing folder from one created by the request, including simultaneous requests. No setup changes are required.
 
 - Improved follow-up handling during folder naming and email composition. Desktop voice now shows when recording finishes and how to interrupt playback. These changes use existing controls and require no setup changes.

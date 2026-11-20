@@ -589,6 +589,7 @@ $("disconnect").addEventListener("click", () => {
 });
 function run(text = $("command").value.trim(), mode = $("mode").value) {
   if (!text) return;
+  const inputText = text;
   if (mode === "chat") text = "Chat: " + text;
   if (desktopMode && mode === "coding") {
     const workspace = $("codingWorkspace").value.trim();
@@ -611,7 +612,9 @@ function run(text = $("command").value.trim(), mode = $("mode").value) {
   window.speechSynthesis?.cancel();
   currentRun = {
     text,
+    inputText,
     mode,
+    workspace: mode === "coding" ? $("codingWorkspace").value : "",
     status: "running",
     time: new Date(),
     messages: [],
@@ -704,8 +707,8 @@ function renderActivity() {
   $("activityCount").textContent = runs.length;
   const list = $("activityList");
   list.replaceChildren();
-  const query = $("activitySearch").value.toLowerCase();
-  const filtered = runs.filter((run) => run.text.toLowerCase().includes(query));
+  const query = $("activitySearch").value.trim().toLowerCase();
+  const filtered = runs.filter((run) => [run.text, ...run.messages].some((value) => value.toLowerCase().includes(query)));
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.textContent = runs.length
@@ -728,6 +731,22 @@ function renderActivity() {
     const p = document.createElement("p");
     p.textContent = run.messages.join("\n\n") || "Waiting for a response.";
     item.append(summary, p);
+    if (run.inputText && Array.from($("mode").options).some(option => option.value === run.mode)) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit request";
+      edit.addEventListener("click", () => {
+        if (busy) return notify("Wait for the active request to finish.");
+        if ($("command").value.trim()) return notify("Finish or clear your current draft first.");
+        $("mode").value = run.mode;
+        $("mode").dispatchEvent(new Event("change"));
+        if (run.mode === "coding") $("codingWorkspace").value = run.workspace;
+        $("command").value = run.inputText;
+        view("workspace");
+        $("command").focus();
+      });
+      item.append(edit);
+    }
     list.append(item);
   }
 }
