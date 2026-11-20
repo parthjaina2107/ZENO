@@ -123,13 +123,17 @@ class DesktopEngine:
             def microphone_opened():
                 emit('microphone', 'on')
                 emit('state', 'Listening')
+            def microphone_closed():
+                emit('microphone', 'off')
+                if not control.cancelled.is_set():
+                    emit('state', 'Processing audio')
             # Load only the configured recognizer while the user speaks. Both
             # workers drain on cancellation; the microphone still opens on demand.
             audio, _ = await asyncio.gather(
                 control.call(capture, control, settings.microphone,
                              pause_seconds=settings.pause_seconds,
                              on_open=microphone_opened,
-                             on_close=lambda: emit('microphone', 'off'),
+                             on_close=microphone_closed,
                              on_level=lambda level: emit("level", str(level))),
                 control.call(self.listener._get_whisper_model),
             )

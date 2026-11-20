@@ -245,12 +245,13 @@ function assistantPhase(state) {
     Ready: ["Ready when you are.", "Voice, text, or a moment to talk."],
     Preparing: ["Getting ready.", "Preparing your request."],
     "Opening microphone": ["Opening microphone.", "Waiting for your audio device."],
-    Transcribing: ["Finding your words.", "Transcribing the captured audio."],
+    "Processing audio": ["Processing audio.", "Recording finished. The microphone is off."],
+    Transcribing: ["Transcribing your words.", "Transcribing the captured audio."],
     Thinking: ["Thinking it through.", "Interpreting your request."],
     "AI unavailable": ["AI unavailable.", "The request could not be answered. Retry when the service returns."],
     Working: ["On your request.", "Running supported steps. You can stop at any time."],
     "Approval needed": ["Your call.", "Review the action before it runs."],
-    Speaking: ["A reply for you.", "Speech playback. The microphone is off."],
+    Speaking: ["Speaking.", "Select Stop to interrupt playback."],
     Stopping: ["Wrapping up safely.", "New steps are stopped; started work may finish."],
     "Reading project": ["Reading your workspace.", "Preparing the approved project context."],
     "Planning code": ["Working out the code.", "Preparing a proposal. Files are unchanged."],
@@ -588,6 +589,7 @@ $("disconnect").addEventListener("click", () => {
 });
 function run(text = $("command").value.trim(), mode = $("mode").value) {
   if (!text) return;
+  const inputText = text;
   if (mode === "chat") text = "Chat: " + text;
   if (desktopMode && mode === "coding") {
     const workspace = $("codingWorkspace").value.trim();
@@ -610,7 +612,9 @@ function run(text = $("command").value.trim(), mode = $("mode").value) {
   window.speechSynthesis?.cancel();
   currentRun = {
     text,
+    inputText,
     mode,
+    workspace: mode === "coding" ? $("codingWorkspace").value : "",
     status: "running",
     time: new Date(),
     messages: [],
@@ -703,8 +707,8 @@ function renderActivity() {
   $("activityCount").textContent = runs.length;
   const list = $("activityList");
   list.replaceChildren();
-  const query = $("activitySearch").value.toLowerCase();
-  const filtered = runs.filter((run) => run.text.toLowerCase().includes(query));
+  const query = $("activitySearch").value.trim().toLowerCase();
+  const filtered = runs.filter((run) => [run.text, ...run.messages].some((value) => value.toLowerCase().includes(query)));
   if (!filtered.length) {
     const empty = document.createElement("p");
     empty.textContent = runs.length
@@ -727,6 +731,22 @@ function renderActivity() {
     const p = document.createElement("p");
     p.textContent = run.messages.join("\n\n") || "Waiting for a response.";
     item.append(summary, p);
+    if (run.inputText && Array.from($("mode").options).some(option => option.value === run.mode)) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit request";
+      edit.addEventListener("click", () => {
+        if (busy) return notify("Wait for the active request to finish.");
+        if ($("command").value.trim()) return notify("Finish or clear your current draft first.");
+        $("mode").value = run.mode;
+        $("mode").dispatchEvent(new Event("change"));
+        if (run.mode === "coding") $("codingWorkspace").value = run.workspace;
+        $("command").value = run.inputText;
+        view("workspace");
+        $("command").focus();
+      });
+      item.append(edit);
+    }
     list.append(item);
   }
 }

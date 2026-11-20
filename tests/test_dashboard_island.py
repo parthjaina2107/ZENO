@@ -226,6 +226,15 @@ def test_shared_dashboard_loads_and_routes_ui_without_server():
         js("document.getElementById('command').value='I feel lonely';document.getElementById('run').click();true")
         wait_for(lambda: len(texts) == 3)
         assert texts[-1] == 'Chat: I feel lonely'
+        dashboard.handle_event('reply', 'A searchable reply')
+        dashboard.handle_event('state', 'Ready')
+        js("view('activity'); $('activitySearch').value='searchable reply'; renderActivity(); true")
+        assert js("document.querySelectorAll('.activity-item').length") == 1
+        js("document.querySelector('.activity-item button').click(); true")
+        assert js("$('command').value") == 'I feel lonely'
+        assert js("$('mode').value") == 'chat'
+        assert len(texts) == 3
+        js("$('activitySearch').value=''; true")
         dashboard.handle_event('state', 'Ready')
         js("document.getElementById('assistantProfile').value='focused';document.getElementById('applyAssistantProfile').click();true")
         wait_for(lambda: len(texts) == 4)
