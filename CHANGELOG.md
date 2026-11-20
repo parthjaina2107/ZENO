@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- File creation verifies the published file and its size. Folder creation distinguishes an existing folder from one created by the request, including simultaneous requests. No setup changes are required.
+
+- Improved follow-up handling during folder naming and email composition. Desktop voice now shows when recording finishes and how to interrupt playback. These changes use existing controls and require no setup changes.
+
+- Reduced transparency on the dashboard's dark panels. Setup steps are unchanged.
+
 - Adopted MIT for ZENO’s original code and included the license in Windows setup. The README now demonstrates the desktop organizer’s approval flow.
 
 - Added a local desktop organizer for typed and voice commands. Enable Files and folders, then review the suggested moves before applying them.

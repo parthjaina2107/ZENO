@@ -107,6 +107,12 @@ class ZenoBrain:
 
         clean_text = self.strip_wake_prefix(raw_text)
         clean_text = re.sub(r"^(?:(?:can|could|would) you |please )+", "", clean_text, flags=re.I)
+        # Spoken corrections commonly precede a replacement while collecting details.
+        if (clean_text.lower().startswith(('actually', 'instead', 'no,'))
+                and (self.pending_folder_location or (self.gmail_mailbox and self.gmail_mailbox.composing))):
+            clean_text = re.sub(r"^(?:actually|instead|no,? instead)[, ]+"
+                                r"(?=(?:call it|name it|send|draft|create|make|open|launch|cancel)\b)",
+                                "", clean_text, flags=re.I)
         lowered = clean_text.lower().strip(".!?,")
 
         from .companion import conversation_text, social_opening, CLEAR_REQUESTS, STYLES, PROFILES
@@ -175,6 +181,7 @@ class ZenoBrain:
                     first.data['following_mail'] = following
                 return first
         if self.vision.is_vision_query(tool_text):
+            self.pending_folder_location = None
             if self.gmail_mailbox:
                 self.gmail_mailbox.composing = None
             result = await self.vision.analyze_screen(tool_text)
@@ -221,6 +228,9 @@ class ZenoBrain:
             # Multi-word names can be supplied with "call it ...". A new command takes precedence.
             if re.fullmatch(r"yes|yeah|okay|ok|sure|go ahead", lowered):
                 return BrainResponse(kind='chat', message='What name should I use? Say "call it" followed by the folder name.')
+            if lowered in {"no", "never mind", "nevermind", "forget it"}:
+                self.pending_folder_location = None
+                return BrainResponse(kind="chat", message="Cancelled folder creation.")
             bare_name = len(clean_text.split()) == 1 and not is_direct_command(clean_text)
             if name and (explicit_name or bare_name):
                 location, pending_agent = self.pending_folder_location

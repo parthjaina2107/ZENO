@@ -243,3 +243,25 @@ def test_focus_change_blocks_input_before_dispatch(monkeypatch):
     monkeypatch.setattr(system_ops, "foreground_target", lambda: (200, 2))
     assert not executor.execute(action).success
     executor.system.type_text.assert_not_called()
+
+
+def test_concurrent_folder_requests_report_one_creation(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    ops = FileOps([str(tmp_path)])
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(ops.folder_create, [str(tmp_path / "Reports")] * 4))
+    assert all(result.success and result.output["verified"] for result in results)
+    assert sum(result.output["created"] for result in results) == 1
+
+
+def test_file_verification_detects_replaced_destination(tmp_path, monkeypatch):
+    from executor import file_publication
+
+    def publish_replacement(staged, target):
+        target.write_bytes(b"other")
+
+    monkeypatch.setattr(file_publication, "publish_new", publish_replacement)
+    result = FileOps([str(tmp_path)]).file_create(str(tmp_path / "note.txt"), "hello")
+    assert not result.success
+    assert result.error == "VERIFICATION_FAILED"

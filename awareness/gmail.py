@@ -169,7 +169,8 @@ class GmailMailbox:
         value = text.strip()
         if re.fullmatch(r"(?:cancel|stop|never mind|nevermind|forget it|no|do not send(?: it)?|don.t send(?: it)?)[.!]?", value, re.I):
             return ("cancel_send", "")
-        if re.match(r"^(?:(?:please|can you)\s+)?(?:open|close|create|make|search|check|read|show|set|run|task|explain|code|pause|play|take|clear|type|what|why|how|restart|mute|unmute)\b", value, re.I):
+        from brain.interaction import is_direct_command
+        if is_direct_command(value) or re.match(r"^(?:(?:please|can you)\s+)?(?:open|close|create|make|search|check|read|show|set|run|task|explain|code|pause|play|take|clear|type|what|why|how|restart|mute|unmute)\b", value, re.I):
             self.composing = None
             return None
         address, details = mail_fields(value)

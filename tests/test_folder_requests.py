@@ -193,3 +193,16 @@ async def test_screen_request_interrupts_a_coding_clarification(desktop_engine, 
     assert await engine.command("read my screen", RunControl(), AsyncMock(), MagicMock()) == "Screen checked."
     assert engine.coding_intent.pending_goal == ""
     analyze.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_folder_correction_and_cancel(desktop_engine):
+    engine, desktop = desktop_engine
+    async def command(text):
+        return await engine.command(text, RunControl(), AsyncMock(), MagicMock())
+
+    await command("create a folder on desktop")
+    await command("no")
+    assert not list(desktop.iterdir())
+    await command("create a folder on desktop")
+    await command("actually, call it Design Reviews")
+    assert (desktop / "Design Reviews").is_dir()

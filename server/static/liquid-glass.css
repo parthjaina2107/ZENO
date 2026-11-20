@@ -180,14 +180,14 @@ body.reduce-motion .workspace-swirl { transition: none; }
 @media (prefers-reduced-motion: reduce) { .workspace-swirl { transition: none; } }
 .shell { --liquid-shadow:0 5px 18px #0004; }
 .shell .glass,.shell header {
-  background:linear-gradient(135deg,#131315eb,#0c0c0ed9);
+  background:linear-gradient(135deg,#131315f1,#0c0c0ee4);
   border:1px solid #ffffff21; border-radius:18px; box-shadow:var(--liquid-shadow);
   backdrop-filter:none; -webkit-backdrop-filter:none;
 }
-.shell .rail { background:#09090bea; }
-.shell .composer,.shell .conversation { background:#0c0c0edb; }
+.shell .rail { background:#09090bf0; }
+.shell .composer,.shell .conversation { background:#0c0c0ee5; }
 .shell .hero.voice-hero { position:relative; overflow:hidden; height:auto; min-height:182px;
-  background:radial-gradient(ellipse at 85% 100%,var(--accent-wash),transparent 64%),#08080a80; }
+  background:radial-gradient(ellipse at 85% 100%,var(--accent-wash),transparent 64%),#08080aa4; }
 .voice-orbit { position:absolute; pointer-events:none; width:112px; height:112px; right:6%; top:50%;
   transform:translateY(-50%); border:1px solid var(--accent-edge); border-radius:50%;
   background:radial-gradient(circle,#fff 0%,var(--accent-light) 4%,var(--accent-wash) 20%,transparent 56%); }

@@ -184,13 +184,17 @@ class FileOps:
         if not valid or target is None:
             return ActionResult(success=False, message=error or 'Invalid folder path.', error='PATH_VALIDATION_FAILED')
         try:
-            existed = target.is_dir()
-            target.mkdir(parents=True, exist_ok=True)
-            return ActionResult(success=True,
-                                message=f'Folder "{target.name}" already exists.' if existed else f'Created folder "{target.name}".',
-                                output={'path': str(target), 'verified': target.is_dir(), 'created': not existed})
-        except FileExistsError:
-            return ActionResult(success=False, message='A file already uses that name. Choose a different folder name.', error='PATH_EXISTS')
+            created = True
+            try:
+                target.mkdir(parents=True)
+            except FileExistsError:
+                created = False
+            if not target.is_dir():
+                if not created and target.exists():
+                    return ActionResult(False, 'A file already uses that name. Choose a different folder name.', error='PATH_EXISTS')
+                return ActionResult(False, 'Could not verify the folder at the requested location.', error='VERIFICATION_FAILED')
+            message = f'Created folder "{target.name}".' if created else f'Folder "{target.name}" already exists.'
+            return ActionResult(True, message, output={'path': str(target), 'verified': True, 'created': created})
         except OSError:
             return ActionResult(success=False, message='Windows could not create this folder. Check the location and your access.', error='FOLDER_CREATE_FAILED')
 
@@ -204,10 +208,14 @@ class FileOps:
             target.parent.mkdir(parents=True, exist_ok=True)
             with stage_new_file(target) as staged:
                 written = staged.write_bytes(content.encode("utf-8"))
+                staged_info = staged.stat()
+            final_info = target.lstat()
+            if not os.path.samestat(staged_info, final_info) or final_info.st_size != written:
+                return ActionResult(False, "The file changed before ZENO could verify it.", error="VERIFICATION_FAILED")
             return ActionResult(
                 success=True,
                 message=f"Created file at: {target} ({len(content)} characters written).",
-                output={"path": str(target), "bytes": written}
+                output={"path": str(target), "bytes": written, "verified": True}
             )
         except FileExistsError:
             return ActionResult(False, "A file already exists at that path. Choose a new name.", error="PATH_EXISTS")

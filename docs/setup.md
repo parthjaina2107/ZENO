@@ -641,7 +641,7 @@ supported actions. Select the microphone icon to open ZENO's assistant controls.
 
 Open the native dashboard and choose **App access** in the sidebar. Switch on the
 accounts, installed applications and tools you want ZENO to use. New profiles
-start with these switches off. For voice, enable **Microphone**. For local AI,
+start with these switches off. For voice, enable **Microphone**. After recording, the desktop shows audio processing and transcription. Select Stop during a spoken reply to interrupt playback. For local AI,
 enable **Local Ollama**. For folder commands, enable **Files and folders**.
 Gmail inbox and Gmail sending have separate switches and still require the
 corresponding Google consent. Coding requires **Coding workspace**, **Files and
